@@ -12,12 +12,13 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
+import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { AuthProvider } from "@/lib/storage";
@@ -319,9 +320,12 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.content}>
-          <View style={[styles.iconCircle, { backgroundColor: colors.gold }]}>
-            <Ionicons name="person-add" size={32} color="#000" />
-          </View>
+          <LinearGradient
+            colors={["#CC0000", "#8B0000"]}
+            style={styles.iconCircle}
+          >
+            <MaterialCommunityIcons name="pokeball" size={36} color="#FFF" />
+          </LinearGradient>
           <Text style={[styles.title, { color: colors.text }]}>Join PokeScan</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             Sign up to track your collection and trade cards
@@ -380,11 +384,11 @@ export default function RegisterScreen() {
 
           {!showManualForm && hasSocialProviders ? (
             <Pressable
-              style={[styles.manualSignupBtn, { borderColor: colors.border }]}
+              style={[styles.manualSignupBtn, { borderColor: colors.pokemonRed + "50" }]}
               onPress={() => setShowManualForm(true)}
             >
-              <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
-              <Text style={[styles.manualSignupText, { color: colors.textSecondary }]}>
+              <Ionicons name="create-outline" size={18} color={colors.pokemonRed} />
+              <Text style={[styles.manualSignupText, { color: colors.pokemonRed }]}>
                 Sign up with username
               </Text>
             </Pressable>
@@ -392,8 +396,8 @@ export default function RegisterScreen() {
             <View style={styles.form}>
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Display Name</Text>
-                <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+                <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.pokemonRed + "30" }]}>
+                  <Ionicons name="person-outline" size={18} color={colors.pokemonRed} />
                   <TextInput
                     style={[styles.input, { color: colors.text }]}
                     placeholder="Your display name"
@@ -407,8 +411,8 @@ export default function RegisterScreen() {
 
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Username</Text>
-                <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Ionicons name="at" size={18} color={colors.textMuted} />
+                <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.pokemonRed + "30" }]}>
+                  <Ionicons name="at" size={18} color={colors.pokemonRed} />
                   <TextInput
                     style={[styles.input, { color: colors.text }]}
                     placeholder="Choose a username"
@@ -424,14 +428,21 @@ export default function RegisterScreen() {
               <Pressable
                 style={({ pressed }) => [
                   styles.submitBtn,
-                  { backgroundColor: colors.gold, opacity: pressed || isSubmitting ? 0.8 : 1 },
+                  { opacity: pressed || isSubmitting ? 0.8 : 1 },
                 ]}
                 onPress={handleRegister}
                 disabled={isAnyLoading}
               >
-                <Text style={styles.submitBtnText}>
-                  {isSubmitting ? "Creating..." : "Create Account"}
-                </Text>
+                <LinearGradient
+                  colors={["#CC0000", "#8B0000"]}
+                  style={styles.submitBtnGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Text style={styles.submitBtnText}>
+                    {isSubmitting ? "Creating..." : "Create Account"}
+                  </Text>
+                </LinearGradient>
               </Pressable>
             </View>
           )}
@@ -449,9 +460,9 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 40 },
   content: { paddingHorizontal: 24, alignItems: "center", paddingTop: 24 },
   iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 16,
@@ -485,28 +496,30 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 14,
     borderRadius: 12,
-    borderWidth: 1,
+    borderWidth: 1.5,
     width: "100%",
   },
-  manualSignupText: { fontSize: 15, fontFamily: "Outfit_500Medium" },
+  manualSignupText: { fontSize: 15, fontFamily: "Outfit_600SemiBold" },
   form: { width: "100%", gap: 16 },
   inputGroup: { gap: 6 },
   inputLabel: { fontSize: 13, fontFamily: "Outfit_500Medium", paddingLeft: 4 },
   inputBox: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    borderWidth: 1,
+    borderWidth: 1.5,
     gap: 10,
   },
   input: { flex: 1, fontSize: 15, fontFamily: "Outfit_400Regular", padding: 0 },
   submitBtn: {
+    marginTop: 8,
+  },
+  submitBtnGradient: {
     paddingVertical: 16,
     borderRadius: 14,
     alignItems: "center",
-    marginTop: 8,
   },
-  submitBtnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#000" },
+  submitBtnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#FFF" },
 });

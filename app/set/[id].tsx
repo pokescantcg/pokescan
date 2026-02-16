@@ -13,9 +13,10 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
+import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { fetchPCVSetCards, PCVCard, formatGBP } from "@/lib/pokemon-api";
 
@@ -44,18 +45,18 @@ function CardListItem({ card, colors }: { card: PCVCard; colors: ReturnType<type
         ) : null}
         <View style={styles.cardMeta}>
           {card.holoType ? (
-            <View style={[styles.chip, { backgroundColor: colors.surfaceElevated }]}>
-              <Text style={[styles.chipText, { color: colors.textSecondary }]}>{card.holoType}</Text>
+            <View style={[styles.chip, { backgroundColor: colors.pokemonRed + "15" }]}>
+              <Text style={[styles.chipText, { color: colors.pokemonRed }]}>{card.holoType}</Text>
             </View>
           ) : null}
           {card.rarity ? (
-            <View style={[styles.chip, { backgroundColor: colors.surfaceElevated }]}>
-              <Text style={[styles.chipText, { color: colors.gold }]}>{card.rarity}</Text>
+            <View style={[styles.chip, { backgroundColor: colors.pokemonYellow + "20" }]}>
+              <Text style={[styles.chipText, { color: colors.pokemonYellow }]}>{card.rarity}</Text>
             </View>
           ) : null}
           {card.edition && card.edition !== "Unlimited" ? (
-            <View style={[styles.chip, { backgroundColor: colors.surfaceElevated }]}>
-              <Text style={[styles.chipText, { color: colors.accent }]}>{card.edition}</Text>
+            <View style={[styles.chip, { backgroundColor: colors.pokemonBlue + "20" }]}>
+              <Text style={[styles.chipText, { color: colors.pokemonBlue }]}>{card.edition}</Text>
             </View>
           ) : null}
         </View>
@@ -98,7 +99,10 @@ export default function SetDetailScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}>
+      <LinearGradient
+        colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+        style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}
+      >
         <View style={styles.headerRow}>
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
@@ -108,22 +112,28 @@ export default function SetDetailScreen() {
               {name || "Set"}
             </Text>
             <View style={styles.headerMeta}>
-              <Text style={[styles.headerCount, { color: colors.textSecondary }]}>
-                {totalCount} cards
-              </Text>
-              {totalValue > 0 ? (
-                <Text style={[styles.headerValue, { color: colors.success }]}>
-                  Set value: {formatGBP(totalValue)}
+              <View style={styles.headerMetaItem}>
+                <MaterialCommunityIcons name="cards-outline" size={14} color={colors.pokemonRed} />
+                <Text style={[styles.headerCount, { color: colors.textSecondary }]}>
+                  {totalCount} cards
                 </Text>
+              </View>
+              {totalValue > 0 ? (
+                <View style={styles.headerMetaItem}>
+                  <Ionicons name="cash-outline" size={14} color={colors.success} />
+                  <Text style={[styles.headerValue, { color: colors.success }]}>
+                    {formatGBP(totalValue)}
+                  </Text>
+                </View>
               ) : null}
             </View>
           </View>
         </View>
-      </View>
+      </LinearGradient>
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.gold} />
+          <MaterialCommunityIcons name="pokeball" size={40} color={colors.pokemonRed} />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading UK prices...</Text>
         </View>
       ) : (
@@ -135,7 +145,7 @@ export default function SetDetailScreen() {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="albums-outline" size={48} color={colors.textMuted} />
+              <MaterialCommunityIcons name="cards-outline" size={48} color={colors.textMuted} />
               <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
                 No cards found for this set
               </Text>
@@ -154,8 +164,9 @@ const styles = StyleSheet.create({
   backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerInfo: { flex: 1 },
   headerTitle: { fontSize: 22, fontFamily: "Outfit_700Bold" },
-  headerMeta: { flexDirection: "row", gap: 12, alignItems: "center", marginTop: 2 },
-  headerCount: { fontSize: 13, fontFamily: "Outfit_400Regular" },
+  headerMeta: { flexDirection: "row", gap: 16, alignItems: "center", marginTop: 4 },
+  headerMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  headerCount: { fontSize: 13, fontFamily: "Outfit_500Medium" },
   headerValue: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
   listContent: { paddingHorizontal: 16 },
   cardItem: {
@@ -172,12 +183,12 @@ const styles = StyleSheet.create({
   cardNumber: { fontSize: 12, fontFamily: "Outfit_400Regular" },
   cardMeta: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 4 },
   chip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  chipText: { fontSize: 10, fontFamily: "Outfit_500Medium" },
+  chipText: { fontSize: 10, fontFamily: "Outfit_600SemiBold" },
   priceCol: { alignItems: "flex-end", gap: 2 },
   price: { fontSize: 15, fontFamily: "Outfit_700Bold" },
   priceLabel: { fontSize: 10, fontFamily: "Outfit_400Regular" },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
-  loadingText: { fontSize: 14, fontFamily: "Outfit_400Regular" },
+  loadingText: { fontSize: 14, fontFamily: "Outfit_500Medium" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 80, gap: 12 },
   emptyText: { fontSize: 16, fontFamily: "Outfit_500Medium" },
 });

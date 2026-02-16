@@ -14,10 +14,11 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import {
   fetchCard,
@@ -154,7 +155,7 @@ export default function CardDetailScreen() {
           </Pressable>
         </View>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.gold} />
+          <MaterialCommunityIcons name="pokeball" size={40} color={colors.pokemonRed} />
         </View>
       </View>
     );
@@ -192,46 +193,49 @@ export default function CardDetailScreen() {
               </Text>
             </View>
             {card.rarity && (
-              <View style={[styles.rarityBadge, { backgroundColor: colors.surfaceElevated }]}>
-                <Ionicons name="star" size={12} color={colors.gold} />
-                <Text style={[styles.rarityText, { color: colors.gold }]}>{card.rarity}</Text>
+              <View style={[styles.rarityBadge, { backgroundColor: colors.pokemonYellow + "25" }]}>
+                <Ionicons name="star" size={12} color={colors.pokemonYellow} />
+                <Text style={[styles.rarityText, { color: colors.pokemonYellow }]}>{card.rarity}</Text>
               </View>
             )}
           </View>
 
           <View style={styles.detailsGrid}>
             {card.supertype && (
-              <View style={[styles.detailChip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.detailChip, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "30" }]}>
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Type</Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>{card.supertype}</Text>
               </View>
             )}
             {card.hp && (
-              <View style={[styles.detailChip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.detailChip, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "30" }]}>
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>HP</Text>
-                <Text style={[styles.detailValue, { color: colors.text }]}>{card.hp}</Text>
+                <Text style={[styles.detailValue, { color: colors.pokemonRed }]}>{card.hp}</Text>
               </View>
             )}
             {card.types && card.types.length > 0 && (
-              <View style={[styles.detailChip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.detailChip, { backgroundColor: colors.card, borderColor: colors.pokemonBlue + "30" }]}>
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Energy</Text>
-                <Text style={[styles.detailValue, { color: colors.text }]}>{card.types.join(", ")}</Text>
+                <Text style={[styles.detailValue, { color: colors.pokemonBlue }]}>{card.types.join(", ")}</Text>
               </View>
             )}
             {card.artist && (
-              <View style={[styles.detailChip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.detailChip, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Artist</Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>{card.artist}</Text>
               </View>
             )}
           </View>
 
-          <View style={[styles.priceSection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.priceSection, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "30" }]}>
             <View style={styles.priceSectionHeader}>
-              <Ionicons name="pricetag" size={18} color={colors.gold} />
+              <Ionicons name="pricetag" size={18} color={colors.pokemonRed} />
               <Text style={[styles.priceSectionTitle, { color: colors.text }]}>UK Pricing</Text>
             </View>
-            <View style={[styles.mainPrice, { backgroundColor: colors.surfaceElevated }]}>
+            <LinearGradient
+              colors={colorScheme === "dark" ? ["#1F2B47", "#162040"] : ["#FFF8F8", "#FFF0F0"]}
+              style={styles.mainPrice}
+            >
               <Text style={[styles.mainPriceLabel, { color: colors.textSecondary }]}>
                 Market Price (GBP)
               </Text>
@@ -241,7 +245,7 @@ export default function CardDetailScreen() {
               <Text style={[styles.mainPriceSource, { color: colors.textMuted }]}>
                 via {priceData.source || "N/A"}
               </Text>
-            </View>
+            </LinearGradient>
 
             {card.cardmarket?.prices && (
               <View style={styles.priceDetails}>
@@ -254,7 +258,7 @@ export default function CardDetailScreen() {
             )}
           </View>
 
-          <View style={[styles.ebaySection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.ebaySection, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
             <View style={styles.priceSectionHeader}>
               <Ionicons name="globe-outline" size={18} color="#E53238" />
               <Text style={[styles.priceSectionTitle, { color: colors.text }]}>eBay UK</Text>
@@ -298,8 +302,8 @@ export default function CardDetailScreen() {
                 style={[
                   styles.conditionChip,
                   {
-                    backgroundColor: selectedCondition === c ? colors.gold : colors.surface,
-                    borderColor: selectedCondition === c ? colors.gold : colors.border,
+                    backgroundColor: selectedCondition === c ? colors.pokemonRed : colors.card,
+                    borderColor: selectedCondition === c ? colors.pokemonRed : colors.borderLight,
                   },
                 ]}
                 onPress={() => setSelectedCondition(c)}
@@ -307,7 +311,7 @@ export default function CardDetailScreen() {
                 <Text
                   style={[
                     styles.conditionChipText,
-                    { color: selectedCondition === c ? "#000" : colors.textSecondary },
+                    { color: selectedCondition === c ? "#FFF" : colors.textSecondary },
                   ]}
                 >
                   {c}
@@ -320,14 +324,21 @@ export default function CardDetailScreen() {
             <Pressable
               style={({ pressed }) => [
                 styles.actionBtn,
-                { backgroundColor: colors.accent, opacity: pressed ? 0.85 : 1 },
+                { opacity: pressed ? 0.85 : 1 },
               ]}
               onPress={handleAddToCollection}
             >
-              <Ionicons name={inCollection ? "checkmark-circle" : "add-circle"} size={20} color="#FFF" />
-              <Text style={styles.actionBtnText}>
-                {inCollection ? "Add Another" : "Add to Collection"}
-              </Text>
+              <LinearGradient
+                colors={["#CC0000", "#8B0000"]}
+                style={styles.actionBtnGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Ionicons name={inCollection ? "checkmark-circle" : "add-circle"} size={20} color="#FFF" />
+                <Text style={styles.actionBtnText}>
+                  {inCollection ? "Add Another" : "Add to Collection"}
+                </Text>
+              </LinearGradient>
             </Pressable>
 
             <View style={styles.actionRow}>
@@ -344,12 +355,12 @@ export default function CardDetailScreen() {
               <Pressable
                 style={({ pressed }) => [
                   styles.actionBtnSmall,
-                  { backgroundColor: colors.surfaceElevated, opacity: pressed ? 0.85 : 1 },
+                  { backgroundColor: colors.pokemonBlue, opacity: pressed ? 0.85 : 1 },
                 ]}
                 onPress={handleListForTrade}
               >
-                <Ionicons name="swap-horizontal" size={18} color={colors.text} />
-                <Text style={[styles.actionBtnSmallText, { color: colors.text }]}>List for Trade</Text>
+                <Ionicons name="swap-horizontal" size={18} color="#FFF" />
+                <Text style={styles.actionBtnSmallText}>List for Trade</Text>
               </Pressable>
             </View>
           </View>
@@ -390,10 +401,10 @@ const styles = StyleSheet.create({
   },
   rarityText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
   detailsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  detailChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1, gap: 2 },
+  detailChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5, gap: 2 },
   detailLabel: { fontSize: 10, fontFamily: "Outfit_400Regular", textTransform: "uppercase" },
   detailValue: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
-  priceSection: { borderRadius: 16, padding: 16, borderWidth: 1, gap: 12 },
+  priceSection: { borderRadius: 16, padding: 16, borderWidth: 1.5, gap: 12 },
   priceSectionHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
   priceSectionTitle: { fontSize: 16, fontFamily: "Outfit_700Bold" },
   mainPrice: { borderRadius: 12, padding: 16, alignItems: "center", gap: 4 },
@@ -427,7 +438,8 @@ const styles = StyleSheet.create({
   },
   conditionChipText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
   actionButtons: { gap: 10 },
-  actionBtn: {
+  actionBtn: {},
+  actionBtnGradient: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
