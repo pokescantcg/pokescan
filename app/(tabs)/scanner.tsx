@@ -19,6 +19,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import {
   searchCards,
@@ -48,13 +49,19 @@ function IdentificationCard({
     identification.confidence === "high"
       ? colors.success
       : identification.confidence === "medium"
-        ? colors.gold
+        ? colors.pokemonYellow
         : colors.error;
 
   return (
-    <View style={[styles.idCard, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+    <View style={[styles.idCard, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "60" }]}>
+      <LinearGradient
+        colors={[colors.pokemonRed + "15", "transparent"]}
+        style={styles.idGradient}
+      />
       <View style={styles.idHeader}>
-        <MaterialCommunityIcons name="robot" size={20} color={colors.gold} />
+        <View style={[styles.aiIconBg, { backgroundColor: colors.pokemonRed + "20" }]}>
+          <MaterialCommunityIcons name="robot" size={18} color={colors.pokemonRed} />
+        </View>
         <Text style={[styles.idTitle, { color: colors.text }]}>AI Identification</Text>
         <View style={[styles.confidenceBadge, { backgroundColor: confidenceColor }]}>
           <Text style={styles.confidenceText}>{identification.confidence}</Text>
@@ -85,20 +92,20 @@ function IdentificationCard({
 
       <View style={styles.idDetailsRow}>
         {identification.language && (
-          <View style={[styles.idTag, { backgroundColor: isForeign ? "#4A90D9" : colors.surfaceElevated }]}>
+          <View style={[styles.idTag, { backgroundColor: isForeign ? colors.pokemonBlue : colors.surfaceElevated }]}>
             <Text style={[styles.idTagText, { color: isForeign ? "#FFF" : colors.textSecondary }]}>
               {identification.language}
             </Text>
           </View>
         )}
         {identification.rarity && (
-          <View style={[styles.idTag, { backgroundColor: colors.surfaceElevated }]}>
-            <Text style={[styles.idTagText, { color: colors.gold }]}>{identification.rarity}</Text>
+          <View style={[styles.idTag, { backgroundColor: colors.pokemonYellow + "30" }]}>
+            <Text style={[styles.idTagText, { color: colors.pokemonYellow }]}>{identification.rarity}</Text>
           </View>
         )}
         {identification.holoType && identification.holoType !== "Non-Holo" && (
-          <View style={[styles.idTag, { backgroundColor: colors.surfaceElevated }]}>
-            <Text style={[styles.idTagText, { color: colors.accent }]}>{identification.holoType}</Text>
+          <View style={[styles.idTag, { backgroundColor: colors.pokemonRed + "20" }]}>
+            <Text style={[styles.idTagText, { color: colors.pokemonRed }]}>{identification.holoType}</Text>
           </View>
         )}
       </View>
@@ -134,12 +141,12 @@ function PCVResultCard({ card, colors }: { card: PCVCard; colors: ReturnType<typ
         </Text>
         <View style={styles.resultMeta}>
           {card.holoType ? (
-            <Text style={[styles.resultRarity, { color: colors.accent }]} numberOfLines={1}>
+            <Text style={[styles.resultRarity, { color: colors.pokemonRed }]} numberOfLines={1}>
               {card.holoType}
             </Text>
           ) : null}
           {card.rarity ? (
-            <Text style={[styles.resultRarity, { color: colors.gold }]} numberOfLines={1}>
+            <Text style={[styles.resultRarity, { color: colors.pokemonYellow }]} numberOfLines={1}>
               {card.rarity}
             </Text>
           ) : null}
@@ -182,7 +189,7 @@ function SearchResultCard({ card, colors }: { card: PokemonCard; colors: ReturnT
           {card.set.name} #{card.number}
         </Text>
         {card.rarity && (
-          <Text style={[styles.resultRarity, { color: colors.gold }]} numberOfLines={1}>
+          <Text style={[styles.resultRarity, { color: colors.pokemonYellow }]} numberOfLines={1}>
             {card.rarity}
           </Text>
         )}
@@ -354,10 +361,10 @@ export default function ScannerScreen() {
   const renderHeader = () => (
     <>
       {capturedImage && (
-        <View style={[styles.capturedPreview, { borderColor: colors.border }]}>
+        <View style={[styles.capturedPreview, { borderColor: colors.pokemonRed + "60" }]}>
           <Image source={{ uri: capturedImage }} style={styles.capturedImage} contentFit="contain" />
           <Pressable
-            style={[styles.clearCapture, { backgroundColor: colors.error }]}
+            style={[styles.clearCapture, { backgroundColor: colors.pokemonRed }]}
             onPress={clearAll}
           >
             <Ionicons name="close" size={16} color="#FFF" />
@@ -366,9 +373,9 @@ export default function ScannerScreen() {
       )}
 
       {isIdentifying && (
-        <View style={[styles.identifyingCard, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
-          <ActivityIndicator size="small" color={colors.gold} />
-          <Text style={[styles.identifyingText, { color: colors.textSecondary }]}>
+        <View style={[styles.identifyingCard, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "40" }]}>
+          <MaterialCommunityIcons name="pokeball" size={28} color={colors.pokemonRed} />
+          <Text style={[styles.identifyingText, { color: colors.text }]}>
             AI is analysing your card...
           </Text>
           <Text style={[styles.identifyingSubtext, { color: colors.textMuted }]}>
@@ -382,7 +389,7 @@ export default function ScannerScreen() {
           <Ionicons name="alert-circle" size={20} color={colors.error} />
           <Text style={[styles.errorText, { color: colors.error }]}>{identifyError}</Text>
           <Pressable onPress={clearAll}>
-            <Text style={[styles.retryText, { color: colors.accent }]}>Try again</Text>
+            <Text style={[styles.retryText, { color: colors.pokemonRed }]}>Try again</Text>
           </Pressable>
         </View>
       )}
@@ -406,15 +413,21 @@ export default function ScannerScreen() {
       )}
 
       {pcvResults.length > 0 && (
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          UK Price Matches ({pcvResults.length})
-        </Text>
+        <View style={styles.resultsHeaderRow}>
+          <View style={[styles.resultsHeaderDot, { backgroundColor: colors.success }]} />
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            UK Price Matches ({pcvResults.length})
+          </Text>
+        </View>
       )}
 
       {pcvResults.length === 0 && tcgApiResults.length > 0 && (
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          Card Matches ({tcgApiResults.length})
-        </Text>
+        <View style={styles.resultsHeaderRow}>
+          <View style={[styles.resultsHeaderDot, { backgroundColor: colors.pokemonBlue }]} />
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Card Matches ({tcgApiResults.length})
+          </Text>
+        </View>
       )}
     </>
   );
@@ -424,39 +437,54 @@ export default function ScannerScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Card Scanner</Text>
+      <LinearGradient
+        colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+        style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}
+      >
+        <View style={styles.titleRow}>
+          <Ionicons name="scan" size={22} color={colors.pokemonRed} />
+          <Text style={[styles.title, { color: colors.text }]}>Card Scanner</Text>
+        </View>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           AI-powered card identification
         </Text>
-      </View>
+      </LinearGradient>
 
       <View style={styles.scanSection}>
         <View style={styles.scanButtons}>
           <Pressable
             style={({ pressed }) => [
               styles.scanButton,
-              { backgroundColor: colors.accent, opacity: pressed ? 0.85 : 1 },
+              { opacity: pressed ? 0.85 : 1 },
             ]}
             onPress={handleCameraCapture}
           >
-            <Ionicons name="camera" size={24} color="#FFF" />
-            <Text style={styles.scanButtonText}>Scan Card</Text>
+            <LinearGradient
+              colors={["#CC0000", "#8B0000"]}
+              style={styles.scanButtonGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Ionicons name="camera" size={24} color="#FFF" />
+              <Text style={styles.scanButtonText}>Scan Card</Text>
+            </LinearGradient>
           </Pressable>
           <Pressable
             style={({ pressed }) => [
               styles.scanButton,
-              { backgroundColor: colors.surfaceElevated, opacity: pressed ? 0.85 : 1 },
+              { opacity: pressed ? 0.85 : 1 },
             ]}
             onPress={handleGallery}
           >
-            <Ionicons name="images" size={24} color={colors.text} />
-            <Text style={[styles.scanButtonText, { color: colors.text }]}>Gallery</Text>
+            <View style={[styles.scanButtonGradient, { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.borderLight }]}>
+              <Ionicons name="images" size={24} color={colors.text} />
+              <Text style={[styles.scanButtonText, { color: colors.text }]}>Gallery</Text>
+            </View>
           </Pressable>
         </View>
 
-        <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Ionicons name="search" size={18} color={colors.textMuted} />
+        <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.pokemonRed + "40" }]}>
+          <Ionicons name="search" size={18} color={colors.pokemonRed} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
             placeholder="Or type card name..."
@@ -472,17 +500,17 @@ export default function ScannerScreen() {
             </Pressable>
           )}
           <Pressable
-            style={[styles.searchSubmit, { backgroundColor: colors.gold }]}
+            style={[styles.searchSubmit, { backgroundColor: colors.pokemonRed }]}
             onPress={handleSearch}
           >
-            <Ionicons name="arrow-forward" size={16} color="#000" />
+            <Ionicons name="arrow-forward" size={16} color="#FFF" />
           </Pressable>
         </View>
       </View>
 
       {isSearching ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.gold} />
+          <MaterialCommunityIcons name="pokeball" size={40} color={colors.pokemonRed} />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Searching...</Text>
         </View>
       ) : hasIdentifiedResults && pcvResults.length > 0 ? (
@@ -526,7 +554,7 @@ export default function ScannerScreen() {
               </View>
             ) : !capturedImage && !identification ? (
               <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="cards-outline" size={56} color={colors.textMuted} />
+                <MaterialCommunityIcons name="pokeball" size={64} color={colors.pokemonRed + "40"} />
                 <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
                   Scan Any Card
                 </Text>
@@ -534,18 +562,11 @@ export default function ScannerScreen() {
                   Take a photo or pick from gallery. AI identifies the card name, set & number automatically
                 </Text>
                 <View style={styles.languageRow}>
-                  <View style={[styles.langBadge, { backgroundColor: colors.surfaceElevated }]}>
-                    <Text style={[styles.langText, { color: colors.textSecondary }]}>English</Text>
-                  </View>
-                  <View style={[styles.langBadge, { backgroundColor: colors.surfaceElevated }]}>
-                    <Text style={[styles.langText, { color: colors.textSecondary }]}>Japanese</Text>
-                  </View>
-                  <View style={[styles.langBadge, { backgroundColor: colors.surfaceElevated }]}>
-                    <Text style={[styles.langText, { color: colors.textSecondary }]}>Korean</Text>
-                  </View>
-                  <View style={[styles.langBadge, { backgroundColor: colors.surfaceElevated }]}>
-                    <Text style={[styles.langText, { color: colors.textSecondary }]}>Chinese</Text>
-                  </View>
+                  {["English", "Japanese", "Korean", "Chinese"].map((lang) => (
+                    <View key={lang} style={[styles.langBadge, { backgroundColor: colors.pokemonRed + "15", borderColor: colors.pokemonRed + "30", borderWidth: 1 }]}>
+                      <Text style={[styles.langText, { color: colors.pokemonRed }]}>{lang}</Text>
+                    </View>
+                  ))}
                 </View>
               </View>
             ) : null
@@ -559,12 +580,15 @@ export default function ScannerScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 8 },
-  title: { fontSize: 28, fontFamily: "Outfit_700Bold", marginBottom: 2 },
-  subtitle: { fontSize: 14, fontFamily: "Outfit_400Regular" },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 2 },
+  title: { fontSize: 28, fontFamily: "Outfit_700Bold" },
+  subtitle: { fontSize: 14, fontFamily: "Outfit_400Regular", marginLeft: 30 },
   scanSection: { paddingHorizontal: 20, gap: 12, paddingBottom: 8 },
   scanButtons: { flexDirection: "row", gap: 12 },
   scanButton: {
     flex: 1,
+  },
+  scanButtonGradient: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -576,7 +600,7 @@ const styles = StyleSheet.create({
   capturedPreview: {
     height: 200,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 2,
     overflow: "hidden",
     marginBottom: 8,
   },
@@ -594,24 +618,24 @@ const styles = StyleSheet.create({
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderWidth: 1,
+    borderWidth: 1.5,
     gap: 8,
   },
   searchInput: { flex: 1, fontSize: 15, fontFamily: "Outfit_400Regular", padding: 0 },
   searchSubmit: {
     width: 32,
     height: 32,
-    borderRadius: 8,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
   identifyingCard: {
     borderRadius: 14,
     padding: 20,
-    borderWidth: 1,
+    borderWidth: 1.5,
     alignItems: "center",
     gap: 8,
     marginBottom: 8,
@@ -630,27 +654,42 @@ const styles = StyleSheet.create({
   errorText: { flex: 1, fontSize: 13, fontFamily: "Outfit_500Medium" },
   retryText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
   idCard: {
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 16,
-    borderWidth: 1,
-    gap: 10,
+    borderWidth: 1.5,
+    gap: 8,
     marginBottom: 8,
+    overflow: "hidden",
   },
-  idHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
-  idTitle: { flex: 1, fontSize: 16, fontFamily: "Outfit_700Bold" },
+  idGradient: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+  },
+  idHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  aiIconBg: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  idTitle: { flex: 1, fontSize: 15, fontFamily: "Outfit_700Bold" },
   confidenceBadge: {
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: 8,
   },
-  confidenceText: { fontSize: 11, fontFamily: "Outfit_600SemiBold", color: "#FFF", textTransform: "capitalize" as const },
-  idRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  idLabel: { fontSize: 13, fontFamily: "Outfit_500Medium" },
-  idValue: { fontSize: 14, fontFamily: "Outfit_600SemiBold", flex: 1, textAlign: "right" as const },
-  idDetailsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  confidenceText: { fontSize: 11, fontFamily: "Outfit_700Bold", color: "#FFF", textTransform: "uppercase" },
+  idRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
+  idLabel: { fontSize: 13, fontFamily: "Outfit_400Regular" },
+  idValue: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
+  idDetailsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
   idTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  idTagText: { fontSize: 11, fontFamily: "Outfit_500Medium" },
-  idNotes: { fontSize: 12, fontFamily: "Outfit_400Regular", fontStyle: "italic" as const },
+  idTagText: { fontSize: 11, fontFamily: "Outfit_600SemiBold" },
+  idNotes: { fontSize: 12, fontFamily: "Outfit_400Regular", fontStyle: "italic", marginTop: 4 },
   ebayButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -658,34 +697,46 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 12,
   },
   ebayButtonText: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
-  sectionTitle: { fontSize: 16, fontFamily: "Outfit_700Bold", marginBottom: 8 },
+  resultsHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  resultsHeaderDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  sectionTitle: { fontSize: 16, fontFamily: "Outfit_700Bold" },
   resultsList: { paddingHorizontal: 20, paddingTop: 8 },
   resultCard: {
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 14,
-    padding: 10,
-    marginBottom: 8,
+    padding: 12,
+    marginBottom: 6,
     borderWidth: 1,
-    gap: 12,
+    gap: 10,
   },
-  resultImage: { width: 52, height: 72, borderRadius: 6 },
+  resultImage: { width: 40, height: 56, borderRadius: 6 },
   resultInfo: { flex: 1, gap: 2 },
-  resultName: { fontSize: 15, fontFamily: "Outfit_600SemiBold" },
-  resultSet: { fontSize: 12, fontFamily: "Outfit_400Regular" },
   resultMeta: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  resultName: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
+  resultSet: { fontSize: 12, fontFamily: "Outfit_400Regular" },
   resultRarity: { fontSize: 11, fontFamily: "Outfit_500Medium" },
-  resultPrice: { fontSize: 14, fontFamily: "Outfit_700Bold", marginTop: 2 },
+  resultPrice: { fontSize: 14, fontFamily: "Outfit_700Bold" },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
-  loadingText: { fontSize: 14, fontFamily: "Outfit_400Regular" },
-  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 60, gap: 8 },
-  emptyTitle: { fontSize: 18, fontFamily: "Outfit_600SemiBold" },
+  loadingText: { fontSize: 14, fontFamily: "Outfit_500Medium" },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 40, gap: 10 },
+  emptyTitle: { fontSize: 20, fontFamily: "Outfit_700Bold" },
   emptyText: { fontSize: 16, fontFamily: "Outfit_500Medium" },
   emptySubtext: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 32 },
-  languageRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 6, marginTop: 8 },
-  langBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  langText: { fontSize: 12, fontFamily: "Outfit_500Medium" },
+  languageRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, marginTop: 8 },
+  langBadge: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 },
+  langText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
 });

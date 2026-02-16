@@ -9,7 +9,7 @@ import {
   Alert,
   ScrollView,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -31,12 +31,18 @@ export default function ProfileScreen() {
   if (!user) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}>
-          <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
-        </View>
+        <LinearGradient
+          colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+          style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}
+        >
+          <View style={styles.titleRow}>
+            <Ionicons name="person-circle" size={24} color={colors.pokemonRed} />
+            <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
+          </View>
+        </LinearGradient>
         <View style={styles.emptyContainer}>
-          <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surfaceElevated }]}>
-            <Ionicons name="person" size={48} color={colors.textMuted} />
+          <View style={[styles.avatarPlaceholder, { backgroundColor: colors.pokemonRed + "20" }]}>
+            <MaterialCommunityIcons name="pokeball" size={48} color={colors.pokemonRed} />
           </View>
           <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
             Welcome to PokeScan TCG
@@ -45,10 +51,17 @@ export default function ProfileScreen() {
             Create an account to track your collection, get price alerts, and join the marketplace
           </Text>
           <Pressable
-            style={[styles.signInBtn, { backgroundColor: colors.gold }]}
+            style={styles.signInBtnWrap}
             onPress={() => router.push("/register")}
           >
-            <Text style={styles.signInBtnText}>Create Account</Text>
+            <LinearGradient
+              colors={["#CC0000", "#8B0000"]}
+              style={styles.signInGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Text style={styles.signInBtnText}>Create Account</Text>
+            </LinearGradient>
           </Pressable>
           <Pressable
             style={styles.staffLink}
@@ -68,40 +81,49 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
       >
-        <View style={{ paddingTop: (insets.top || webTopInset) + 8, paddingHorizontal: 20 }}>
-          <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
-        </View>
-
-        <View style={styles.profileSection}>
-          <View style={[styles.avatarCircle, { backgroundColor: colors.gold }]}>
-            <Text style={styles.avatarText}>
-              {user.displayName.charAt(0).toUpperCase()}
-            </Text>
+        <LinearGradient
+          colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+          style={{ paddingTop: (insets.top || webTopInset) + 8, paddingHorizontal: 20, paddingBottom: 20 }}
+        >
+          <View style={styles.titleRow}>
+            <Ionicons name="person-circle" size={24} color={colors.pokemonRed} />
+            <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
           </View>
-          <Text style={[styles.displayName, { color: colors.text }]}>{user.displayName}</Text>
-          <Text style={[styles.username, { color: colors.textSecondary }]}>@{user.username}</Text>
-          {user.isPremium && (
-            <View style={[styles.premiumTag, { backgroundColor: colors.gold }]}>
-              <Ionicons name="diamond" size={12} color="#000" />
-              <Text style={styles.premiumTagText}>PREMIUM</Text>
-            </View>
-          )}
-        </View>
+
+          <View style={styles.profileSection}>
+            <LinearGradient
+              colors={["#CC0000", "#8B0000"]}
+              style={styles.avatarCircle}
+            >
+              <Text style={styles.avatarText}>
+                {user.displayName.charAt(0).toUpperCase()}
+              </Text>
+            </LinearGradient>
+            <Text style={[styles.displayName, { color: colors.text }]}>{user.displayName}</Text>
+            <Text style={[styles.username, { color: colors.textSecondary }]}>@{user.username}</Text>
+            {user.isPremium && (
+              <View style={[styles.premiumTag, { backgroundColor: colors.pokemonYellow }]}>
+                <MaterialCommunityIcons name="pokeball" size={12} color="#000" />
+                <Text style={styles.premiumTagText}>PREMIUM</Text>
+              </View>
+            )}
+          </View>
+        </LinearGradient>
 
         <View style={styles.statsSection}>
-          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "30" }]}>
             <Text style={[styles.statNumber, { color: colors.text }]}>{totalCards}</Text>
             <Text style={[styles.statDesc, { color: colors.textSecondary }]}>Total Cards</Text>
           </View>
-          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.pokemonYellow + "30" }]}>
             <Text style={[styles.statNumber, { color: colors.text }]}>{collection.length}</Text>
             <Text style={[styles.statDesc, { color: colors.textSecondary }]}>Unique Cards</Text>
           </View>
-          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.success + "30" }]}>
             <Text style={[styles.statNumber, { color: colors.success }]}>{formatGBP(collectionValue)}</Text>
             <Text style={[styles.statDesc, { color: colors.textSecondary }]}>Collection Value</Text>
           </View>
-          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          <View style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.pokemonBlue + "30" }]}>
             <Text style={[styles.statNumber, { color: colors.text }]}>{myListings.length}</Text>
             <Text style={[styles.statDesc, { color: colors.textSecondary }]}>Listings</Text>
           </View>
@@ -115,12 +137,12 @@ export default function ProfileScreen() {
             }}
           >
             <LinearGradient
-              colors={[colors.premiumGradientStart, colors.premiumGradientEnd]}
+              colors={[colors.pokemonYellow, "#FF9800"]}
               style={styles.premiumBanner}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              <Ionicons name="diamond" size={24} color="#000" />
+              <MaterialCommunityIcons name="pokeball" size={24} color="#000" />
               <View style={{ flex: 1 }}>
                 <Text style={styles.premiumBannerTitle}>Upgrade to Premium</Text>
                 <Text style={styles.premiumBannerDesc}>
@@ -135,10 +157,10 @@ export default function ProfileScreen() {
         <View style={styles.menuSection}>
           {isStaff && (
             <Pressable
-              style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+              style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "30" }]}
               onPress={() => router.push("/admin-panel")}
             >
-              <Ionicons name="shield-checkmark" size={22} color="#E74C3C" />
+              <Ionicons name="shield-checkmark" size={22} color={colors.pokemonRed} />
               <Text style={[styles.menuText, { color: colors.text }]}>
                 {isSuperadminUser ? "Superadmin Panel" : user.role === "admin" ? "Admin Panel" : "Moderator Panel"}
               </Text>
@@ -176,8 +198,8 @@ export default function ProfileScreen() {
               ]);
             }}
           >
-            <Ionicons name="log-out-outline" size={22} color={colors.error} />
-            <Text style={[styles.menuText, { color: colors.error }]}>Sign Out</Text>
+            <Ionicons name="log-out-outline" size={22} color={colors.pokemonRed} />
+            <Text style={[styles.menuText, { color: colors.pokemonRed }]}>Sign Out</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
         </View>
@@ -194,8 +216,9 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: {},
   header: { paddingHorizontal: 20, paddingBottom: 8 },
-  title: { fontSize: 28, fontFamily: "Outfit_700Bold", marginBottom: 16 },
-  profileSection: { alignItems: "center", paddingHorizontal: 20, marginBottom: 20 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
+  title: { fontSize: 28, fontFamily: "Outfit_700Bold" },
+  profileSection: { alignItems: "center", marginBottom: 4 },
   avatarCircle: {
     width: 80,
     height: 80,
@@ -204,7 +227,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 10,
   },
-  avatarText: { fontSize: 32, fontFamily: "Outfit_700Bold", color: "#000" },
+  avatarText: { fontSize: 32, fontFamily: "Outfit_700Bold", color: "#FFF" },
   avatarPlaceholder: {
     width: 80,
     height: 80,
@@ -231,12 +254,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 10,
     marginBottom: 20,
+    marginTop: 16,
   },
   statCard: {
     width: "47%",
     padding: 16,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     alignItems: "center",
     gap: 4,
   },
@@ -259,15 +283,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 16,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     gap: 12,
   },
   menuText: { flex: 1, fontSize: 15, fontFamily: "Outfit_500Medium" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 60, gap: 8, paddingHorizontal: 20 },
   emptyTitle: { fontSize: 20, fontFamily: "Outfit_600SemiBold" },
   emptySubtext: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 20 },
-  signInBtn: { paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, marginTop: 12 },
-  signInBtnText: { fontSize: 16, fontFamily: "Outfit_600SemiBold", color: "#000" },
+  signInBtnWrap: { marginTop: 12 },
+  signInGradient: {
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: "center",
+  },
+  signInBtnText: { fontSize: 16, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
   staffLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20 },
   staffLinkText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
   versionText: { fontSize: 12, fontFamily: "Outfit_400Regular", textAlign: "center", marginTop: 8 },

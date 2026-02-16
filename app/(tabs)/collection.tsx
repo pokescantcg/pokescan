@@ -10,10 +10,11 @@ import {
   Alert,
 } from "react-native";
 import { Image } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
@@ -65,7 +66,7 @@ function CollectionCard({
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           }}
         >
-          <Ionicons name={item.quantity <= 1 ? "trash-outline" : "remove"} size={16} color={colors.text} />
+          <Ionicons name={item.quantity <= 1 ? "trash-outline" : "remove"} size={16} color={item.quantity <= 1 ? colors.pokemonRed : colors.text} />
         </Pressable>
         <Text style={[styles.qtyText, { color: colors.text }]}>{item.quantity}</Text>
         <Pressable
@@ -101,20 +102,33 @@ export default function CollectionScreen() {
   if (!user) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}>
-          <Text style={[styles.title, { color: colors.text }]}>My Collection</Text>
-        </View>
+        <LinearGradient
+          colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+          style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}
+        >
+          <View style={styles.titleRow}>
+            <MaterialCommunityIcons name="pokeball" size={24} color={colors.pokemonRed} />
+            <Text style={[styles.title, { color: colors.text }]}>My Collection</Text>
+          </View>
+        </LinearGradient>
         <View style={styles.emptyContainer}>
-          <Ionicons name="person-outline" size={56} color={colors.textMuted} />
+          <MaterialCommunityIcons name="pokeball" size={56} color={colors.pokemonRed + "40"} />
           <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>Sign In Required</Text>
           <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
             Create an account to start tracking your collection
           </Text>
           <Pressable
-            style={[styles.signInBtn, { backgroundColor: colors.gold }]}
+            style={styles.signInBtn}
             onPress={() => router.push("/register")}
           >
-            <Text style={styles.signInBtnText}>Sign In</Text>
+            <LinearGradient
+              colors={["#CC0000", "#8B0000"]}
+              style={styles.signInGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Text style={styles.signInBtnText}>Sign In</Text>
+            </LinearGradient>
           </Pressable>
         </View>
       </View>
@@ -123,20 +137,26 @@ export default function CollectionScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}>
-        <Text style={[styles.title, { color: colors.text }]}>My Collection</Text>
+      <LinearGradient
+        colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+        style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}
+      >
+        <View style={styles.titleRow}>
+          <MaterialCommunityIcons name="pokeball" size={24} color={colors.pokemonRed} />
+          <Text style={[styles.title, { color: colors.text }]}>My Collection</Text>
+        </View>
         <View style={styles.statsRow}>
-          <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="layers" size={18} color={colors.gold} />
+          <View style={[styles.statBox, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "30" }]}>
+            <MaterialCommunityIcons name="cards" size={18} color={colors.pokemonRed} />
             <Text style={[styles.statValue, { color: colors.text }]}>{totalCards}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Cards</Text>
           </View>
-          <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Ionicons name="diamond" size={18} color={colors.gold} />
+          <View style={[styles.statBox, { backgroundColor: colors.card, borderColor: colors.pokemonYellow + "30" }]}>
+            <Ionicons name="star" size={18} color={colors.pokemonYellow} />
             <Text style={[styles.statValue, { color: colors.text }]}>{collection.length}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Unique</Text>
           </View>
-          <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.statBox, { backgroundColor: colors.card, borderColor: colors.success + "30" }]}>
             <Ionicons name="cash" size={18} color={colors.success} />
             <Text style={[styles.statValue, { color: colors.success }]}>{formatGBP(collectionValue)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Value</Text>
@@ -147,13 +167,13 @@ export default function CollectionScreen() {
           {(["recent", "name", "value"] as const).map((s) => (
             <Pressable
               key={s}
-              style={[styles.sortBtn, sortBy === s && { backgroundColor: colors.gold }]}
+              style={[styles.sortBtn, sortBy === s && { backgroundColor: colors.pokemonRed }]}
               onPress={() => setSortBy(s)}
             >
               <Text
                 style={[
                   styles.sortBtnText,
-                  { color: sortBy === s ? "#000" : colors.textSecondary },
+                  { color: sortBy === s ? "#FFF" : colors.textSecondary },
                 ]}
               >
                 {s === "recent" ? "Recent" : s === "name" ? "A-Z" : "Value"}
@@ -161,7 +181,7 @@ export default function CollectionScreen() {
             </Pressable>
           ))}
         </View>
-      </View>
+      </LinearGradient>
 
       <FlatList
         data={sorted}
@@ -187,7 +207,7 @@ export default function CollectionScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="folder-open-outline" size={56} color={colors.textMuted} />
+            <MaterialCommunityIcons name="cards-outline" size={56} color={colors.textMuted} />
             <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
               No Cards Yet
             </Text>
@@ -203,15 +223,16 @@ export default function CollectionScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 8 },
-  title: { fontSize: 28, fontFamily: "Outfit_700Bold", marginBottom: 10 },
+  header: { paddingHorizontal: 20, paddingBottom: 12 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
+  title: { fontSize: 28, fontFamily: "Outfit_700Bold" },
   statsRow: { flexDirection: "row", gap: 10, marginBottom: 10 },
   statBox: {
     flex: 1,
     alignItems: "center",
     paddingVertical: 12,
     borderRadius: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     gap: 4,
   },
   statValue: { fontSize: 18, fontFamily: "Outfit_700Bold" },
@@ -251,11 +272,12 @@ const styles = StyleSheet.create({
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 60, gap: 8 },
   emptyTitle: { fontSize: 18, fontFamily: "Outfit_600SemiBold" },
   emptySubtext: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 40 },
-  signInBtn: {
+  signInBtn: { marginTop: 8 },
+  signInGradient: {
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 12,
-    marginTop: 8,
+    alignItems: "center",
   },
-  signInBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#000" },
+  signInBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
 });

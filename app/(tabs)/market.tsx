@@ -10,7 +10,7 @@ import {
   Alert,
 } from "react-native";
 import { Image } from "expo-image";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -45,7 +45,7 @@ function ListingCard({
           <View
             style={[
               styles.listingBadge,
-              { backgroundColor: listing.type === "sale" ? colors.success : colors.accent },
+              { backgroundColor: listing.type === "sale" ? colors.success : colors.pokemonBlue },
             ]}
           >
             <Text style={styles.listingBadgeText}>
@@ -73,7 +73,7 @@ function ListingCard({
       </View>
       {isOwner && (
         <Pressable
-          style={[styles.deleteBtn, { backgroundColor: colors.error }]}
+          style={[styles.deleteBtn, { backgroundColor: colors.pokemonRed }]}
           onPress={(e) => {
             e.stopPropagation();
             onDelete();
@@ -103,20 +103,33 @@ export default function MarketScreen() {
   if (!user) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}>
-          <Text style={[styles.title, { color: colors.text }]}>Marketplace</Text>
-        </View>
+        <LinearGradient
+          colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+          style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}
+        >
+          <View style={styles.titleRow}>
+            <Ionicons name="storefront" size={22} color={colors.pokemonRed} />
+            <Text style={[styles.title, { color: colors.text }]}>Marketplace</Text>
+          </View>
+        </LinearGradient>
         <View style={styles.emptyContainer}>
-          <Ionicons name="storefront-outline" size={56} color={colors.textMuted} />
+          <Ionicons name="storefront-outline" size={56} color={colors.pokemonRed + "40"} />
           <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>Sign In Required</Text>
           <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
             Create an account to access the marketplace
           </Text>
           <Pressable
-            style={[styles.signInBtn, { backgroundColor: colors.gold }]}
+            style={styles.signInBtnWrap}
             onPress={() => router.push("/register")}
           >
-            <Text style={styles.signInBtnText}>Sign In</Text>
+            <LinearGradient
+              colors={["#CC0000", "#8B0000"]}
+              style={styles.signInGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Text style={styles.signInBtnText}>Sign In</Text>
+            </LinearGradient>
           </Pressable>
         </View>
       </View>
@@ -126,17 +139,23 @@ export default function MarketScreen() {
   if (!user.isPremium) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}>
-          <Text style={[styles.title, { color: colors.text }]}>Marketplace</Text>
-        </View>
+        <LinearGradient
+          colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+          style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}
+        >
+          <View style={styles.titleRow}>
+            <Ionicons name="storefront" size={22} color={colors.pokemonRed} />
+            <Text style={[styles.title, { color: colors.text }]}>Marketplace</Text>
+          </View>
+        </LinearGradient>
         <View style={styles.premiumContainer}>
           <LinearGradient
-            colors={[colors.premiumGradientStart, colors.premiumGradientEnd]}
+            colors={[colors.pokemonYellow, "#FF9800"]}
             style={styles.premiumCard}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
-            <Ionicons name="diamond" size={48} color="#000" />
+            <MaterialCommunityIcons name="pokeball" size={48} color="#000" />
             <Text style={styles.premiumTitle}>Premium Required</Text>
             <Text style={styles.premiumDesc}>
               Upgrade to Premium to list cards for trade or sale and browse marketplace listings from other collectors.
@@ -156,7 +175,7 @@ export default function MarketScreen() {
             {["List cards for trade", "List cards for sale", "Browse other collectors", "Direct messaging"].map(
               (feature, i) => (
                 <View key={i} style={styles.premiumFeatureRow}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.gold} />
+                  <Ionicons name="checkmark-circle" size={20} color={colors.pokemonRed} />
                   <Text style={[styles.premiumFeatureText, { color: colors.text }]}>{feature}</Text>
                 </View>
               )
@@ -169,11 +188,17 @@ export default function MarketScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}>
+      <LinearGradient
+        colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+        style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}
+      >
         <View style={styles.headerRow}>
-          <Text style={[styles.title, { color: colors.text }]}>Marketplace</Text>
-          <View style={[styles.premiumBadge, { backgroundColor: colors.gold }]}>
-            <Ionicons name="diamond" size={12} color="#000" />
+          <View style={styles.titleRow}>
+            <Ionicons name="storefront" size={22} color={colors.pokemonRed} />
+            <Text style={[styles.title, { color: colors.text }]}>Marketplace</Text>
+          </View>
+          <View style={[styles.premiumBadge, { backgroundColor: colors.pokemonYellow }]}>
+            <MaterialCommunityIcons name="pokeball" size={12} color="#000" />
             <Text style={styles.premiumBadgeText}>PREMIUM</Text>
           </View>
         </View>
@@ -181,18 +206,18 @@ export default function MarketScreen() {
           {(["all", "sale", "trade"] as const).map((f) => (
             <Pressable
               key={f}
-              style={[styles.filterBtn, filter === f && { backgroundColor: colors.gold }]}
+              style={[styles.filterBtn, filter === f && { backgroundColor: colors.pokemonRed }]}
               onPress={() => setFilter(f)}
             >
               <Text
-                style={[styles.filterBtnText, { color: filter === f ? "#000" : colors.textSecondary }]}
+                style={[styles.filterBtnText, { color: filter === f ? "#FFF" : colors.textSecondary }]}
               >
                 {f === "all" ? "All" : f === "sale" ? "For Sale" : "Trades"}
               </Text>
             </Pressable>
           ))}
         </View>
-      </View>
+      </LinearGradient>
 
       <FlatList
         data={filtered}
@@ -241,8 +266,9 @@ export default function MarketScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 8 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
+  header: { paddingHorizontal: 20, paddingBottom: 10 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   title: { fontSize: 28, fontFamily: "Outfit_700Bold" },
   premiumBadge: {
     flexDirection: "row",
@@ -290,8 +316,14 @@ const styles = StyleSheet.create({
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 60, gap: 8 },
   emptyTitle: { fontSize: 18, fontFamily: "Outfit_600SemiBold" },
   emptySubtext: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 40 },
-  signInBtn: { paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12, marginTop: 8 },
-  signInBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#000" },
+  signInBtnWrap: { marginTop: 8 },
+  signInGradient: {
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  signInBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
   premiumContainer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
   premiumCard: {
     borderRadius: 20,
@@ -308,7 +340,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     marginTop: 4,
   },
-  premiumBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFD700" },
+  premiumBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFDE00" },
   premiumFeatures: { marginTop: 24, gap: 14 },
   premiumFeatureRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   premiumFeatureText: { fontSize: 15, fontFamily: "Outfit_500Medium" },

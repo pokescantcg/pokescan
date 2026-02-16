@@ -3,7 +3,7 @@ import { Tabs } from "expo-router";
 import { NativeTabs, Icon, Label } from "expo-router/unstable-native-tabs";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, useColorScheme, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import React from "react";
 import { useThemeColors } from "@/constants/colors";
@@ -47,13 +47,13 @@ function ClassicTabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.gold,
+        tabBarActiveTintColor: colors.pokemonRed,
         tabBarInactiveTintColor: colors.tabIconDefault,
         tabBarStyle: {
           position: "absolute" as const,
-          backgroundColor: isIOS ? "transparent" : colors.surface,
-          borderTopWidth: isWeb ? 1 : 0,
-          borderTopColor: colors.border,
+          backgroundColor: isIOS ? "transparent" : isDark ? "#0F1629" : colors.surface,
+          borderTopWidth: isDark ? 0 : 1,
+          borderTopColor: isDark ? "transparent" : colors.border,
           elevation: 0,
           ...(isWeb ? { height: 84 } : {}),
         },
@@ -65,10 +65,10 @@ function ClassicTabLayout() {
               style={StyleSheet.absoluteFill}
             />
           ) : isWeb ? (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.surface }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? "#0F1629" : colors.surface }]} />
           ) : null,
         tabBarLabelStyle: {
-          fontFamily: "Outfit_500Medium",
+          fontFamily: "Outfit_600SemiBold",
           fontSize: 10,
         },
       }}
@@ -77,8 +77,8 @@ function ClassicTabLayout() {
         name="index"
         options={{
           title: "Browse",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="layers-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialCommunityIcons name={focused ? "cards" : "cards-outline"} size={24} color={color} />
           ),
         }}
       />
@@ -86,8 +86,10 @@ function ClassicTabLayout() {
         name="scanner"
         options={{
           title: "Scan",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="scan-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <View style={focused ? tabStyles.scanActive : undefined}>
+              <Ionicons name={focused ? "scan" : "scan-outline"} size={24} color={focused ? "#FFF" : color} />
+            </View>
           ),
         }}
       />
@@ -95,8 +97,8 @@ function ClassicTabLayout() {
         name="collection"
         options={{
           title: "Collection",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="folder-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <MaterialCommunityIcons name={focused ? "pokeball" : "circle-outline"} size={24} color={color} />
           ),
         }}
       />
@@ -104,8 +106,8 @@ function ClassicTabLayout() {
         name="market"
         options={{
           title: "Market",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="storefront-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "storefront" : "storefront-outline"} size={22} color={color} />
           ),
         }}
       />
@@ -113,14 +115,23 @@ function ClassicTabLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "person-circle" : "person-circle-outline"} size={24} color={color} />
           ),
         }}
       />
     </Tabs>
   );
 }
+
+const tabStyles = StyleSheet.create({
+  scanActive: {
+    backgroundColor: "#CC0000",
+    borderRadius: 12,
+    padding: 6,
+    marginTop: -4,
+  },
+});
 
 export default function TabLayout() {
   if (isLiquidGlassAvailable()) {

@@ -13,9 +13,10 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
+import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { fetchPCVSets, PCVSet } from "@/lib/pokemon-api";
 
@@ -34,7 +35,7 @@ function SetCard({ set, colors }: { set: PCVSet; colors: ReturnType<typeof useTh
         contentFit="contain"
       />
       <View style={styles.setInfo}>
-        <Text style={[styles.setSeries, { color: colors.textMuted }]} numberOfLines={1}>
+        <Text style={[styles.setSeries, { color: colors.pokemonRed }]} numberOfLines={1}>
           {set.series}
         </Text>
         <Text style={[styles.setName, { color: colors.text }]} numberOfLines={1}>
@@ -42,7 +43,7 @@ function SetCard({ set, colors }: { set: PCVSet; colors: ReturnType<typeof useTh
         </Text>
         <View style={styles.setMeta}>
           <View style={styles.setMetaItem}>
-            <Ionicons name="layers-outline" size={12} color={colors.textSecondary} />
+            <MaterialCommunityIcons name="cards-outline" size={12} color={colors.textSecondary} />
             <Text style={[styles.setMetaText, { color: colors.textSecondary }]}>
               {set.cardCount} cards
             </Text>
@@ -105,9 +106,12 @@ export default function BrowseScreen() {
     ({ item }: { item: (typeof flatData)[number] }) => {
       if (item.type === "header") {
         return (
-          <Text style={[styles.sectionHeader, { color: colors.gold }]}>
-            {item.series}
-          </Text>
+          <View style={styles.sectionHeaderRow}>
+            <View style={[styles.sectionDot, { backgroundColor: colors.pokemonRed }]} />
+            <Text style={[styles.sectionHeader, { color: colors.pokemonRed }]}>
+              {item.series}
+            </Text>
+          </View>
         );
       }
       return <SetCard set={item.set} colors={colors} />;
@@ -117,13 +121,20 @@ export default function BrowseScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}>
-        <Text style={[styles.title, { color: colors.text }]}>PokeScan TCG</Text>
+      <LinearGradient
+        colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+        style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}
+      >
+        <View style={styles.titleRow}>
+          <MaterialCommunityIcons name="pokeball" size={28} color={colors.pokemonRed} />
+          <Text style={[styles.title, { color: colors.text }]}>PokeScan</Text>
+          <Text style={[styles.titleAccent, { color: colors.pokemonRed }]}>TCG</Text>
+        </View>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           UK card sets & prices
         </Text>
-        <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Ionicons name="search" size={18} color={colors.textMuted} />
+        <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.pokemonRed + "40" }]}>
+          <Ionicons name="search" size={18} color={colors.pokemonRed} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
             placeholder="Search sets..."
@@ -137,11 +148,11 @@ export default function BrowseScreen() {
             </Pressable>
           )}
         </View>
-      </View>
+      </LinearGradient>
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.gold} />
+          <MaterialCommunityIcons name="pokeball" size={48} color={colors.pokemonRed} />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
             Loading UK card sets...
           </Text>
@@ -154,7 +165,7 @@ export default function BrowseScreen() {
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.gold} />
+            <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.pokemonRed} />
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
@@ -174,25 +185,35 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     paddingHorizontal: 20,
-    paddingBottom: 12,
+    paddingBottom: 14,
+  },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 2,
   },
   title: {
     fontSize: 28,
     fontFamily: "Outfit_700Bold",
-    marginBottom: 2,
+  },
+  titleAccent: {
+    fontSize: 28,
+    fontFamily: "Outfit_700Bold",
   },
   subtitle: {
     fontSize: 14,
     fontFamily: "Outfit_400Regular",
     marginBottom: 12,
+    marginLeft: 36,
   },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderWidth: 1,
+    borderWidth: 1.5,
     gap: 8,
   },
   searchInput: {
@@ -204,13 +225,23 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 20,
   },
-  sectionHeader: {
-    fontSize: 13,
-    fontFamily: "Outfit_600SemiBold",
-    textTransform: "uppercase",
-    letterSpacing: 1,
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginTop: 20,
     marginBottom: 8,
+  },
+  sectionDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  sectionHeader: {
+    fontSize: 13,
+    fontFamily: "Outfit_700Bold",
+    textTransform: "uppercase",
+    letterSpacing: 1,
   },
   setCard: {
     flexDirection: "row",
@@ -231,7 +262,7 @@ const styles = StyleSheet.create({
   },
   setSeries: {
     fontSize: 11,
-    fontFamily: "Outfit_500Medium",
+    fontFamily: "Outfit_600SemiBold",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
@@ -261,11 +292,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    gap: 12,
+    gap: 16,
   },
   loadingText: {
     fontSize: 14,
-    fontFamily: "Outfit_400Regular",
+    fontFamily: "Outfit_500Medium",
   },
   emptyContainer: {
     flex: 1,
