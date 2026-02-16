@@ -1,12 +1,56 @@
-// template
-const tintColorLight = "#2f95dc";
-
-export default {
+const Colors = {
+  dark: {
+    background: "#0B1426",
+    surface: "#121E36",
+    surfaceElevated: "#1A2A4A",
+    card: "#162240",
+    border: "#243559",
+    borderLight: "#1E2F50",
+    text: "#FFFFFF",
+    textSecondary: "#8B9DC3",
+    textMuted: "#5A6F94",
+    tint: "#FFD700",
+    accent: "#E63946",
+    accentLight: "#FF6B7A",
+    gold: "#FFD700",
+    goldDark: "#DAA520",
+    success: "#2ECC71",
+    warning: "#F39C12",
+    error: "#E74C3C",
+    tabIconDefault: "#5A6F94",
+    tabIconSelected: "#FFD700",
+    premium: "#FFD700",
+    premiumGradientStart: "#FFD700",
+    premiumGradientEnd: "#FF8C00",
+  },
   light: {
-    text: "#000",
-    background: "#fff",
-    tint: tintColorLight,
-    tabIconDefault: "#ccc",
-    tabIconSelected: tintColorLight,
+    background: "#F0F4FA",
+    surface: "#FFFFFF",
+    surfaceElevated: "#FFFFFF",
+    card: "#FFFFFF",
+    border: "#E2E8F0",
+    borderLight: "#EDF2F7",
+    text: "#1A202C",
+    textSecondary: "#64748B",
+    textMuted: "#94A3B8",
+    tint: "#D4A017",
+    accent: "#E63946",
+    accentLight: "#FF6B7A",
+    gold: "#D4A017",
+    goldDark: "#B8860B",
+    success: "#27AE60",
+    warning: "#E67E22",
+    error: "#E74C3C",
+    tabIconDefault: "#94A3B8",
+    tabIconSelected: "#D4A017",
+    premium: "#D4A017",
+    premiumGradientStart: "#D4A017",
+    premiumGradientEnd: "#E67E22",
   },
 };
+
+export default Colors;
+
+export function useThemeColors(scheme: "light" | "dark" | null | undefined) {
+  return scheme === "dark" ? Colors.dark : Colors.light;
+}
