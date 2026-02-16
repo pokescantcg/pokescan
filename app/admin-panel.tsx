@@ -19,7 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
-import { MarketListing, UserProfile } from "@/lib/storage";
+import { MarketListing, UserProfile, UserRole } from "@/lib/storage";
 
 type Tab = "listings" | "users";
 
@@ -83,16 +83,19 @@ function UserRow({
   profile,
   colors,
   isCurrentUser,
-  isAdminUser,
+  isSuperadmin,
   onTogglePremium,
+  onChangeRole,
 }: {
   profile: UserProfile;
   colors: ReturnType<typeof useThemeColors>;
   isCurrentUser: boolean;
-  isAdminUser: boolean;
+  isSuperadmin: boolean;
   onTogglePremium: () => void;
+  onChangeRole: (role: UserRole) => void;
 }) {
   const roleColor = profile.role === "admin" ? "#E74C3C" : profile.role === "moderator" ? "#E67E22" : colors.textMuted;
+  const isSuperadminAccount = profile.username === "superadmin";
 
   return (
     <View style={[styles.userRow, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
@@ -111,6 +114,11 @@ function UserRow({
               <Text style={styles.youBadgeText}>YOU</Text>
             </View>
           )}
+          {isSuperadminAccount && (
+            <View style={[styles.youBadge, { backgroundColor: "#E74C3C" }]}>
+              <Text style={styles.youBadgeText}>OWNER</Text>
+            </View>
+          )}
         </View>
         <Text style={[styles.userHandle, { color: colors.textSecondary }]}>@{profile.username}</Text>
         <View style={styles.userTagsRow}>
@@ -125,32 +133,54 @@ function UserRow({
           )}
         </View>
       </View>
-      {profile.role === "user" && isAdminUser && (
-        <Pressable
-          style={[
-            styles.premiumToggleBtn,
-            {
-              backgroundColor: profile.isPremium
-                ? "rgba(231, 76, 60, 0.15)"
-                : "rgba(46, 204, 113, 0.15)",
-            },
-          ]}
-          onPress={onTogglePremium}
-        >
-          <Ionicons
-            name={profile.isPremium ? "close-circle" : "diamond"}
-            size={16}
-            color={profile.isPremium ? colors.error : colors.success}
-          />
-          <Text
-            style={[
-              styles.premiumToggleText,
-              { color: profile.isPremium ? colors.error : colors.success },
-            ]}
+      {isSuperadmin && !isSuperadminAccount && (
+        <View style={styles.userActions}>
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
+            onPress={() => {
+              const options: { label: string; role: UserRole }[] = [
+                { label: "Regular User", role: "user" },
+                { label: "Market Moderator", role: "moderator" },
+                { label: "Full App Admin", role: "admin" },
+              ];
+              const currentRoleLabel = options.find((o) => o.role === profile.role)?.label || "User";
+              Alert.alert(
+                "Set Role",
+                `Current role: ${currentRoleLabel}\n\nChoose a new role for ${profile.displayName}:`,
+                [
+                  ...options
+                    .filter((o) => o.role !== profile.role)
+                    .map((o) => ({
+                      text: o.label,
+                      onPress: () => onChangeRole(o.role),
+                    })),
+                  { text: "Cancel", style: "cancel" as const },
+                ]
+              );
+            }}
           >
-            {profile.isPremium ? "Revoke" : "Grant"}
-          </Text>
-        </Pressable>
+            <Ionicons name="shield-outline" size={15} color={colors.accent} />
+          </Pressable>
+          {profile.role === "user" && (
+            <Pressable
+              style={[
+                styles.actionBtn,
+                {
+                  backgroundColor: profile.isPremium
+                    ? "rgba(231, 76, 60, 0.15)"
+                    : "rgba(46, 204, 113, 0.15)",
+                },
+              ]}
+              onPress={onTogglePremium}
+            >
+              <Ionicons
+                name={profile.isPremium ? "close-circle" : "diamond"}
+                size={15}
+                color={profile.isPremium ? colors.error : colors.success}
+              />
+            </Pressable>
+          )}
+        </View>
       )}
     </View>
   );
@@ -178,8 +208,10 @@ export default function AdminPanelScreen() {
     deleteListing,
     grantPremium,
     revokePremium,
+    changeUserRole,
     isStaff,
     isAdminUser,
+    isSuperadminUser,
     logout,
   } = useUser();
   const [activeTab, setActiveTab] = useState<Tab>("listings");
@@ -233,6 +265,31 @@ export default function AdminPanelScreen() {
     [grantPremium, revokePremium]
   );
 
+  const handleChangeRole = useCallback(
+    (profile: UserProfile, role: UserRole) => {
+      const roleLabels: Record<UserRole, string> = {
+        user: "Regular User",
+        moderator: "Market Moderator",
+        admin: "Full App Admin",
+      };
+      Alert.alert(
+        "Change Role",
+        `Set ${profile.displayName} as "${roleLabels[role]}"?${role !== "user" ? "\nThey will also get premium access." : ""}`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Confirm",
+            onPress: () => {
+              changeUserRole(profile.id, role);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            },
+          },
+        ]
+      );
+    },
+    [changeUserRole]
+  );
+
   if (!user || !isStaff) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -255,6 +312,8 @@ export default function AdminPanelScreen() {
   const regularUsers = allUsers.filter((u) => u.role === "user");
   const staffUsers = allUsers.filter((u) => u.role !== "user");
 
+  const badgeLabel = isSuperadminUser ? "SUPERADMIN" : user.role === "admin" ? "ADMIN" : "MODERATOR";
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.topBar, { paddingTop: (insets.top || webTopInset) + 4 }]}>
@@ -263,20 +322,18 @@ export default function AdminPanelScreen() {
         </Pressable>
         <View style={styles.topBarCenter}>
           <LinearGradient
-            colors={["#E74C3C", "#C0392B"]}
+            colors={isSuperadminUser ? ["#C0392B", "#8E1F1F"] : ["#E74C3C", "#C0392B"]}
             style={styles.staffBadgeGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
           >
             <Ionicons name="shield-checkmark" size={14} color="#FFF" />
-            <Text style={styles.staffBadgeText}>
-              {user.role === "admin" ? "ADMIN" : "MODERATOR"}
-            </Text>
+            <Text style={styles.staffBadgeText}>{badgeLabel}</Text>
           </LinearGradient>
         </View>
         <Pressable
           onPress={() => {
-            Alert.alert("Sign Out", "Sign out of staff account?", [
+            Alert.alert("Sign Out", "Sign out of your account?", [
               { text: "Cancel", style: "cancel" },
               {
                 text: "Sign Out",
@@ -313,24 +370,26 @@ export default function AdminPanelScreen() {
             Listings ({listings.length})
           </Text>
         </Pressable>
-        <Pressable
-          style={[styles.tab, activeTab === "users" && styles.tabActive]}
-          onPress={() => setActiveTab("users")}
-        >
-          <Ionicons
-            name="people-outline"
-            size={18}
-            color={activeTab === "users" ? "#FFF" : colors.textMuted}
-          />
-          <Text
-            style={[
-              styles.tabText,
-              { color: activeTab === "users" ? "#FFF" : colors.textMuted },
-            ]}
+        {(isSuperadminUser || isAdminUser) && (
+          <Pressable
+            style={[styles.tab, activeTab === "users" && styles.tabActive]}
+            onPress={() => setActiveTab("users")}
           >
-            Users ({allUsers.length})
-          </Text>
-        </Pressable>
+            <Ionicons
+              name="people-outline"
+              size={18}
+              color={activeTab === "users" ? "#FFF" : colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                { color: activeTab === "users" ? "#FFF" : colors.textMuted },
+              ]}
+            >
+              Users ({allUsers.length})
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       {activeTab === "listings" && (
@@ -384,7 +443,7 @@ export default function AdminPanelScreen() {
         />
       )}
 
-      {activeTab === "users" && (
+      {activeTab === "users" && (isSuperadminUser || isAdminUser) && (
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
@@ -400,8 +459,9 @@ export default function AdminPanelScreen() {
                   profile={u}
                   colors={colors}
                   isCurrentUser={u.id === user.id}
-                  isAdminUser={isAdminUser}
+                  isSuperadmin={isSuperadminUser}
                   onTogglePremium={() => handleTogglePremium(u)}
+                  onChangeRole={(role) => handleChangeRole(u, role)}
                 />
               ))}
             </>
@@ -417,8 +477,9 @@ export default function AdminPanelScreen() {
                 profile={u}
                 colors={colors}
                 isCurrentUser={u.id === user.id}
-                isAdminUser={isAdminUser}
+                isSuperadmin={isSuperadminUser}
                 onTogglePremium={() => handleTogglePremium(u)}
+                onChangeRole={(role) => handleChangeRole(u, role)}
               />
             ))
           ) : (
@@ -556,15 +617,17 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   premBadgeText: { fontSize: 9, fontFamily: "Outfit_700Bold", color: "#000" },
-  premiumToggleBtn: {
+  userActions: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
+    gap: 6,
   },
-  premiumToggleText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
+  actionBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   noUsersBox: {
     alignItems: "center",
     gap: 8,

@@ -22,7 +22,7 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user, collection, collectionValue, listings, logout, togglePremium } = useUser();
+  const { user, collection, collectionValue, listings, logout, togglePremium, isStaff, isSuperadminUser } = useUser();
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
@@ -55,7 +55,7 @@ export default function ProfileScreen() {
             onPress={() => router.push("/admin-login")}
           >
             <Ionicons name="shield-checkmark-outline" size={14} color={colors.textMuted} />
-            <Text style={[styles.staffLinkText, { color: colors.textMuted }]}>Staff Login</Text>
+            <Text style={[styles.staffLinkText, { color: colors.textMuted }]}>Superadmin Login</Text>
           </Pressable>
         </View>
       </View>
@@ -133,14 +133,14 @@ export default function ProfileScreen() {
         )}
 
         <View style={styles.menuSection}>
-          {(user.role === "admin" || user.role === "moderator") && (
+          {isStaff && (
             <Pressable
               style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
               onPress={() => router.push("/admin-panel")}
             >
               <Ionicons name="shield-checkmark" size={22} color="#E74C3C" />
               <Text style={[styles.menuText, { color: colors.text }]}>
-                {user.role === "admin" ? "Admin Panel" : "Moderator Panel"}
+                {isSuperadminUser ? "Superadmin Panel" : user.role === "admin" ? "Admin Panel" : "Moderator Panel"}
               </Text>
               <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </Pressable>
