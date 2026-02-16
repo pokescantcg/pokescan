@@ -50,6 +50,13 @@ export default function ProfileScreen() {
           >
             <Text style={styles.signInBtnText}>Create Account</Text>
           </Pressable>
+          <Pressable
+            style={styles.staffLink}
+            onPress={() => router.push("/admin-login")}
+          >
+            <Ionicons name="shield-checkmark-outline" size={14} color={colors.textMuted} />
+            <Text style={[styles.staffLinkText, { color: colors.textMuted }]}>Staff Login</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -126,6 +133,19 @@ export default function ProfileScreen() {
         )}
 
         <View style={styles.menuSection}>
+          {(user.role === "admin" || user.role === "moderator") && (
+            <Pressable
+              style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+              onPress={() => router.push("/admin-panel")}
+            >
+              <Ionicons name="shield-checkmark" size={22} color="#E74C3C" />
+              <Text style={[styles.menuText, { color: colors.text }]}>
+                {user.role === "admin" ? "Admin Panel" : "Moderator Panel"}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </Pressable>
+          )}
+
           {user.isPremium && (
             <Pressable
               style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
@@ -248,5 +268,7 @@ const styles = StyleSheet.create({
   emptySubtext: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 20 },
   signInBtn: { paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14, marginTop: 12 },
   signInBtnText: { fontSize: 16, fontFamily: "Outfit_600SemiBold", color: "#000" },
+  staffLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20 },
+  staffLinkText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
   versionText: { fontSize: 12, fontFamily: "Outfit_400Regular", textAlign: "center", marginTop: 8 },
 });

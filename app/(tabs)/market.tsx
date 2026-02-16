@@ -90,7 +90,7 @@ export default function MarketScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user, listings, deleteListing, togglePremium } = useUser();
+  const { user, listings, deleteListing, togglePremium, isStaff } = useUser();
   const [filter, setFilter] = useState<"all" | "sale" | "trade">("all");
 
   const filtered = listings.filter((l) => {
@@ -200,17 +200,24 @@ export default function MarketScreen() {
           <ListingCard
             listing={item}
             colors={colors}
-            isOwner={item.userId === user.id}
+            isOwner={item.userId === user.id || isStaff}
             onDelete={() => {
-              Alert.alert("Remove Listing", "Remove this listing from the marketplace?", [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Remove",
-                  style: "destructive",
-                  onPress: () => deleteListing(item.id),
-                },
-              ]);
-            }}
+              const isOwn = item.userId === user.id;
+              Alert.alert(
+                "Remove Listing",
+                isOwn
+                  ? "Remove this listing from the marketplace?"
+                  : `Remove "${item.cardName}" by ${item.userName}? (Staff action)`,
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Remove",
+                    style: "destructive",
+                    onPress: () => deleteListing(item.id),
+                  },
+                ]
+              );
+            }
           />
         )}
         keyExtractor={(item) => item.id}
