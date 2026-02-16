@@ -53,10 +53,11 @@ Preferred communication style: Simple, everyday language.
 ### Authentication & Authorization
 - **User registration**: Simple client-side registration stored in AsyncStorage (no server-side auth yet)
 - **Roles**: Three roles defined in `UserProfile.role` — `user`, `moderator`, `admin`
-- **Admin login**: Separate staff login screen (`app/admin-login.tsx`) with hardcoded credentials: admin/admin1234 (admin role), moderator/mod1234 (moderator role). Accessible from Profile tab via "Staff Login" link
-- **Admin panel** (`app/admin-panel.tsx`): Two tabs — Listings (view/remove any marketplace listing) and Users (view all registered users, grant/revoke premium). Admins can grant/revoke premium access to any regular user without payment. Moderators can view and remove listings
+- **Superadmin**: Single owner account with hardcoded credentials (email: richiett17@hotmail.com). Login via "Superadmin Login" link on Profile tab. Creates a special `superadmin` user with admin role and OWNER badge
+- **Role assignment**: Only the superadmin can assign roles to regular users from the admin panel Users tab. Three role options: Regular User, Market Moderator (can moderate listings), Full App Admin (full panel access). Staff (admin/moderator) automatically get premium access when assigned a role
+- **Admin panel** (`app/admin-panel.tsx`): Two tabs — Listings (view/remove any marketplace listing, visible to all staff) and Users (manage roles and premium, visible to superadmin and admins only). Superadmin sees SUPERADMIN badge, others see their role badge
 - **User registry**: All registered users tracked in `pokescan_all_users` AsyncStorage key for admin user management
-- **Premium membership**: Toggle-based premium flag on user profile, can be granted/revoked by admins from admin panel. Staff can also remove any marketplace listing from both the admin panel and the marketplace tab
+- **Premium membership**: Can be granted/revoked by superadmin from admin panel. Staff roles automatically include premium
 - **Staff access from marketplace**: When logged in as admin/moderator, the marketplace tab shows delete buttons on all listings (not just own)
 
 ### Build & Deployment
