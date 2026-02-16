@@ -223,6 +223,37 @@ export function getUKPrice(card: PokemonCard): { price: number | null; source: s
   return { price: null, source: "" };
 }
 
+export interface CardIdentification {
+  englishName: string;
+  cardNumber: string;
+  setName: string;
+  language: string;
+  holoType: string;
+  rarity: string;
+  confidence: string;
+  originalName: string;
+  notes: string;
+}
+
+export interface IdentifyCardResult {
+  identification: CardIdentification;
+  pcvResults: PCVCard[];
+}
+
+export async function identifyCard(imageBase64: string): Promise<IdentifyCardResult> {
+  const base = apiBase();
+  const res = await fetch(`${base}api/identify-card`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageBase64 }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err || "Failed to identify card");
+  }
+  return res.json();
+}
+
 export function formatGBP(price: number | null): string {
   if (price === null || price === undefined) return "N/A";
   return `\u00A3${price.toFixed(2)}`;
