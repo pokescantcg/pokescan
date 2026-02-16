@@ -217,7 +217,7 @@ export default function MarketScreen() {
                   },
                 ]
               );
-            }
+            }}
           />
         )}
         keyExtractor={(item) => item.id}
