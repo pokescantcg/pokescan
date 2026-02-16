@@ -52,9 +52,12 @@ Preferred communication style: Simple, everyday language.
 
 ### Authentication & Authorization
 - **User registration**: Simple client-side registration stored in AsyncStorage (no server-side auth yet)
-- **Roles**: Three roles defined — `user`, `moderator`, `admin`
-- **Admin login**: Separate admin login flow with hardcoded or locally-stored credentials
-- **Premium membership**: Toggle-based premium flag on user profile, can be granted/revoked by admins
+- **Roles**: Three roles defined in `UserProfile.role` — `user`, `moderator`, `admin`
+- **Admin login**: Separate staff login screen (`app/admin-login.tsx`) with hardcoded credentials: admin/admin1234 (admin role), moderator/mod1234 (moderator role). Accessible from Profile tab via "Staff Login" link
+- **Admin panel** (`app/admin-panel.tsx`): Two tabs — Listings (view/remove any marketplace listing) and Users (view all registered users, grant/revoke premium). Admins can grant/revoke premium access to any regular user without payment. Moderators can view and remove listings
+- **User registry**: All registered users tracked in `pokescan_all_users` AsyncStorage key for admin user management
+- **Premium membership**: Toggle-based premium flag on user profile, can be granted/revoked by admins from admin panel. Staff can also remove any marketplace listing from both the admin panel and the marketplace tab
+- **Staff access from marketplace**: When logged in as admin/moderator, the marketplace tab shows delete buttons on all listings (not just own)
 
 ### Build & Deployment
 - **Dev mode**: Two processes — Expo dev server (`expo:dev`) and Express server (`server:dev`)
