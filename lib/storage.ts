@@ -1,11 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Crypto from "expo-crypto";
 
+export type UserRole = "user" | "moderator" | "admin";
+
 export interface UserProfile {
   id: string;
   username: string;
   displayName: string;
   isPremium: boolean;
+  role: UserRole;
   createdAt: string;
 }
 
@@ -42,15 +45,26 @@ const KEYS = {
   USER: "pokescan_user",
   COLLECTION: "pokescan_collection",
   LISTINGS: "pokescan_listings",
+  ALL_USERS: "pokescan_all_users",
+  ADMIN_CREDENTIALS: "pokescan_admin_creds",
 };
+
+const DEFAULT_ADMIN_CREDENTIALS = [
+  { username: "admin", password: "admin1234", role: "admin" as UserRole, displayName: "Admin" },
+  { username: "moderator", password: "mod1234", role: "moderator" as UserRole, displayName: "Moderator" },
+];
 
 export async function getUser(): Promise<UserProfile | null> {
   const data = await AsyncStorage.getItem(KEYS.USER);
-  return data ? JSON.parse(data) : null;
+  if (!data) return null;
+  const user = JSON.parse(data);
+  if (!user.role) user.role = "user";
+  return user;
 }
 
 export async function saveUser(user: UserProfile): Promise<void> {
   await AsyncStorage.setItem(KEYS.USER, JSON.stringify(user));
+  await upsertUserInRegistry(user);
 }
 
 export async function registerUser(username: string, displayName: string): Promise<UserProfile> {
@@ -59,6 +73,33 @@ export async function registerUser(username: string, displayName: string): Promi
     username: username.toLowerCase().trim(),
     displayName: displayName.trim(),
     isPremium: false,
+    role: "user",
+    createdAt: new Date().toISOString(),
+  };
+  await saveUser(user);
+  return user;
+}
+
+export async function adminLogin(username: string, password: string): Promise<UserProfile | null> {
+  const cred = DEFAULT_ADMIN_CREDENTIALS.find(
+    (c) => c.username.toLowerCase() === username.toLowerCase() && c.password === password
+  );
+  if (!cred) return null;
+
+  const allUsers = await getAllUsers();
+  const existing = allUsers.find((u) => u.username === cred.username && (u.role === "admin" || u.role === "moderator"));
+
+  if (existing) {
+    await AsyncStorage.setItem(KEYS.USER, JSON.stringify(existing));
+    return existing;
+  }
+
+  const user: UserProfile = {
+    id: Crypto.randomUUID(),
+    username: cred.username,
+    displayName: cred.displayName,
+    isPremium: true,
+    role: cred.role,
     createdAt: new Date().toISOString(),
   };
   await saveUser(user);
@@ -151,4 +192,77 @@ export function getCollectionValue(collection: CollectionItem[]): number {
     }
     return total;
   }, 0);
+}
+
+async function upsertUserInRegistry(user: UserProfile): Promise<void> {
+  const users = await getAllUsers();
+  const idx = users.findIndex((u) => u.id === user.id);
+  if (idx >= 0) {
+    users[idx] = user;
+  } else {
+    users.push(user);
+  }
+  await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+}
+
+export async function getAllUsers(): Promise<UserProfile[]> {
+  const data = await AsyncStorage.getItem(KEYS.ALL_USERS);
+  if (!data) return [];
+  const users: UserProfile[] = JSON.parse(data);
+  return users.map((u) => ({ ...u, role: u.role || "user" }));
+}
+
+export async function grantPremiumToUser(userId: string): Promise<UserProfile[]> {
+  const users = await getAllUsers();
+  const target = users.find((u) => u.id === userId);
+  if (target) {
+    target.isPremium = true;
+    await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+    const currentUser = await getUser();
+    if (currentUser && currentUser.id === userId) {
+      currentUser.isPremium = true;
+      await AsyncStorage.setItem(KEYS.USER, JSON.stringify(currentUser));
+    }
+  }
+  return users;
+}
+
+export async function revokePremiumFromUser(userId: string): Promise<UserProfile[]> {
+  const users = await getAllUsers();
+  const target = users.find((u) => u.id === userId);
+  if (target) {
+    target.isPremium = false;
+    await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+    const currentUser = await getUser();
+    if (currentUser && currentUser.id === userId) {
+      currentUser.isPremium = false;
+      await AsyncStorage.setItem(KEYS.USER, JSON.stringify(currentUser));
+    }
+  }
+  return users;
+}
+
+export async function setUserRole(userId: string, role: UserRole): Promise<UserProfile[]> {
+  const users = await getAllUsers();
+  const target = users.find((u) => u.id === userId);
+  if (target) {
+    target.role = role;
+    await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+    const currentUser = await getUser();
+    if (currentUser && currentUser.id === userId) {
+      currentUser.role = role;
+      await AsyncStorage.setItem(KEYS.USER, JSON.stringify(currentUser));
+    }
+  }
+  return users;
+}
+
+export function isAdminOrMod(user: UserProfile | null): boolean {
+  if (!user) return false;
+  return user.role === "admin" || user.role === "moderator";
+}
+
+export function isAdmin(user: UserProfile | null): boolean {
+  if (!user) return false;
+  return user.role === "admin";
 }
