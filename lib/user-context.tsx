@@ -2,11 +2,13 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import {
   UserProfile,
   UserRole,
+  AuthProvider,
   CollectionItem,
   MarketListing,
   getUser,
   saveUser,
   registerUser,
+  registerSocialUser,
   superadminLogin,
   isSuperadmin,
   togglePremium as togglePremiumStorage,
@@ -35,6 +37,7 @@ interface UserContextValue {
   collectionValue: number;
   allUsers: UserProfile[];
   register: (username: string, displayName: string) => Promise<void>;
+  socialRegister: (provider: AuthProvider, displayName: string, email?: string, avatarUrl?: string) => Promise<void>;
   adminLogin: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   togglePremium: () => Promise<void>;
@@ -89,6 +92,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(async (username: string, displayName: string) => {
     const newUser = await registerUser(username, displayName);
+    setUser(newUser);
+    const users = await getAllUsers();
+    setAllUsers(users);
+  }, []);
+
+  const handleSocialRegister = useCallback(async (provider: AuthProvider, displayName: string, email?: string, avatarUrl?: string) => {
+    const newUser = await registerSocialUser(provider, displayName, email, avatarUrl);
     setUser(newUser);
     const users = await getAllUsers();
     setAllUsers(users);
@@ -178,6 +188,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       collectionValue,
       allUsers,
       register,
+      socialRegister: handleSocialRegister,
       adminLogin: handleAdminLogin,
       logout,
       togglePremium: handleTogglePremium,
@@ -194,7 +205,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       isAdminUser,
       isSuperadminUser: superadminFlag,
     }),
-    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, loadData, isStaff, isAdminUser, superadminFlag]
+    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleSocialRegister, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, loadData, isStaff, isAdminUser, superadminFlag]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

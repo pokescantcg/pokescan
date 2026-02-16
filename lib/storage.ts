@@ -3,10 +3,15 @@ import * as Crypto from "expo-crypto";
 
 export type UserRole = "user" | "moderator" | "admin";
 
+export type AuthProvider = "local" | "google" | "outlook" | "facebook" | "twitter";
+
 export interface UserProfile {
   id: string;
   username: string;
   displayName: string;
+  email?: string;
+  avatarUrl?: string;
+  authProvider?: AuthProvider;
   isPremium: boolean;
   role: UserRole;
   createdAt: string;
@@ -70,6 +75,46 @@ export async function registerUser(username: string, displayName: string): Promi
     id: Crypto.randomUUID(),
     username: username.toLowerCase().trim(),
     displayName: displayName.trim(),
+    authProvider: "local",
+    isPremium: false,
+    role: "user",
+    createdAt: new Date().toISOString(),
+  };
+  await saveUser(user);
+  return user;
+}
+
+export async function registerSocialUser(
+  provider: AuthProvider,
+  displayName: string,
+  email?: string,
+  avatarUrl?: string
+): Promise<UserProfile> {
+  const allUsers = await getAllUsers();
+  if (email) {
+    const existing = allUsers.find(
+      (u) => u.email === email.toLowerCase().trim()
+    );
+    if (existing) {
+      await AsyncStorage.setItem(KEYS.USER, JSON.stringify(existing));
+      return existing;
+    }
+  }
+
+  const baseUsername = (displayName || email || provider)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 12);
+  const suffix = Math.random().toString(36).slice(2, 6);
+  const username = `${baseUsername}${suffix}`;
+
+  const user: UserProfile = {
+    id: Crypto.randomUUID(),
+    username,
+    displayName: displayName.trim(),
+    email: email?.toLowerCase().trim(),
+    avatarUrl,
+    authProvider: provider,
     isPremium: false,
     role: "user",
     createdAt: new Date().toISOString(),
