@@ -206,7 +206,7 @@ export async function scrapeSets(): Promise<PCVSet[]> {
 }
 
 export async function scrapeSetCards(setId: string, slug: string): Promise<PCVCard[]> {
-  const cacheKey = `set-cards-${setId}`;
+  const cacheKey = `set-cards-${setId}-${slug}`;
   const cached = getCached<PCVCard[]>(cacheKey);
   if (cached) return cached;
 
@@ -215,15 +215,36 @@ export async function scrapeSetCards(setId: string, slug: string): Promise<PCVCa
     const $ = cheerio.load(html);
     const cards: PCVCard[] = [];
 
-    const setName = $("h1, h2").first().text().trim() || slug.replace(/-/g, " ");
+    const jsonLdItems: Array<{ name: string; url: string }> = [];
+    $('script[type="application/ld+json"]').each((_, el) => {
+      try {
+        const json = JSON.parse($(el).html() || "{}");
+        if (json["@type"] === "ItemList" && json.itemListElement) {
+          for (const item of json.itemListElement) {
+            if (item["@type"] === "ListItem" && item.name) {
+              jsonLdItems.push({ name: item.name, url: item.url || "" });
+            }
+          }
+        }
+      } catch {}
+    });
 
-    $("a[href*='/cards/']").each((_, el) => {
+    const cardContainers = $(".card-title-info").closest("a[href*='/cards/'], div").parent();
+
+    let cardIndex = 0;
+    const cardLinks = $("a[href*='/cards/']").toArray();
+
+    for (const el of cardLinks) {
       const $el = $(el);
       const href = $el.attr("href") || "";
-      if (!href.includes("/cards/")) return;
+      if (!href.includes("/cards/")) continue;
 
-      const text = $el.text().trim();
-      const lines = text.split("\n").map((l: string) => l.trim()).filter(Boolean);
+      const titleDiv = $el.find(".card-title-info");
+      const holoEdDiv = $el.find(".card-holo-edition-info");
+      const priceDiv = $el.find(".price-info");
+      const $parentContainer = $el.parent();
+      const holoEdDivAlt = $parentContainer.find(".card-holo-edition-info");
+      const priceDivAlt = $parentContainer.find(".price-info");
 
       let name = "";
       let number = "";
@@ -232,29 +253,70 @@ export async function scrapeSetCards(setId: string, slug: string): Promise<PCVCa
       let edition = "";
       let priceGBP: number | null = null;
 
-      const nameNumMatch = lines[0]?.match(/^(.+?)\s*-\s*(\d+\/\d+)/);
-      if (nameNumMatch) {
-        name = nameNumMatch[1].trim();
-        number = nameNumMatch[2];
-      } else if (lines[0]) {
-        name = lines[0];
+      const titleText = titleDiv.text().trim();
+      if (titleText) {
+        const nameNumMatch = titleText.match(/^(.+?)\s*-\s*(\S+)/);
+        if (nameNumMatch) {
+          name = nameNumMatch[1].trim();
+          number = nameNumMatch[2];
+        } else {
+          name = titleText;
+        }
       }
 
-      for (const line of lines) {
-        if (line.match(/^(Non-Holo|Holo|Reverse Holo)$/i)) {
-          holoType = line;
+      if (!name && jsonLdItems[cardIndex]) {
+        const ldName = jsonLdItems[cardIndex].name;
+        const parts = ldName.split(" - ");
+        if (parts.length >= 2) {
+          name = parts[0].trim();
+          number = parts[1].trim();
+          if (parts.length >= 3) holoType = parts[2].trim().replace(/\\u002D/g, "-");
+          if (parts.length >= 4) edition = parts[3].trim();
+          if (parts.length >= 5) rarity = parts[4].trim().replace(" - Pokémon Card", "");
         }
-        if (line.match(/NM\/M Value:/i)) {
-          priceGBP = parsePrice(line);
-        }
-        const rarityEdMatch = line.match(/^(Common|Uncommon|Rare|Double Rare|Ultra Rare|Special Illustration Rare|Hyper Rare|ACE SPEC Rare|Promo|Secret Rare|Shining Rare Holo|Rare Holo|Rare Ultra|Rare Rainbow)\s*-\s*(.+)$/i);
+      }
+
+      const holoEdText = (holoEdDiv.length ? holoEdDiv : holoEdDivAlt).html() || "";
+      const holoEdLines = holoEdText.split("<br>").map((l: string) => cheerio.load(l).text().trim()).filter(Boolean);
+
+      if (holoEdLines.length >= 1 && !holoType) {
+        holoType = holoEdLines[0];
+      }
+      if (holoEdLines.length >= 2) {
+        const rarityEdMatch = holoEdLines[1].match(/^(.+?)\s*-\s*(.+)$/);
         if (rarityEdMatch) {
-          rarity = rarityEdMatch[1];
-          edition = rarityEdMatch[2];
+          rarity = rarityEdMatch[1].trim();
+          edition = rarityEdMatch[2].trim();
+        } else {
+          rarity = holoEdLines[1];
         }
       }
 
-      if (!name) return;
+      const priceText = (priceDiv.length ? priceDiv : priceDivAlt).text().trim();
+      if (priceText) {
+        priceGBP = parsePrice(priceText);
+      }
+
+      if (!name) {
+        const fullText = $el.text().trim();
+        const lines = fullText.split("\n").map((l: string) => l.trim()).filter(Boolean);
+        const nameNumMatch2 = lines[0]?.match(/^(.+?)\s*-\s*(\S+)/);
+        if (nameNumMatch2) {
+          name = nameNumMatch2[1].trim();
+          number = nameNumMatch2[2];
+        }
+        for (const line of lines) {
+          if (line.match(/^(Non-Holo|Holo|Reverse Holo)$/i) && !holoType) holoType = line;
+          if (line.match(/NM\/M Value:/i) && priceGBP === null) priceGBP = parsePrice(line);
+          const rarityEdMatch2 = line.match(/^(Common|Uncommon|Rare|Double Rare|Ultra Rare|Special Illustration Rare|Hyper Rare|ACE SPEC Rare|Promo|Secret Rare|Shining Rare Holo|Rare Holo|Rare Ultra|Rare Rainbow)\s*-\s*(.+)$/i);
+          if (rarityEdMatch2 && !rarity) {
+            rarity = rarityEdMatch2[1];
+            edition = rarityEdMatch2[2];
+          }
+        }
+      }
+
+      if (!name) { cardIndex++; continue; }
 
       const $img = $el.find("img");
       const imageUrl = $img.first().attr("src") || "";
@@ -267,11 +329,13 @@ export async function scrapeSetCards(setId: string, slug: string): Promise<PCVCa
         edition,
         priceGBP,
         url: href.startsWith("http") ? href : `${BASE_URL}${href}`,
-        setName,
+        setName: slug.replace(/-/g, " "),
         setId,
         imageUrl,
       });
-    });
+
+      cardIndex++;
+    }
 
     setCache(cacheKey, cards);
     return cards;
