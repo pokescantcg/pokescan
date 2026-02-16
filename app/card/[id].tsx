@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -18,7 +19,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { useThemeColors } from "@/constants/colors";
-import { fetchCard, getUKPrice, formatGBP, PokemonCard } from "@/lib/pokemon-api";
+import {
+  fetchCard,
+  getUKPrice,
+  formatGBP,
+  PokemonCard,
+  generateEbaySearchUrl,
+  generateEbaySoldUrl,
+} from "@/lib/pokemon-api";
 import { useUser } from "@/lib/user-context";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -125,6 +133,18 @@ export default function CardDetailScreen() {
     Alert.alert("Listed!", `${card.name} listed for trade on the marketplace.`);
   };
 
+  const openEbayListings = () => {
+    if (!card) return;
+    const url = generateEbaySearchUrl(card.name, card.set.name, card.number);
+    Linking.openURL(url);
+  };
+
+  const openEbaySold = () => {
+    if (!card) return;
+    const url = generateEbaySoldUrl(card.name, card.set.name, card.number);
+    Linking.openURL(url);
+  };
+
   if (isLoading || !card) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -213,7 +233,7 @@ export default function CardDetailScreen() {
             </View>
             <View style={[styles.mainPrice, { backgroundColor: colors.surfaceElevated }]}>
               <Text style={[styles.mainPriceLabel, { color: colors.textSecondary }]}>
-                Market Price
+                Market Price (GBP)
               </Text>
               <Text style={[styles.mainPriceValue, { color: priceData.price ? colors.success : colors.textMuted }]}>
                 {formatGBP(priceData.price)}
@@ -232,6 +252,38 @@ export default function CardDetailScreen() {
                 <PriceRow label="30-Day Avg" value={card.cardmarket.prices.avg30} colors={colors} />
               </View>
             )}
+          </View>
+
+          <View style={[styles.ebaySection, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.priceSectionHeader}>
+              <Ionicons name="globe-outline" size={18} color="#E53238" />
+              <Text style={[styles.priceSectionTitle, { color: colors.text }]}>eBay UK</Text>
+            </View>
+            <Text style={[styles.ebayDesc, { color: colors.textSecondary }]}>
+              Compare prices on eBay UK for this card
+            </Text>
+            <View style={styles.ebayButtons}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.ebayBtn,
+                  { backgroundColor: "#E53238", opacity: pressed ? 0.85 : 1 },
+                ]}
+                onPress={openEbayListings}
+              >
+                <Ionicons name="search" size={16} color="#FFF" />
+                <Text style={styles.ebayBtnText}>Active Listings</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.ebayBtn,
+                  { backgroundColor: "#0064D2", opacity: pressed ? 0.85 : 1 },
+                ]}
+                onPress={openEbaySold}
+              >
+                <Ionicons name="checkmark-done" size={16} color="#FFF" />
+                <Text style={styles.ebayBtnText}>Sold Items</Text>
+              </Pressable>
+            </View>
           </View>
 
           <Text style={[styles.conditionTitle, { color: colors.text }]}>Card Condition</Text>
@@ -352,6 +404,19 @@ const styles = StyleSheet.create({
   priceRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
   priceLabel: { fontSize: 13, fontFamily: "Outfit_400Regular" },
   priceValue: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
+  ebaySection: { borderRadius: 16, padding: 16, borderWidth: 1, gap: 10 },
+  ebayDesc: { fontSize: 13, fontFamily: "Outfit_400Regular" },
+  ebayButtons: { flexDirection: "row", gap: 10 },
+  ebayBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 6,
+  },
+  ebayBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
   conditionTitle: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
   conditionRow: { gap: 8 },
   conditionChip: {

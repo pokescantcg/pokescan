@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   ActivityIndicator,
   Dimensions,
+  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -16,60 +17,84 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { useThemeColors } from "@/constants/colors";
-import { fetchSetCards, PokemonCard, getUKPrice, formatGBP } from "@/lib/pokemon-api";
+import { fetchPCVSetCards, PCVCard, formatGBP } from "@/lib/pokemon-api";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const CARD_WIDTH = (SCREEN_WIDTH - 60) / 3;
-const CARD_HEIGHT = CARD_WIDTH * 1.4;
+const CARD_WIDTH = (SCREEN_WIDTH - 60) / 2;
 
-function CardGridItem({ card, colors }: { card: PokemonCard; colors: ReturnType<typeof useThemeColors> }) {
-  const priceData = getUKPrice(card);
+function CardListItem({ card, colors }: { card: PCVCard; colors: ReturnType<typeof useThemeColors> }) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.gridCard, { opacity: pressed ? 0.85 : 1 }]}
-      onPress={() => router.push({ pathname: "/card/[id]", params: { id: card.id } })}
+      style={({ pressed }) => [
+        styles.cardItem,
+        { backgroundColor: colors.card, borderColor: colors.borderLight, opacity: pressed ? 0.85 : 1 },
+      ]}
+      onPress={() => {
+        if (card.url) Linking.openURL(card.url);
+      }}
     >
-      <Image source={{ uri: card.images.small }} style={styles.gridImage} contentFit="contain" />
-      <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={1}>
-        {card.name}
-      </Text>
-      <Text style={[styles.gridNumber, { color: colors.textMuted }]}>#{card.number}</Text>
-      {priceData.price !== null && (
-        <Text style={[styles.gridPrice, { color: colors.success }]}>
-          {formatGBP(priceData.price)}
+      <View style={styles.cardInfo}>
+        <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={1}>
+          {card.name}
         </Text>
-      )}
+        {card.number ? (
+          <Text style={[styles.cardNumber, { color: colors.textMuted }]}>
+            #{card.number}
+          </Text>
+        ) : null}
+        <View style={styles.cardMeta}>
+          {card.holoType ? (
+            <View style={[styles.chip, { backgroundColor: colors.surfaceElevated }]}>
+              <Text style={[styles.chipText, { color: colors.textSecondary }]}>{card.holoType}</Text>
+            </View>
+          ) : null}
+          {card.rarity ? (
+            <View style={[styles.chip, { backgroundColor: colors.surfaceElevated }]}>
+              <Text style={[styles.chipText, { color: colors.gold }]}>{card.rarity}</Text>
+            </View>
+          ) : null}
+          {card.edition && card.edition !== "Unlimited" ? (
+            <View style={[styles.chip, { backgroundColor: colors.surfaceElevated }]}>
+              <Text style={[styles.chipText, { color: colors.accent }]}>{card.edition}</Text>
+            </View>
+          ) : null}
+        </View>
+      </View>
+      <View style={styles.priceCol}>
+        {card.priceGBP !== null ? (
+          <Text style={[styles.price, { color: colors.success }]}>
+            {formatGBP(card.priceGBP)}
+          </Text>
+        ) : (
+          <Text style={[styles.price, { color: colors.textMuted }]}>N/A</Text>
+        )}
+        <Text style={[styles.priceLabel, { color: colors.textMuted }]}>NM/M</Text>
+      </View>
+      <Ionicons name="open-outline" size={14} color={colors.textMuted} />
     </Pressable>
   );
 }
 
 export default function SetDetailScreen() {
-  const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
+  const { id, slug, name } = useLocalSearchParams<{ id: string; slug: string; name: string }>();
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const [page, setPage] = useState(1);
-  const [allCards, setAllCards] = useState<PokemonCard[]>([]);
 
-  const { isLoading, data } = useQuery({
-    queryKey: ["set-cards", id, page],
-    queryFn: () => fetchSetCards(id, page),
+  const { isLoading, data: cards } = useQuery({
+    queryKey: ["pcv-set-cards", id, slug],
+    queryFn: () => fetchPCVSetCards(id, slug),
     staleTime: 1000 * 60 * 30,
   });
 
-  const cards = data?.cards || [];
-  const totalCount = data?.totalCount || 0;
-
-  const displayCards = page === 1 ? cards : [...allCards, ...cards];
-
-  const loadMore = useCallback(() => {
-    if (displayCards.length < totalCount && !isLoading) {
-      setAllCards(displayCards);
-      setPage((p) => p + 1);
-    }
-  }, [displayCards, totalCount, isLoading]);
-
+  const totalCount = cards?.length || 0;
+  const totalValue = cards?.reduce((sum, c) => sum + (c.priceGBP || 0), 0) || 0;
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+
+  const renderItem = useCallback(
+    ({ item }: { item: PCVCard }) => <CardListItem card={item} colors={colors} />,
+    [colors]
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -82,33 +107,39 @@ export default function SetDetailScreen() {
             <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
               {name || "Set"}
             </Text>
-            <Text style={[styles.headerCount, { color: colors.textSecondary }]}>
-              {totalCount} cards
-            </Text>
+            <View style={styles.headerMeta}>
+              <Text style={[styles.headerCount, { color: colors.textSecondary }]}>
+                {totalCount} cards
+              </Text>
+              {totalValue > 0 ? (
+                <Text style={[styles.headerValue, { color: colors.success }]}>
+                  Set value: {formatGBP(totalValue)}
+                </Text>
+              ) : null}
+            </View>
           </View>
         </View>
       </View>
 
-      {isLoading && page === 1 ? (
+      {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.gold} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading cards...</Text>
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading UK prices...</Text>
         </View>
       ) : (
         <FlatList
-          data={displayCards}
-          renderItem={({ item }) => <CardGridItem card={item} colors={colors} />}
-          keyExtractor={(item) => item.id}
-          numColumns={3}
-          contentContainerStyle={[styles.gridContent, { paddingBottom: 40 }]}
-          columnWrapperStyle={styles.gridRow}
+          data={cards}
+          renderItem={renderItem}
+          keyExtractor={(item, index) => `${item.name}-${item.number}-${item.holoType}-${item.edition}-${index}`}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 40 }]}
           showsVerticalScrollIndicator={false}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.3}
-          ListFooterComponent={
-            isLoading && page > 1 ? (
-              <ActivityIndicator size="small" color={colors.gold} style={{ marginVertical: 20 }} />
-            ) : null
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="albums-outline" size={48} color={colors.textMuted} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                No cards found for this set
+              </Text>
+            </View>
           }
         />
       )}
@@ -123,22 +154,30 @@ const styles = StyleSheet.create({
   backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerInfo: { flex: 1 },
   headerTitle: { fontSize: 22, fontFamily: "Outfit_700Bold" },
+  headerMeta: { flexDirection: "row", gap: 12, alignItems: "center", marginTop: 2 },
   headerCount: { fontSize: 13, fontFamily: "Outfit_400Regular" },
-  gridContent: { paddingHorizontal: 20 },
-  gridRow: { gap: 10, marginBottom: 12 },
-  gridCard: {
-    width: CARD_WIDTH,
+  headerValue: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
+  listContent: { paddingHorizontal: 16 },
+  cardItem: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: 4,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 6,
+    borderWidth: 1,
+    gap: 12,
   },
-  gridImage: {
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    borderRadius: 8,
-  },
-  gridName: { fontSize: 12, fontFamily: "Outfit_600SemiBold", textAlign: "center" },
-  gridNumber: { fontSize: 10, fontFamily: "Outfit_400Regular" },
-  gridPrice: { fontSize: 11, fontFamily: "Outfit_700Bold" },
+  cardInfo: { flex: 1, gap: 2 },
+  cardName: { fontSize: 15, fontFamily: "Outfit_600SemiBold" },
+  cardNumber: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  cardMeta: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 4 },
+  chip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  chipText: { fontSize: 10, fontFamily: "Outfit_500Medium" },
+  priceCol: { alignItems: "flex-end", gap: 2 },
+  price: { fontSize: 15, fontFamily: "Outfit_700Bold" },
+  priceLabel: { fontSize: 10, fontFamily: "Outfit_400Regular" },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
   loadingText: { fontSize: 14, fontFamily: "Outfit_400Regular" },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 80, gap: 12 },
+  emptyText: { fontSize: 16, fontFamily: "Outfit_500Medium" },
 });

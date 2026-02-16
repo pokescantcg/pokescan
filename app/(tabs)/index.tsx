@@ -17,19 +17,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { useThemeColors } from "@/constants/colors";
-import { fetchSets, PokemonSet } from "@/lib/pokemon-api";
+import { fetchPCVSets, PCVSet } from "@/lib/pokemon-api";
 
-function SetCard({ set, colors }: { set: PokemonSet; colors: ReturnType<typeof useThemeColors> }) {
+function SetCard({ set, colors }: { set: PCVSet; colors: ReturnType<typeof useThemeColors> }) {
   return (
     <Pressable
       style={({ pressed }) => [
         styles.setCard,
         { backgroundColor: colors.card, borderColor: colors.borderLight, opacity: pressed ? 0.85 : 1 },
       ]}
-      onPress={() => router.push({ pathname: "/set/[id]", params: { id: set.id, name: set.name } })}
+      onPress={() => router.push({ pathname: "/set/[id]", params: { id: set.id, slug: set.slug, name: set.name } })}
     >
       <Image
-        source={{ uri: set.images.logo }}
+        source={{ uri: set.logoUrl }}
         style={styles.setLogo}
         contentFit="contain"
       />
@@ -44,19 +44,21 @@ function SetCard({ set, colors }: { set: PokemonSet; colors: ReturnType<typeof u
           <View style={styles.setMetaItem}>
             <Ionicons name="layers-outline" size={12} color={colors.textSecondary} />
             <Text style={[styles.setMetaText, { color: colors.textSecondary }]}>
-              {set.printedTotal} cards
+              {set.cardCount} cards
             </Text>
           </View>
-          <View style={styles.setMetaItem}>
-            <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
-            <Text style={[styles.setMetaText, { color: colors.textSecondary }]}>
-              {set.releaseDate}
-            </Text>
-          </View>
+          {set.releaseDate ? (
+            <View style={styles.setMetaItem}>
+              <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
+              <Text style={[styles.setMetaText, { color: colors.textSecondary }]}>
+                {set.releaseDate}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
       <Image
-        source={{ uri: set.images.symbol }}
+        source={{ uri: set.symbolUrl }}
         style={styles.setSymbol}
         contentFit="contain"
       />
@@ -71,8 +73,8 @@ export default function BrowseScreen() {
   const [search, setSearch] = useState("");
 
   const { data: sets, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: ["pokemon-sets"],
-    queryFn: fetchSets,
+    queryKey: ["pcv-sets"],
+    queryFn: fetchPCVSets,
     staleTime: 1000 * 60 * 30,
   });
 
@@ -82,7 +84,7 @@ export default function BrowseScreen() {
     return s.name.toLowerCase().includes(q) || s.series.toLowerCase().includes(q);
   });
 
-  const groupedSets = filteredSets?.reduce<Record<string, PokemonSet[]>>((acc, set) => {
+  const groupedSets = filteredSets?.reduce<Record<string, PCVSet[]>>((acc, set) => {
     if (!acc[set.series]) acc[set.series] = [];
     acc[set.series].push(set);
     return acc;
@@ -94,7 +96,7 @@ export default function BrowseScreen() {
 
   const flatData = sections.flatMap((section) => [
     { type: "header" as const, series: section.series, key: `header-${section.series}` },
-    ...section.data.map((set) => ({ type: "set" as const, set, key: set.id })),
+    ...section.data.map((set) => ({ type: "set" as const, set, key: `${set.id}-${set.slug}` })),
   ]);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -118,7 +120,7 @@ export default function BrowseScreen() {
       <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}>
         <Text style={[styles.title, { color: colors.text }]}>PokeScan TCG</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Browse all Pokemon card sets
+          UK card sets & prices
         </Text>
         <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Ionicons name="search" size={18} color={colors.textMuted} />
@@ -141,7 +143,7 @@ export default function BrowseScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.gold} />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-            Loading card sets...
+            Loading UK card sets...
           </Text>
         </View>
       ) : (

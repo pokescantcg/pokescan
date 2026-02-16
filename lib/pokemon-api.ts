@@ -76,6 +76,44 @@ interface ApiResponse<T> {
   totalCount: number;
 }
 
+export interface PCVSet {
+  id: string;
+  slug: string;
+  name: string;
+  series: string;
+  releaseDate: string;
+  cardCount: number;
+  logoUrl: string;
+  symbolUrl: string;
+  url: string;
+}
+
+export interface PCVCard {
+  name: string;
+  number: string;
+  holoType: string;
+  rarity: string;
+  edition: string;
+  priceGBP: number | null;
+  url: string;
+  setName: string;
+  setId: string;
+  imageUrl: string;
+}
+
+export interface PCVTopCard {
+  rank: number;
+  name: string;
+  number: string;
+  rarity: string;
+  holoType: string;
+  edition: string;
+  setName: string;
+  priceGBP: number;
+  url: string;
+  imageUrl: string;
+}
+
 function apiBase(): string {
   return getApiUrl();
 }
@@ -110,6 +148,62 @@ export async function fetchCard(cardId: string): Promise<PokemonCard> {
   if (!res.ok) throw new Error("Failed to fetch card");
   const json = await res.json();
   return json.data;
+}
+
+export async function fetchPCVSets(): Promise<PCVSet[]> {
+  const base = apiBase();
+  const res = await fetch(`${base}api/pcv/sets`);
+  if (!res.ok) throw new Error("Failed to fetch UK sets");
+  const json = await res.json();
+  return json.data;
+}
+
+export async function fetchPCVSetCards(setId: string, slug: string): Promise<PCVCard[]> {
+  const base = apiBase();
+  const res = await fetch(`${base}api/pcv/sets/${setId}/${slug}/cards`);
+  if (!res.ok) throw new Error("Failed to fetch UK card data");
+  const json = await res.json();
+  return json.data;
+}
+
+export async function fetchPCVTopCards(condition: string = "ungraded"): Promise<PCVTopCard[]> {
+  const base = apiBase();
+  const res = await fetch(`${base}api/pcv/top/${condition}`);
+  if (!res.ok) throw new Error("Failed to fetch top UK cards");
+  const json = await res.json();
+  return json.data;
+}
+
+export async function fetchPCVSearch(query: string): Promise<PCVCard[]> {
+  const base = apiBase();
+  const res = await fetch(`${base}api/pcv/search?q=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error("Failed to search UK cards");
+  const json = await res.json();
+  return json.data;
+}
+
+export async function fetchEbayUrls(cardName: string, setName?: string, number?: string): Promise<{ searchUrl: string; soldUrl: string }> {
+  const base = apiBase();
+  const params = new URLSearchParams({ cardName });
+  if (setName) params.set("setName", setName);
+  if (number) params.set("number", number);
+  const res = await fetch(`${base}api/ebay/search-url?${params.toString()}`);
+  if (!res.ok) throw new Error("Failed to get eBay URLs");
+  return res.json();
+}
+
+export function generateEbaySearchUrl(cardName: string, setName?: string, number?: string): string {
+  let query = `pokemon card ${cardName}`;
+  if (setName) query += ` ${setName}`;
+  if (number) query += ` ${number}`;
+  return `https://www.ebay.co.uk/sch/i.html?_nkw=${encodeURIComponent(query)}&_sacat=183454&LH_PrefLoc=1`;
+}
+
+export function generateEbaySoldUrl(cardName: string, setName?: string, number?: string): string {
+  let query = `pokemon card ${cardName}`;
+  if (setName) query += ` ${setName}`;
+  if (number) query += ` ${number}`;
+  return `https://www.ebay.co.uk/sch/i.html?_nkw=${encodeURIComponent(query)}&_sacat=183454&LH_PrefLoc=1&LH_Complete=1&LH_Sold=1`;
 }
 
 export function getUKPrice(card: PokemonCard): { price: number | null; source: string } {
