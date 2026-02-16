@@ -29,6 +29,7 @@ import {
   CardIdentification,
   PCVCard,
   generateEbaySearchUrl,
+  fetchPCVSearch,
 } from "@/lib/pokemon-api";
 
 function IdentificationCard({
@@ -211,6 +212,7 @@ export default function ScannerScreen() {
   const [isIdentifying, setIsIdentifying] = useState(false);
   const [identification, setIdentification] = useState<CardIdentification | null>(null);
   const [pcvResults, setPcvResults] = useState<PCVCard[]>([]);
+  const [tcgApiResults, setTcgApiResults] = useState<PokemonCard[]>([]);
   const [identifyError, setIdentifyError] = useState<string | null>(null);
 
   const handleSearch = useCallback(async () => {
@@ -219,13 +221,29 @@ export default function ScannerScreen() {
     setHasSearched(true);
     setIdentification(null);
     setPcvResults([]);
+    setTcgApiResults([]);
     try {
-      const { cards } = await searchCards(searchText.trim());
-      setResults(cards);
+      const pcvSearchResults = await fetchPCVSearch(searchText.trim());
+      if (pcvSearchResults.length > 0) {
+        setPcvResults(pcvSearchResults);
+        setResults([]);
+      } else {
+        try {
+          const { cards } = await searchCards(searchText.trim());
+          setResults(cards);
+        } catch {
+          setResults([]);
+        }
+      }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } catch (e) {
       console.error("Search failed:", e);
-      Alert.alert("Search Error", "Failed to search for cards. Please try again.");
+      try {
+        const { cards } = await searchCards(searchText.trim());
+        setResults(cards);
+      } catch {
+        Alert.alert("Search Error", "Failed to search for cards. Please try again.");
+      }
     } finally {
       setIsSearching(false);
     }
@@ -237,6 +255,7 @@ export default function ScannerScreen() {
     setIdentifyError(null);
     setIdentification(null);
     setPcvResults([]);
+    setTcgApiResults([]);
     setResults([]);
     setHasSearched(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -262,6 +281,7 @@ export default function ScannerScreen() {
       const result = await identifyCard(base64);
       setIdentification(result.identification);
       setPcvResults(result.pcvResults || []);
+      setTcgApiResults(result.tcgApiResults || []);
       setSearchText(result.identification.englishName);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {
@@ -322,6 +342,7 @@ export default function ScannerScreen() {
     setCapturedImage(null);
     setIdentification(null);
     setPcvResults([]);
+    setTcgApiResults([]);
     setIdentifyError(null);
     setResults([]);
     setHasSearched(false);
@@ -389,11 +410,17 @@ export default function ScannerScreen() {
           UK Price Matches ({pcvResults.length})
         </Text>
       )}
+
+      {pcvResults.length === 0 && tcgApiResults.length > 0 && (
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          Card Matches ({tcgApiResults.length})
+        </Text>
+      )}
     </>
   );
 
-  const allPcvShown = pcvResults.length > 0;
-  const allSearchShown = results.length > 0 && !allPcvShown;
+  const hasIdentifiedResults = pcvResults.length > 0 || (tcgApiResults.length > 0 && !!identification);
+  const allSearchShown = results.length > 0 && !hasIdentifiedResults;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -458,11 +485,20 @@ export default function ScannerScreen() {
           <ActivityIndicator size="large" color={colors.gold} />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Searching...</Text>
         </View>
-      ) : allPcvShown ? (
+      ) : hasIdentifiedResults && pcvResults.length > 0 ? (
         <FlatList
           data={pcvResults}
           renderItem={({ item }) => <PCVResultCard card={item} colors={colors} />}
           keyExtractor={(item, i) => `${item.url}-${i}`}
+          contentContainerStyle={[styles.resultsList, { paddingBottom: 100 }]}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={renderHeader}
+        />
+      ) : hasIdentifiedResults && tcgApiResults.length > 0 ? (
+        <FlatList
+          data={tcgApiResults}
+          renderItem={({ item }) => <SearchResultCard card={item} colors={colors} />}
+          keyExtractor={(item) => item.id}
           contentContainerStyle={[styles.resultsList, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={renderHeader}

@@ -433,7 +433,7 @@ export async function scrapeCardSearch(query: string): Promise<PCVCard[]> {
   if (cached) return cached;
 
   try {
-    const html = await fetchPage(`${BASE_URL}/search/?s=${encodeURIComponent(query)}`);
+    const html = await fetchPage(`${BASE_URL}/search/?q=${encodeURIComponent(query)}`);
     const $ = cheerio.load(html);
     const cards: PCVCard[] = [];
 
@@ -473,10 +473,29 @@ export async function scrapeCardSearch(query: string): Promise<PCVCard[]> {
         }
       }
 
+      const slugParts = href.replace(/^\/cards\//, "").replace(/\/$/, "").split("/")[0] || "";
+      if (!holoType) {
+        if (slugParts.includes("holo-reverse") || slugParts.includes("reverse-holo")) holoType = "Reverse Holo";
+        else if (slugParts.includes("non-holo")) holoType = "Non-Holo";
+        else if (slugParts.includes("holo")) holoType = "Holo";
+      }
+      if (!edition) {
+        if (slugParts.includes("1st-edition")) edition = "1st Edition";
+        else if (slugParts.includes("shadowless")) edition = "Shadowless";
+        else if (slugParts.includes("unlimited")) edition = "Unlimited";
+      }
+      if (!setName) {
+        const setMatch = slugParts.match(/(?:unlimited|shadowless|1st-edition|holo|non-holo|reverse-holo)-(.+)$/);
+        if (setMatch) {
+          setName = setMatch[1].replace(/-\d+$/, "").split("-").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+        }
+      }
+
       if (!name) return;
 
+      const $source = $el.find("source[data-srcset]").first();
       const $img = $el.find("img");
-      const imageUrl = $img.first().attr("src") || "";
+      const imageUrl = $source.attr("data-srcset") || $img.first().attr("data-src") || $img.first().attr("src") || "";
 
       cards.push({
         name,

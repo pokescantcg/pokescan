@@ -238,6 +238,7 @@ export interface CardIdentification {
 export interface IdentifyCardResult {
   identification: CardIdentification;
   pcvResults: PCVCard[];
+  tcgApiResults: PokemonCard[];
 }
 
 export async function identifyCard(imageBase64: string): Promise<IdentifyCardResult> {

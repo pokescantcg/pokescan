@@ -53,11 +53,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const response = await fetch(
         `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&page=${page}&pageSize=20`
       );
-      const data = await response.json();
-      res.json(data);
+      const text = await response.text();
+      if (!response.ok) {
+        console.error(`Pokemon TCG API error ${response.status}: ${text.substring(0, 200)}`);
+        res.json({ data: [], count: 0, totalCount: 0 });
+        return;
+      }
+      try {
+        const data = JSON.parse(text);
+        res.json(data);
+      } catch {
+        console.error("Pokemon TCG API returned non-JSON:", text.substring(0, 200));
+        res.json({ data: [], count: 0, totalCount: 0 });
+      }
     } catch (error) {
       console.error("Failed to search cards:", error);
-      res.status(500).json({ error: "Failed to search cards" });
+      res.json({ data: [], count: 0, totalCount: 0 });
     }
   });
 
@@ -189,7 +200,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
           }
         ],
         response_format: { type: "json_object" },
-        max_tokens: 500,
+        max_completion_tokens: 500,
       });
 
       const content = response.choices[0]?.message?.content;
@@ -215,9 +226,32 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         console.error("PCV search after identification failed:", e);
       }
 
+      let tcgApiResults: any[] = [];
+      try {
+        const encodedQuery = encodeURIComponent(`name:"${identification.englishName}"`);
+        const tcgRes = await fetch(
+          `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&pageSize=10`
+        );
+        if (tcgRes.ok) {
+          const tcgData = await tcgRes.json();
+          tcgApiResults = tcgData.data || [];
+          if (identification.cardNumber && tcgApiResults.length > 1) {
+            const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
+            const exactMatch = tcgApiResults.filter((c: any) => {
+              const cn = String(c.number).replace(/^0+/, "");
+              return cn === numOnly;
+            });
+            if (exactMatch.length > 0) tcgApiResults = exactMatch;
+          }
+        }
+      } catch (e) {
+        console.error("TCG API search after identification failed:", e);
+      }
+
       res.json({
         identification,
         pcvResults: pcvResults.slice(0, 10),
+        tcgApiResults: tcgApiResults.slice(0, 10),
       });
     } catch (error: any) {
       console.error("Card identification failed:", error);
