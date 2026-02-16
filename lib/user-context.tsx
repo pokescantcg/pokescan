@@ -7,7 +7,8 @@ import {
   getUser,
   saveUser,
   registerUser,
-  adminLogin as adminLoginStorage,
+  superadminLogin,
+  isSuperadmin,
   togglePremium as togglePremiumStorage,
   logoutUser,
   getCollection,
@@ -21,6 +22,7 @@ import {
   getAllUsers,
   grantPremiumToUser,
   revokePremiumFromUser,
+  setUserRole,
   isAdminOrMod,
   isAdmin,
 } from "./storage";
@@ -33,7 +35,7 @@ interface UserContextValue {
   collectionValue: number;
   allUsers: UserProfile[];
   register: (username: string, displayName: string) => Promise<void>;
-  adminLogin: (username: string, password: string) => Promise<boolean>;
+  adminLogin: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   togglePremium: () => Promise<void>;
   addCard: (item: Omit<CollectionItem, "addedAt">) => Promise<void>;
@@ -43,9 +45,11 @@ interface UserContextValue {
   deleteListing: (listingId: string) => Promise<void>;
   grantPremium: (userId: string) => Promise<void>;
   revokePremium: (userId: string) => Promise<void>;
+  changeUserRole: (userId: string, role: UserRole) => Promise<void>;
   refreshData: () => Promise<void>;
   isStaff: boolean;
   isAdminUser: boolean;
+  isSuperadminUser: boolean;
 }
 
 const UserContext = createContext<UserContextValue | null>(null);
@@ -56,19 +60,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [collection, setCollection] = useState<CollectionItem[]>([]);
   const [listings, setListings] = useState<MarketListing[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [superadminFlag, setSuperadminFlag] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [userData, collectionData, listingsData, usersData] = await Promise.all([
+      const [userData, collectionData, listingsData, usersData, saFlag] = await Promise.all([
         getUser(),
         getCollection(),
         getListings(),
         getAllUsers(),
+        isSuperadmin(),
       ]);
       setUser(userData);
       setCollection(collectionData);
       setListings(listingsData);
       setAllUsers(usersData);
+      setSuperadminFlag(saFlag);
     } catch (e) {
       console.error("Failed to load data:", e);
     } finally {
@@ -87,10 +94,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setAllUsers(users);
   }, []);
 
-  const handleAdminLogin = useCallback(async (username: string, password: string): Promise<boolean> => {
-    const adminUser = await adminLoginStorage(username, password);
-    if (adminUser) {
-      setUser(adminUser);
+  const handleAdminLogin = useCallback(async (email: string, password: string): Promise<boolean> => {
+    const success = await superadminLogin(email, password);
+    if (success) {
+      const userData = await getUser();
+      setUser(userData);
+      setSuperadminFlag(true);
       const users = await getAllUsers();
       setAllUsers(users);
       return true;
@@ -101,6 +110,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     await logoutUser();
     setUser(null);
+    setSuperadminFlag(false);
   }, []);
 
   const handleTogglePremium = useCallback(async () => {
@@ -128,7 +138,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setListings(updated);
   }, []);
 
-  const deleteListing = useCallback(async (listingId: string) => {
+  const handleDeleteListing = useCallback(async (listingId: string) => {
     const updated = await removeListing(listingId);
     setListings(updated);
   }, []);
@@ -142,6 +152,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const handleRevokePremium = useCallback(async (userId: string) => {
     const updatedUsers = await revokePremiumFromUser(userId);
+    setAllUsers(updatedUsers);
+    const currentUser = await getUser();
+    if (currentUser) setUser(currentUser);
+  }, []);
+
+  const handleChangeUserRole = useCallback(async (userId: string, role: UserRole) => {
+    const updatedUsers = await setUserRole(userId, role);
     setAllUsers(updatedUsers);
     const currentUser = await getUser();
     if (currentUser) setUser(currentUser);
@@ -168,14 +185,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
       removeCard,
       updateQuantity,
       createListing,
-      deleteListing,
+      deleteListing: handleDeleteListing,
       grantPremium: handleGrantPremium,
       revokePremium: handleRevokePremium,
+      changeUserRole: handleChangeUserRole,
       refreshData: loadData,
       isStaff,
       isAdminUser,
+      isSuperadminUser: superadminFlag,
     }),
-    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, deleteListing, handleGrantPremium, handleRevokePremium, loadData, isStaff, isAdminUser]
+    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, loadData, isStaff, isAdminUser, superadminFlag]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

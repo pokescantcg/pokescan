@@ -23,7 +23,7 @@ export default function AdminLoginScreen() {
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
   const { adminLogin } = useUser();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -31,19 +31,19 @@ export default function AdminLoginScreen() {
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   const handleLogin = async () => {
-    if (!username.trim() || !password.trim()) {
-      Alert.alert("Missing Fields", "Please enter both username and password.");
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Missing Fields", "Please enter both email and password.");
       return;
     }
     setIsSubmitting(true);
     try {
-      const success = await adminLogin(username.trim(), password.trim());
+      const success = await adminLogin(email.trim(), password.trim());
       if (success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.replace("/admin-panel");
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("Access Denied", "Invalid admin or moderator credentials.");
+        Alert.alert("Access Denied", "Invalid superadmin credentials.");
       }
     } catch (e) {
       Alert.alert("Error", "Login failed. Please try again.");
@@ -72,24 +72,25 @@ export default function AdminLoginScreen() {
         >
           <Ionicons name="shield-checkmark" size={36} color="#FFF" />
         </LinearGradient>
-        <Text style={[styles.title, { color: colors.text }]}>Staff Login</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Superadmin Login</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Admin and moderator access only
+          Owner access only
         </Text>
 
         <View style={styles.form}>
           <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Username</Text>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Email</Text>
             <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Ionicons name="person-outline" size={18} color={colors.textMuted} />
+              <Ionicons name="mail-outline" size={18} color={colors.textMuted} />
               <TextInput
                 style={[styles.input, { color: colors.text }]}
-                placeholder="Staff username"
+                placeholder="Enter email address"
                 placeholderTextColor={colors.textMuted}
-                value={username}
-                onChangeText={setUsername}
+                value={email}
+                onChangeText={setEmail}
                 autoCapitalize="none"
                 autoCorrect={false}
+                keyboardType="email-address"
               />
             </View>
           </View>
@@ -134,7 +135,7 @@ export default function AdminLoginScreen() {
             >
               <Ionicons name="shield-checkmark" size={18} color="#FFF" />
               <Text style={styles.submitBtnText}>
-                {isSubmitting ? "Authenticating..." : "Staff Sign In"}
+                {isSubmitting ? "Authenticating..." : "Sign In"}
               </Text>
             </LinearGradient>
           </Pressable>
@@ -143,7 +144,7 @@ export default function AdminLoginScreen() {
         <View style={[styles.infoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
           <Text style={[styles.infoText, { color: colors.textMuted }]}>
-            This area is restricted to authorised staff members. Unauthorised access attempts are logged.
+            This area is restricted to the app owner. Unauthorised access attempts are logged.
           </Text>
         </View>
       </View>
