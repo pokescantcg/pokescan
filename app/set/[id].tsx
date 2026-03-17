@@ -17,6 +17,31 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { fetchSetCards, PokemonCard, getUKPrice, formatGBP } from "@/lib/pokemon-api";
+import { CachedCard } from "@/lib/card-cache";
+
+function cachedToPokemonCard(c: CachedCard): PokemonCard {
+  return {
+    id: c.id,
+    name: c.name,
+    number: c.number,
+    supertype: c.supertype || "Pokémon",
+    rarity: c.rarity,
+    types: c.types,
+    hp: c.hp,
+    artist: c.artist,
+    set: {
+      id: c.setId,
+      name: c.setName,
+      series: "",
+      printedTotal: 0,
+      total: 0,
+      releaseDate: "",
+      updatedAt: "",
+      images: { symbol: "", logo: "" },
+    },
+    images: { small: c.imageSmall, large: c.imageLarge },
+  };
+}
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const NUM_COLS = 3;
@@ -87,17 +112,37 @@ export default function SetDetailScreen() {
     setIsLoading(true);
     setAllCards([]);
     setPage(1);
-    fetchSetCards(id as string, 1)
-      .then((result) => {
-        if (cancelled) return;
-        setAllCards(result.cards);
-        setTotalCount(result.totalCount);
-        setHasMore(result.cards.length < result.totalCount);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
+
+    const load = async () => {
+      // On mobile, check the local device cache first — instant if already downloaded
+      if (Platform.OS !== "web") {
+        try {
+          const { getSetCardsFromCache } = await import("@/lib/card-cache");
+          const cached = await getSetCardsFromCache(id as string);
+          if (!cancelled && cached.length > 0) {
+            const cards = cached.map(cachedToPokemonCard);
+            setAllCards(cards);
+            setTotalCount(cards.length);
+            setHasMore(false);
+            setIsLoading(false);
+            return;
+          }
+        } catch {}
+      }
+
+      // Fall back to the server API (DB or live TCG API)
+      try {
+        const result = await fetchSetCards(id as string, 1);
+        if (!cancelled) {
+          setAllCards(result.cards);
+          setTotalCount(result.totalCount);
+          setHasMore(result.cards.length < result.totalCount);
+        }
+      } catch {}
+      if (!cancelled) setIsLoading(false);
+    };
+
+    load();
     return () => { cancelled = true; };
   }, [id]);
 

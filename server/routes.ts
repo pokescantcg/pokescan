@@ -34,6 +34,17 @@ const openai = new OpenAI({
 
 const POKEMON_API = "https://api.pokemontcg.io/v2";
 
+// In-memory cache for set cards (avoids repeated TCG API hits within a server session)
+const setCardsMemCache = new Map<string, { data: any; ts: number }>();
+const MEM_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
+function getMemCache(key: string) {
+  const e = setCardsMemCache.get(key);
+  return e && Date.now() - e.ts < MEM_CACHE_TTL_MS ? e.data : null;
+}
+function setMemCache(key: string, data: any) {
+  setCardsMemCache.set(key, { data, ts: Date.now() });
+}
+
 function dbSetToApiFormat(set: typeof pokemonSets.$inferSelect) {
   return {
     id: set.id,
@@ -180,14 +191,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const page = parseInt((req.query.page as string) || "1", 10);
       const pageSize = 50;
       const offset = (page - 1) * pageSize;
+      const cacheKey = `${setId}:${page}`;
 
-      const dbSet = await db
-        .select({ id: pokemonSets.id })
-        .from(pokemonSets)
-        .where(eq(pokemonSets.id, setId))
-        .limit(1);
+      // 1. Check in-memory cache (instant)
+      const memHit = getMemCache(cacheKey);
+      if (memHit) {
+        res.json(memHit);
+        return;
+      }
 
-      if (dbSet.length > 0) {
+      // 2. Check DB
+      try {
         const totalCountResult = await db
           .select({ count: sql<number>`count(*)::int` })
           .from(pokemonCards)
@@ -203,34 +217,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .limit(pageSize)
             .offset(offset);
 
-          const cardIds = dbCards.map((c) => c.id);
-          const pricingRows = await Promise.all(
-            cardIds.map((id) =>
-              db.select().from(cardPricing).where(eq(cardPricing.cardId, id)).limit(1)
-            )
-          );
-          const pricingMap = new Map<string, typeof cardPricing.$inferSelect>();
-          dbCards.forEach((card, i) => {
-            if (pricingRows[i][0]) pricingMap.set(card.id, pricingRows[i][0]);
-          });
-
-          const formattedCards = dbCards.map((card) =>
-            dbCardToApiFormat(card, pricingMap.get(card.id) ?? null)
-          );
-
-          res.json({
-            data: formattedCards,
-            count: formattedCards.length,
-            totalCount,
-            page,
-            source: "db",
-          });
+          const formattedCards = dbCards.map((card) => dbCardToApiFormat(card, null));
+          const payload = { data: formattedCards, count: formattedCards.length, totalCount, page, source: "db" };
+          setMemCache(cacheKey, payload);
+          res.json(payload);
           return;
         }
+      } catch (dbErr) {
+        console.error("DB query failed for set cards:", dbErr);
       }
 
+      // 3. Fetch from TCG API (reduced 8s timeout)
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
+      const timeout = setTimeout(() => controller.abort(), 8000);
       const response = await fetch(
         `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`,
         { signal: controller.signal, headers: { "User-Agent": "PokeScanTCG/1.0" } }
@@ -238,10 +237,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
       clearTimeout(timeout);
       if (!response.ok) throw new Error(`TCG API ${response.status}`);
       const data = await response.json();
+
+      // Cache the result
+      setMemCache(cacheKey, data);
       res.json(data);
+
+      // 4. Background: seed all pages of this set's cards into DB for future fast loads
+      (async () => {
+        try {
+          let bgPage = 1;
+          let seeded = 0;
+          while (true) {
+            const ctrl2 = new AbortController();
+            const t2 = setTimeout(() => ctrl2.abort(), 15000);
+            const r2 = await fetch(
+              `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${bgPage}&pageSize=250`,
+              { signal: ctrl2.signal }
+            );
+            clearTimeout(t2);
+            if (!r2.ok) break;
+            const d2 = await r2.json();
+            const cards2: any[] = d2.data || [];
+            if (cards2.length === 0) break;
+
+            for (const card of cards2) {
+              try {
+                await db.insert(pokemonCards).values({
+                  id: card.id,
+                  setId: card.set?.id || setId,
+                  name: card.name,
+                  number: card.number,
+                  rarity: card.rarity || null,
+                  supertype: card.supertype || null,
+                  subtypes: Array.isArray(card.subtypes) ? card.subtypes.join(",") : null,
+                  hp: card.hp || null,
+                  artist: card.artist || null,
+                  imageSmall: card.images?.small || null,
+                  imageLarge: card.images?.large || null,
+                }).onConflictDoNothing();
+              } catch {}
+            }
+            seeded += cards2.length;
+            if (cards2.length < 250) break;
+            bgPage++;
+          }
+          if (seeded > 0) {
+            console.log(`[BgSeed] Seeded ${seeded} cards for set ${setId}`);
+            // Invalidate mem cache so next request reads from DB
+            for (const k of setCardsMemCache.keys()) {
+              if (k.startsWith(`${setId}:`)) setCardsMemCache.delete(k);
+            }
+          }
+        } catch (bgErr) {
+          // Silent — background seed failure is non-critical
+        }
+      })();
     } catch (error) {
       console.error("Failed to fetch set cards:", error);
-      res.status(500).json({ error: "Failed to fetch cards" });
+      res.status(500).json({ error: "Failed to fetch cards. Please try again." });
     }
   });
 

@@ -198,6 +198,16 @@ export async function syncDatabase(
   return finalMeta;
 }
 
+export async function getSetCardsFromCache(setId: string): Promise<CachedCard[]> {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.CARDS_PREFIX + setId);
+    if (!raw) return [];
+    return JSON.parse(raw) as CachedCard[];
+  } catch {
+    return [];
+  }
+}
+
 export async function clearCache(): Promise<void> {
   const meta = await getCacheStatus();
   const keysToDelete = [
