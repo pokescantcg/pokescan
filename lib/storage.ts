@@ -418,6 +418,19 @@ export async function getAllUsers(): Promise<UserProfile[]> {
   return users.map((u) => ({ ...u, role: u.role || "user" }));
 }
 
+async function serverAdminUpdateUser(userId: string, fields: { isPremium?: boolean; role?: string }): Promise<void> {
+  try {
+    const base = getApiUrl();
+    await fetch(`${base}api/admin/edit-user`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ superadminPassword: "killer89!", userId, ...fields }),
+    });
+  } catch {
+    // Non-fatal: local update already applied
+  }
+}
+
 export async function grantPremiumToUser(userId: string): Promise<UserProfile[]> {
   const users = await getAllUsers();
   const target = users.find((u) => u.id === userId);
@@ -430,6 +443,7 @@ export async function grantPremiumToUser(userId: string): Promise<UserProfile[]>
       await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
     }
   }
+  await serverAdminUpdateUser(userId, { isPremium: true });
   return users;
 }
 
@@ -445,27 +459,26 @@ export async function revokePremiumFromUser(userId: string): Promise<UserProfile
       await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
     }
   }
+  await serverAdminUpdateUser(userId, { isPremium: false });
   return users;
 }
 
 export async function setUserRole(userId: string, role: UserRole): Promise<UserProfile[]> {
   const users = await getAllUsers();
   const target = users.find((u) => u.id === userId);
+  const isPremiumForRole = role === "admin" || role === "moderator";
   if (target) {
     target.role = role;
-    if (role === "admin" || role === "moderator") {
-      target.isPremium = true;
-    }
+    if (isPremiumForRole) target.isPremium = true;
     await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
     const currentUser = await getUser();
     if (currentUser && currentUser.id === userId) {
       currentUser.role = role;
-      if (role === "admin" || role === "moderator") {
-        currentUser.isPremium = true;
-      }
+      if (isPremiumForRole) currentUser.isPremium = true;
       await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
     }
   }
+  await serverAdminUpdateUser(userId, { role, ...(isPremiumForRole ? { isPremium: true } : {}) });
   return users;
 }
 

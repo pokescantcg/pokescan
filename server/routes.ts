@@ -1163,7 +1163,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   // Superadmin-authenticated user edit endpoint (no session token needed)
   app.patch("/api/admin/edit-user", async (req: Request, res: Response) => {
     try {
-      const { superadminPassword, userId, displayName, email, mobileNumber, password } = req.body;
+      const { superadminPassword, userId, displayName, email, mobileNumber, password, isPremium, role } = req.body;
       if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
         res.status(403).json({ error: "Forbidden" });
         return;
@@ -1176,6 +1176,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       if (displayName !== undefined && displayName.trim()) profileUpdates.displayName = displayName.trim();
       if (email !== undefined && email.trim()) profileUpdates.email = email.trim().toLowerCase();
       if (mobileNumber !== undefined) profileUpdates.mobileNumber = mobileNumber.trim();
+      if (isPremium !== undefined) profileUpdates.isPremium = isPremium;
+      if (role !== undefined) profileUpdates.role = role;
 
       if (Object.keys(profileUpdates).length === 0 && !password) {
         res.status(400).json({ error: "No fields to update" });
