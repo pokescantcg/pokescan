@@ -637,10 +637,18 @@ export default function AdminPanelScreen() {
     isAdminUser,
     isSuperadminUser,
     logout,
+    refreshUsers,
   } = useUser();
   const [activeTab, setActiveTab] = useState<Tab>("listings");
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
+
+  const handleRefreshUsers = useCallback(async () => {
+    setIsRefreshingUsers(true);
+    await refreshUsers();
+    setIsRefreshingUsers(false);
+  }, [refreshUsers]);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
@@ -929,26 +937,45 @@ export default function AdminPanelScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         >
-          {isSuperadminUser && (
+          <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
+            {isSuperadminUser && (
+              <Pressable
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  backgroundColor: "#CC0000",
+                  borderRadius: 12,
+                  paddingVertical: 12,
+                }}
+                onPress={() => setShowCreateUser(true)}
+              >
+                <Ionicons name="person-add-outline" size={18} color="#FFF" />
+                <Text style={{ fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" }}>
+                  Create Account
+                </Text>
+              </Pressable>
+            )}
             <Pressable
               style={{
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 8,
-                backgroundColor: "#CC0000",
+                gap: 6,
+                backgroundColor: colors.card,
                 borderRadius: 12,
                 paddingVertical: 12,
-                marginBottom: 16,
+                paddingHorizontal: 16,
+                opacity: isRefreshingUsers ? 0.6 : 1,
               }}
-              onPress={() => setShowCreateUser(true)}
+              onPress={handleRefreshUsers}
+              disabled={isRefreshingUsers}
             >
-              <Ionicons name="person-add-outline" size={18} color="#FFF" />
-              <Text style={{ fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" }}>
-                Create Account
-              </Text>
+              <Ionicons name={isRefreshingUsers ? "hourglass-outline" : "refresh-outline"} size={18} color={colors.text} />
             </Pressable>
-          )}
+          </View>
 
           {staffUsers.length > 0 && (
             <>

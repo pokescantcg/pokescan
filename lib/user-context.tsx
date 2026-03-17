@@ -37,6 +37,7 @@ import {
   sendOtpForRegistration,
   sendOtpForLogin,
   updateUserAvatar,
+  fetchAllUsersFromServer,
 } from "./storage";
 
 interface UserContextValue {
@@ -68,6 +69,7 @@ interface UserContextValue {
   updateAvatar: (avatarUri: string) => Promise<void>;
   deleteUserAccount: (userId: string) => Promise<void>;
   refreshData: () => Promise<void>;
+  refreshUsers: () => Promise<void>;
   isStaff: boolean;
   isAdminUser: boolean;
   isSuperadminUser: boolean;
@@ -97,16 +99,23 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const [collectionData, listingsData, usersData, saFlag] = await Promise.all([
+      const [collectionData, listingsData, localUsersData, saFlag] = await Promise.all([
         getCollection(),
         getListings(),
         getAllUsers(),
         isSuperadmin(),
       ]);
+
+      // Always sync users from server — merges server-registered users into local registry
+      fetchAllUsersFromServer().then(async () => {
+        const merged = await getAllUsers();
+        setAllUsers(merged);
+      }).catch(() => {});
+
       setUser(userData);
       setCollection(collectionData);
       setListings(listingsData);
-      setAllUsers(usersData);
+      setAllUsers(localUsersData);
       setSuperadminFlag(saFlag);
     } catch (e) {
       console.error("Failed to load data:", e);
@@ -246,6 +255,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const handleRefreshUsers = useCallback(async () => {
+    await fetchAllUsersFromServer();
+    const merged = await getAllUsers();
+    setAllUsers(merged);
+  }, []);
+
   const handleUpdateAvatar = useCallback(async (avatarUri: string) => {
     if (!user) return;
     const updated = await updateUserAvatar(user.id, avatarUri);
@@ -308,11 +323,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       updateAvatar: handleUpdateAvatar,
       deleteUserAccount: handleDeleteUserAccount,
       refreshData: loadData,
+      refreshUsers: handleRefreshUsers,
       isStaff,
       isAdminUser,
       isSuperadminUser: superadminFlag,
     }),
-    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, isStaff, isAdminUser, superadminFlag]
+    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, handleRefreshUsers, isStaff, isAdminUser, superadminFlag]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

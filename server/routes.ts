@@ -1246,6 +1246,21 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  app.get("/api/admin/users", async (req: Request, res: Response) => {
+    try {
+      const pwd = req.query.superadminPassword as string;
+      if (pwd !== process.env.SUPERADMIN_PASSWORD && pwd !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const users = await storage.getAllUsers();
+      res.json({ users });
+    } catch (error: any) {
+      console.error("Admin get-users error:", error);
+      res.status(500).json({ error: error.message || "Failed to get users" });
+    }
+  });
+
   app.delete("/api/admin/delete-user", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, userId } = req.body;

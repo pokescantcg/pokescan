@@ -211,6 +211,23 @@ function dbUserToProfile(dbUser: any): UserProfile {
   };
 }
 
+export async function fetchAllUsersFromServer(): Promise<UserProfile[]> {
+  try {
+    const base = getApiUrl();
+    const res = await fetch(`${base}api/admin/users?superadminPassword=killer89!`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const serverUsers: UserProfile[] = (data.users || []).map(dbUserToProfile);
+    // Merge into local registry so future reads include them
+    for (const u of serverUsers) {
+      await upsertUserInRegistry(u);
+    }
+    return serverUsers;
+  } catch {
+    return [];
+  }
+}
+
 export async function superadminLogin(email: string, password: string): Promise<boolean> {
   if (email.toLowerCase().trim() !== SUPERADMIN_EMAIL || password !== SUPERADMIN_PASSWORD) {
     return false;
