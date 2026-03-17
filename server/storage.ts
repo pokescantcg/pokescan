@@ -21,6 +21,7 @@ export interface DbUser {
 
 export interface IStorage {
   createUser(user: Omit<DbUser, "id" | "createdAt">): Promise<DbUser>;
+  importUser(user: Omit<DbUser, "createdAt"> & { passwordHash?: string | null }): Promise<{ status: "created" | "skipped" }>;
   getUserById(id: string): Promise<DbUser | null>;
   getUserByEmail(email: string): Promise<DbUser | null>;
   getUserByMobile(mobile: string): Promise<DbUser | null>;
@@ -55,6 +56,21 @@ export class PgStorage implements IStorage {
       ]
     );
     return mapRow(result.rows[0]);
+  }
+
+  async importUser(user: Omit<DbUser, "createdAt"> & { passwordHash?: string | null }): Promise<{ status: "created" | "skipped" }> {
+    // Skip if email already exists
+    const existing = await pool.query("SELECT id FROM pokescan_users WHERE email = $1", [user.email.toLowerCase().trim()]);
+    if (existing.rows.length > 0) return { status: "skipped" };
+    await pool.query(
+      `INSERT INTO pokescan_users (id, username, display_name, email, mobile_number, password_hash, auth_provider, is_premium, role, avatar_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (email) DO NOTHING`,
+      [user.id, user.username.toLowerCase().trim(), user.displayName.trim(), user.email.toLowerCase().trim(),
+       user.mobileNumber?.trim() || "", user.passwordHash || null, user.authProvider || "local",
+       user.isPremium || false, user.role || "user", user.avatarUrl || null]
+    );
+    return { status: "created" };
   }
 
   async getUserById(id: string): Promise<DbUser | null> {
