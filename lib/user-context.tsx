@@ -24,6 +24,7 @@ import {
   grantPremiumToUser,
   revokePremiumFromUser,
   setUserRole,
+  adminUpdateUser,
   isAdminOrMod,
   isAdmin,
   restoreSession,
@@ -56,6 +57,7 @@ interface UserContextValue {
   grantPremium: (userId: string) => Promise<void>;
   revokePremium: (userId: string) => Promise<void>;
   changeUserRole: (userId: string, role: UserRole) => Promise<void>;
+  editUserAccount: (userId: string, updates: { displayName?: string; email?: string; mobileNumber?: string }) => Promise<void>;
   refreshData: () => Promise<void>;
   isStaff: boolean;
   isAdminUser: boolean;
@@ -205,6 +207,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const handleEditUserAccount = useCallback(async (targetUserId: string, updates: { displayName?: string; email?: string; mobileNumber?: string }) => {
+    const updatedUsers = await adminUpdateUser(targetUserId, updates);
+    setAllUsers(updatedUsers);
+    setUser((prev) => {
+      if (prev && prev.id === targetUserId) return { ...prev, ...updates };
+      return prev;
+    });
+  }, []);
+
   const handleChangeUserRole = useCallback(async (targetUserId: string, role: UserRole) => {
     const updatedUsers = await setUserRole(targetUserId, role);
     setAllUsers(updatedUsers);
@@ -246,12 +257,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
       grantPremium: handleGrantPremium,
       revokePremium: handleRevokePremium,
       changeUserRole: handleChangeUserRole,
+      editUserAccount: handleEditUserAccount,
       refreshData: loadData,
       isStaff,
       isAdminUser,
       isSuperadminUser: superadminFlag,
     }),
-    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, loadData, isStaff, isAdminUser, superadminFlag]
+    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, loadData, isStaff, isAdminUser, superadminFlag]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

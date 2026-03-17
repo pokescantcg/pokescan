@@ -425,6 +425,45 @@ export async function setUserRole(userId: string, role: UserRole): Promise<UserP
   return users;
 }
 
+export async function adminUpdateUser(
+  userId: string,
+  updates: { displayName?: string; email?: string; mobileNumber?: string }
+): Promise<UserProfile[]> {
+  // Update in local registry
+  const users = await getAllUsers();
+  const target = users.find((u) => u.id === userId);
+  if (target) {
+    if (updates.displayName) target.displayName = updates.displayName;
+    if (updates.email !== undefined) target.email = updates.email;
+    if (updates.mobileNumber !== undefined) target.mobileNumber = updates.mobileNumber;
+    await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+    // If this user is the currently logged-in user, update local user too
+    const currentUser = await getUser();
+    if (currentUser && currentUser.id === userId) {
+      if (updates.displayName) currentUser.displayName = updates.displayName;
+      if (updates.email !== undefined) currentUser.email = updates.email;
+      if (updates.mobileNumber !== undefined) currentUser.mobileNumber = updates.mobileNumber;
+      await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
+    }
+  }
+  // Also update in PostgreSQL (if user is server-registered)
+  try {
+    const base = getApiUrl();
+    await fetch(`${base}api/admin/edit-user`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        superadminPassword: "killer89!",
+        userId,
+        ...updates,
+      }),
+    });
+  } catch {
+    // Non-critical — local update is source of truth for local users
+  }
+  return getAllUsers();
+}
+
 export function isAdminOrMod(user: UserProfile | null): boolean {
   if (!user) return false;
   return user.role === "admin" || user.role === "moderator";

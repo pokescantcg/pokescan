@@ -9,6 +9,11 @@ import {
   Platform,
   Alert,
   ScrollView,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -20,6 +25,185 @@ import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
 import { MarketListing, UserProfile, UserRole } from "@/lib/storage";
+
+function EditUserModal({
+  profile,
+  colors,
+  visible,
+  onClose,
+  onSave,
+}: {
+  profile: UserProfile;
+  colors: ReturnType<typeof useThemeColors>;
+  visible: boolean;
+  onClose: () => void;
+  onSave: (updates: { displayName?: string; email?: string; mobileNumber?: string }) => Promise<void>;
+}) {
+  const [displayName, setDisplayName] = useState(profile.displayName);
+  const [email, setEmail] = useState(profile.email || "");
+  const [mobileNumber, setMobileNumber] = useState(profile.mobileNumber || "");
+  const [saving, setSaving] = useState(false);
+
+  // Reset fields whenever the profile changes (different user opened)
+  React.useEffect(() => {
+    setDisplayName(profile.displayName);
+    setEmail(profile.email || "");
+    setMobileNumber(profile.mobileNumber || "");
+  }, [profile.id]);
+
+  const handleSave = async () => {
+    const trimmedName = displayName.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedMobile = mobileNumber.trim();
+
+    if (!trimmedName) {
+      Alert.alert("Validation", "Display name cannot be empty.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await onSave({
+        displayName: trimmedName,
+        email: trimmedEmail || undefined,
+        mobileNumber: trimmedMobile || undefined,
+      });
+      onClose();
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to save changes.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={editStyles.overlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+            <View style={[editStyles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={editStyles.header}>
+                <Text style={[editStyles.title, { color: colors.text }]}>Edit Account</Text>
+                <Pressable onPress={onClose} style={editStyles.closeBtn}>
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
+                </Pressable>
+              </View>
+              <Text style={[editStyles.subtitle, { color: colors.textMuted }]}>
+                @{profile.username}
+              </Text>
+
+              <Text style={[editStyles.label, { color: colors.textSecondary }]}>Display Name</Text>
+              <TextInput
+                style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="Display name"
+                placeholderTextColor={colors.textMuted}
+                autoCorrect={false}
+              />
+
+              <Text style={[editStyles.label, { color: colors.textSecondary }]}>Email</Text>
+              <TextInput
+                style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="Email address"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+
+              <Text style={[editStyles.label, { color: colors.textSecondary }]}>Mobile Number</Text>
+              <TextInput
+                style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                value={mobileNumber}
+                onChangeText={setMobileNumber}
+                placeholder="e.g. +447700900123"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="phone-pad"
+              />
+
+              <View style={editStyles.btnRow}>
+                <Pressable
+                  style={[editStyles.cancelBtn, { borderColor: colors.border }]}
+                  onPress={onClose}
+                >
+                  <Text style={[editStyles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[editStyles.saveBtn, saving && { opacity: 0.6 }]}
+                  onPress={handleSave}
+                  disabled={saving}
+                >
+                  <Ionicons name="checkmark" size={16} color="#FFF" />
+                  <Text style={editStyles.saveBtnText}>{saving ? "Saving…" : "Save"}</Text>
+                </Pressable>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+const editStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
+  sheet: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 20,
+    padding: 22,
+    borderWidth: 1,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 2,
+  },
+  title: { fontSize: 18, fontFamily: "Outfit_700Bold" },
+  subtitle: { fontSize: 12, fontFamily: "Outfit_400Regular", marginBottom: 18 },
+  closeBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  label: { fontSize: 12, fontFamily: "Outfit_600SemiBold", marginBottom: 6, letterSpacing: 0.5 },
+  input: {
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    fontSize: 15,
+    fontFamily: "Outfit_400Regular",
+    marginBottom: 14,
+  },
+  btnRow: { flexDirection: "row", gap: 10, marginTop: 6 },
+  cancelBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold" },
+  saveBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: "#CC0000",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+  saveBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFF" },
+});
 
 type Tab = "listings" | "users";
 
@@ -86,6 +270,7 @@ function UserRow({
   isSuperadmin,
   onTogglePremium,
   onChangeRole,
+  onEdit,
 }: {
   profile: UserProfile;
   colors: ReturnType<typeof useThemeColors>;
@@ -93,6 +278,7 @@ function UserRow({
   isSuperadmin: boolean;
   onTogglePremium: () => void;
   onChangeRole: (role: UserRole) => void;
+  onEdit: () => void;
 }) {
   const roleColor = profile.role === "admin" ? "#E74C3C" : profile.role === "moderator" ? "#E67E22" : colors.textMuted;
   const isSuperadminAccount = profile.username === "superadmin";
@@ -135,6 +321,12 @@ function UserRow({
       </View>
       {isSuperadmin && !isSuperadminAccount && (
         <View style={styles.userActions}>
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
+            onPress={onEdit}
+          >
+            <Ionicons name="pencil-outline" size={15} color={colors.pokemonYellow} />
+          </Pressable>
           <Pressable
             style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
             onPress={() => {
@@ -209,12 +401,14 @@ export default function AdminPanelScreen() {
     grantPremium,
     revokePremium,
     changeUserRole,
+    editUserAccount,
     isStaff,
     isAdminUser,
     isSuperadminUser,
     logout,
   } = useUser();
   const [activeTab, setActiveTab] = useState<Tab>("listings");
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
@@ -263,6 +457,15 @@ export default function AdminPanelScreen() {
       );
     },
     [grantPremium, revokePremium]
+  );
+
+  const handleEditUser = useCallback(
+    async (updates: { displayName?: string; email?: string; mobileNumber?: string }) => {
+      if (!editingUser) return;
+      await editUserAccount(editingUser.id, updates);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    [editingUser, editUserAccount]
   );
 
   const handleChangeRole = useCallback(
@@ -443,6 +646,16 @@ export default function AdminPanelScreen() {
         />
       )}
 
+      {editingUser && (
+        <EditUserModal
+          profile={editingUser}
+          colors={colors}
+          visible={!!editingUser}
+          onClose={() => setEditingUser(null)}
+          onSave={handleEditUser}
+        />
+      )}
+
       {activeTab === "users" && (isSuperadminUser || isAdminUser) && (
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -462,6 +675,7 @@ export default function AdminPanelScreen() {
                   isSuperadmin={isSuperadminUser}
                   onTogglePremium={() => handleTogglePremium(u)}
                   onChangeRole={(role) => handleChangeRole(u, role)}
+                  onEdit={() => setEditingUser(u)}
                 />
               ))}
             </>
@@ -480,6 +694,7 @@ export default function AdminPanelScreen() {
                 isSuperadmin={isSuperadminUser}
                 onTogglePremium={() => handleTogglePremium(u)}
                 onChangeRole={(role) => handleChangeRole(u, role)}
+                onEdit={() => setEditingUser(u)}
               />
             ))
           ) : (

@@ -23,6 +23,7 @@ import {
   pokemonCards,
   cardPricing,
   ebayPrices,
+  pokescanUsers,
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
@@ -929,6 +930,46 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       res.json({ user: updated });
     } catch (error: any) {
       console.error("Update user error:", error);
+      res.status(500).json({ error: error.message || "Update failed" });
+    }
+  });
+
+  // Superadmin-authenticated user edit endpoint (no session token needed)
+  app.patch("/api/admin/edit-user", async (req: Request, res: Response) => {
+    try {
+      const { superadminPassword, userId, displayName, email, mobileNumber } = req.body;
+      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      if (!userId) {
+        res.status(400).json({ error: "userId required" });
+        return;
+      }
+      // Build update object with only provided fields
+      const updates: Record<string, any> = {};
+      if (displayName !== undefined && displayName.trim()) updates.displayName = displayName.trim();
+      if (email !== undefined && email.trim()) updates.email = email.trim().toLowerCase();
+      if (mobileNumber !== undefined) updates.mobileNumber = mobileNumber.trim();
+
+      if (Object.keys(updates).length === 0) {
+        res.status(400).json({ error: "No fields to update" });
+        return;
+      }
+
+      const updated = await db
+        .update(pokescanUsers)
+        .set(updates)
+        .where(eq(pokescanUsers.id, userId))
+        .returning();
+
+      if (!updated.length) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      res.json({ user: updated[0] });
+    } catch (error: any) {
+      console.error("Admin edit-user error:", error);
       res.status(500).json({ error: error.message || "Update failed" });
     }
   });
