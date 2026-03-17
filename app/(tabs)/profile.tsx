@@ -593,9 +593,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   signInBtnText: { fontSize: 16, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
-<<<<<<< HEAD
-  staffLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20, marginBottom: 24 },
-=======
   loginBtnWrap: {
     marginTop: 10,
     paddingHorizontal: 32,
@@ -605,8 +602,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   loginBtnText: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
-  staffLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20 },
->>>>>>> a107060 (Add secure login and registration flows with OTP verification)
+  staffLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20, marginBottom: 24 },
   staffLinkText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
   versionText: { fontSize: 12, fontFamily: "Outfit_400Regular", textAlign: "center", marginTop: 8 },
 });
