@@ -694,7 +694,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   manualSignupText: { fontSize: 15, fontFamily: "Outfit_600SemiBold" },
-  form: { gap: 16 },
+  form: { gap: 16, width: "100%" },
   inputGroup: { gap: 6 },
   inputLabel: { fontSize: 13, fontFamily: "Outfit_500Medium", paddingLeft: 4 },
   inputBox: {
