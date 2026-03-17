@@ -199,7 +199,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <PokeBackground opacity={colorScheme === "dark" ? 0.055 : 0.045} />
+      <PokeBackground opacity={colorScheme === "dark" ? 0.18 : 0.12} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}

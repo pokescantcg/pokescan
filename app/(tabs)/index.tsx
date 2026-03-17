@@ -293,7 +293,7 @@ export default function BrowseScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <PokeBackground opacity={colorScheme === "dark" ? 0.055 : 0.045} />
+      <PokeBackground opacity={colorScheme === "dark" ? 0.18 : 0.12} />
       <LinearGradient
         colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
         style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}
