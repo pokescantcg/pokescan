@@ -10,6 +10,13 @@ import {
   generateEbaySearchUrl,
   generateEbaySoldUrl,
 } from "./pokecardvalues-scraper";
+import { storage } from "./storage";
+import {
+  createOtp,
+  verifyOtp,
+  sendOtpByEmail,
+  sendOtpBySms,
+} from "./otp-service";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -327,6 +334,267 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     } catch (error: any) {
       console.error("Card identification failed:", error);
       res.status(500).json({ error: error.message || "Failed to identify card" });
+    }
+  });
+
+  app.post("/api/auth/register", async (req: Request, res: Response) => {
+    try {
+      const { username, displayName, email, mobileNumber } = req.body;
+      if (!username || !displayName || !email || !mobileNumber) {
+        res.status(400).json({ error: "All fields are required" });
+        return;
+      }
+      const existingEmail = await storage.getUserByEmail(email);
+      if (existingEmail) {
+        res.status(409).json({ error: "An account with this email already exists" });
+        return;
+      }
+      const existingUsername = await storage.getUserByUsername(username);
+      if (existingUsername) {
+        res.status(409).json({ error: "Username is already taken" });
+        return;
+      }
+      const existingMobile = await storage.getUserByMobile(mobileNumber);
+      if (existingMobile) {
+        res.status(409).json({ error: "An account with this mobile number already exists" });
+        return;
+      }
+      const user = await storage.createUser({
+        username: username.toLowerCase().trim(),
+        displayName: displayName.trim(),
+        email: email.toLowerCase().trim(),
+        mobileNumber: mobileNumber.trim(),
+        authProvider: "local",
+        isPremium: false,
+        role: "user",
+        avatarUrl: null,
+      });
+      res.json({ userId: user.id, message: "Account created. Please verify with OTP." });
+    } catch (error: any) {
+      console.error("Register error:", error);
+      res.status(500).json({ error: error.message || "Registration failed" });
+    }
+  });
+
+  app.post("/api/auth/send-otp", async (req: Request, res: Response) => {
+    try {
+      const { credential, channel } = req.body;
+      if (!credential || !channel) {
+        res.status(400).json({ error: "credential and channel are required" });
+        return;
+      }
+      if (channel !== "email" && channel !== "sms") {
+        res.status(400).json({ error: "channel must be 'email' or 'sms'" });
+        return;
+      }
+
+      let user = null;
+      if (channel === "email") {
+        user = await storage.getUserByEmail(credential);
+      } else {
+        user = await storage.getUserByMobile(credential);
+        if (!user) {
+          user = await storage.getUserByEmail(credential);
+        }
+      }
+
+      if (!user) {
+        res.status(404).json({ error: "No account found with this credential" });
+        return;
+      }
+
+      const { code, rateLimited } = createOtp(credential);
+      if (rateLimited) {
+        res.status(429).json({ error: "Too many requests. Please wait before requesting another code." });
+        return;
+      }
+      let sent = false;
+      if (channel === "email") {
+        sent = await sendOtpByEmail(user.email, code);
+      } else {
+        sent = await sendOtpBySms(user.mobileNumber, code);
+      }
+
+      if (!sent) {
+        res.status(500).json({ error: "Failed to send verification code" });
+        return;
+      }
+
+      res.json({ message: "Verification code sent", userId: user.id });
+    } catch (error: any) {
+      console.error("Send OTP error:", error);
+      res.status(500).json({ error: error.message || "Failed to send OTP" });
+    }
+  });
+
+  app.post("/api/auth/send-otp-register", async (req: Request, res: Response) => {
+    try {
+      const { userId, channel } = req.body;
+      if (!userId || !channel) {
+        res.status(400).json({ error: "userId and channel are required" });
+        return;
+      }
+
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      let targetCredential: string;
+      let sent = false;
+
+      if (channel === "email") {
+        targetCredential = user.email;
+        const { code, rateLimited } = createOtp(targetCredential);
+        if (rateLimited) {
+          res.status(429).json({ error: "Too many requests. Please wait before requesting another code." });
+          return;
+        }
+        sent = await sendOtpByEmail(user.email, code);
+      } else {
+        targetCredential = user.mobileNumber;
+        const { code, rateLimited } = createOtp(targetCredential);
+        if (rateLimited) {
+          res.status(429).json({ error: "Too many requests. Please wait before requesting another code." });
+          return;
+        }
+        sent = await sendOtpBySms(user.mobileNumber, code);
+      }
+
+      if (!sent) {
+        res.status(500).json({ error: "Failed to send verification code" });
+        return;
+      }
+
+      res.json({ message: "Verification code sent" });
+    } catch (error: any) {
+      console.error("Send OTP register error:", error);
+      res.status(500).json({ error: error.message || "Failed to send OTP" });
+    }
+  });
+
+  app.post("/api/auth/verify-otp", async (req: Request, res: Response) => {
+    try {
+      const { credential, code } = req.body;
+      if (!credential || !code) {
+        res.status(400).json({ error: "credential and code are required" });
+        return;
+      }
+
+      const result = verifyOtp(credential, code);
+      if (!result.valid) {
+        if (result.tooManyAttempts) {
+          res.status(429).json({ error: "Too many incorrect attempts. Please request a new code." });
+          return;
+        }
+        res.status(401).json({ error: result.expired ? "Verification code has expired. Please request a new one." : "Incorrect verification code. Please try again." });
+        return;
+      }
+
+      let user = await storage.getUserByEmail(credential);
+      if (!user) {
+        user = await storage.getUserByMobile(credential);
+      }
+
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      const token = await storage.createSession(user.id);
+      res.json({ token, user });
+    } catch (error: any) {
+      console.error("Verify OTP error:", error);
+      res.status(500).json({ error: error.message || "Verification failed" });
+    }
+  });
+
+  app.post("/api/auth/session", async (req: Request, res: Response) => {
+    try {
+      const { token } = req.body;
+      if (!token) {
+        res.status(400).json({ error: "token is required" });
+        return;
+      }
+      const user = await storage.validateSession(token);
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
+      res.json({ user });
+    } catch (error: any) {
+      console.error("Session validation error:", error);
+      res.status(500).json({ error: error.message || "Session validation failed" });
+    }
+  });
+
+  app.post("/api/auth/logout", async (req: Request, res: Response) => {
+    try {
+      const { token } = req.body;
+      if (token) {
+        await storage.deleteSession(token);
+      }
+      res.json({ message: "Logged out" });
+    } catch (error: any) {
+      console.error("Logout error:", error);
+      res.status(500).json({ error: error.message || "Logout failed" });
+    }
+  });
+
+  app.get("/api/auth/users", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      const session = await storage.validateSession(token);
+      if (!session) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
+      const caller = await storage.getUserById(session.userId);
+      if (!caller || (caller.role !== "admin" && caller.role !== "moderator")) {
+        res.status(403).json({ error: "Insufficient permissions" });
+        return;
+      }
+      const users = await storage.getAllUsers();
+      res.json({ users });
+    } catch (error: any) {
+      console.error("Get users error:", error);
+      res.status(500).json({ error: error.message || "Failed to get users" });
+    }
+  });
+
+  app.put("/api/auth/users/:userId", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) {
+        res.status(401).json({ error: "Authentication required" });
+        return;
+      }
+      const session = await storage.validateSession(token);
+      if (!session) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
+      const caller = await storage.getUserById(session.userId);
+      if (!caller || caller.role !== "admin") {
+        res.status(403).json({ error: "Admin access required" });
+        return;
+      }
+      const { userId } = req.params;
+      const { isPremium, role } = req.body;
+      const updated = await storage.updateUser(userId, { isPremium, role });
+      if (!updated) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      res.json({ user: updated });
+    } catch (error: any) {
+      console.error("Update user error:", error);
+      res.status(500).json({ error: error.message || "Update failed" });
     }
   });
 

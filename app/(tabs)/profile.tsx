@@ -150,6 +150,7 @@ export default function ProfileScreen() {
             <Pressable
               style={styles.signInBtnWrap}
               onPress={() => router.push("/register")}
+              testID="create-account-btn"
             >
               <LinearGradient
                 colors={["#CC0000", "#8B0000"]}
@@ -159,6 +160,13 @@ export default function ProfileScreen() {
               >
                 <Text style={styles.signInBtnText}>Create Account</Text>
               </LinearGradient>
+            </Pressable>
+            <Pressable
+              style={[styles.loginBtnWrap, { borderColor: colors.pokemonRed + "50" }]}
+              onPress={() => router.push("/login")}
+              testID="sign-in-btn"
+            >
+              <Text style={[styles.loginBtnText, { color: colors.pokemonRed }]}>Sign In</Text>
             </Pressable>
             <Pressable
               style={styles.staffLink}
@@ -585,7 +593,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   signInBtnText: { fontSize: 16, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+<<<<<<< HEAD
   staffLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20, marginBottom: 24 },
+=======
+  loginBtnWrap: {
+    marginTop: 10,
+    paddingHorizontal: 32,
+    paddingVertical: 13,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    alignItems: "center",
+  },
+  loginBtnText: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
+  staffLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20 },
+>>>>>>> a107060 (Add secure login and registration flows with OTP verification)
   staffLinkText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
   versionText: { fontSize: 12, fontFamily: "Outfit_400Regular", textAlign: "center", marginTop: 8 },
 });

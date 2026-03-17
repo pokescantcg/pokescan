@@ -6,8 +6,7 @@ import {
   CollectionItem,
   MarketListing,
   getUser,
-  saveUser,
-  registerUser,
+  saveLocalUser,
   registerSocialUser,
   superadminLogin,
   isSuperadmin,
@@ -27,6 +26,11 @@ import {
   setUserRole,
   isAdminOrMod,
   isAdmin,
+  restoreSession,
+  verifyOtpAndLogin,
+  registerUserWithOtp,
+  sendOtpForRegistration,
+  sendOtpForLogin,
 } from "./storage";
 
 interface UserContextValue {
@@ -36,7 +40,10 @@ interface UserContextValue {
   listings: MarketListing[];
   collectionValue: number;
   allUsers: UserProfile[];
-  register: (username: string, displayName: string) => Promise<void>;
+  register: (username: string, displayName: string, email: string, mobileNumber: string) => Promise<{ userId: string }>;
+  sendRegistrationOtp: (userId: string, channel: "email" | "sms") => Promise<void>;
+  sendLoginOtp: (credential: string, channel: "email" | "sms") => Promise<{ userId: string }>;
+  verifyOtp: (credential: string, code: string) => Promise<void>;
   socialRegister: (provider: AuthProvider, displayName: string, email?: string, avatarUrl?: string) => Promise<void>;
   adminLogin: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -67,8 +74,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const loadData = useCallback(async () => {
     try {
-      const [userData, collectionData, listingsData, usersData, saFlag] = await Promise.all([
-        getUser(),
+      let userData: UserProfile | null = null;
+
+      const restoredUser = await restoreSession();
+      if (restoredUser) {
+        userData = restoredUser;
+      } else {
+        const localUser = await getUser();
+        if (localUser && localUser.authProvider !== "local") {
+          userData = localUser;
+        }
+      }
+
+      const [collectionData, listingsData, usersData, saFlag] = await Promise.all([
         getCollection(),
         getListings(),
         getAllUsers(),
@@ -90,8 +108,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
     loadData();
   }, [loadData]);
 
-  const register = useCallback(async (username: string, displayName: string) => {
-    const newUser = await registerUser(username, displayName);
+  const register = useCallback(async (username: string, displayName: string, email: string, mobileNumber: string) => {
+    return registerUserWithOtp(username, displayName, email, mobileNumber);
+  }, []);
+
+  const handleSendRegistrationOtp = useCallback(async (userId: string, channel: "email" | "sms") => {
+    await sendOtpForRegistration(userId, channel);
+  }, []);
+
+  const handleSendLoginOtp = useCallback(async (credential: string, channel: "email" | "sms") => {
+    return sendOtpForLogin(credential, channel);
+  }, []);
+
+  const handleVerifyOtp = useCallback(async (credential: string, code: string) => {
+    const { user: newUser } = await verifyOtpAndLogin(credential, code);
     setUser(newUser);
     const users = await getAllUsers();
     setAllUsers(users);
@@ -125,7 +155,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const handleTogglePremium = useCallback(async () => {
     const updated = await togglePremiumStorage();
-    if (updated) setUser(updated);
+    if (updated) {
+      setUser(updated);
+    } else {
+      setUser((prev) => prev ? { ...prev, isPremium: !prev.isPremium } : prev);
+    }
   }, []);
 
   const addCard = useCallback(async (item: Omit<CollectionItem, "addedAt">) => {
@@ -153,25 +187,34 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setListings(updated);
   }, []);
 
-  const handleGrantPremium = useCallback(async (userId: string) => {
-    const updatedUsers = await grantPremiumToUser(userId);
+  const handleGrantPremium = useCallback(async (targetUserId: string) => {
+    const updatedUsers = await grantPremiumToUser(targetUserId);
     setAllUsers(updatedUsers);
-    const currentUser = await getUser();
-    if (currentUser) setUser(currentUser);
+    setUser((prev) => {
+      if (prev && prev.id === targetUserId) return { ...prev, isPremium: true };
+      return prev;
+    });
   }, []);
 
-  const handleRevokePremium = useCallback(async (userId: string) => {
-    const updatedUsers = await revokePremiumFromUser(userId);
+  const handleRevokePremium = useCallback(async (targetUserId: string) => {
+    const updatedUsers = await revokePremiumFromUser(targetUserId);
     setAllUsers(updatedUsers);
-    const currentUser = await getUser();
-    if (currentUser) setUser(currentUser);
+    setUser((prev) => {
+      if (prev && prev.id === targetUserId) return { ...prev, isPremium: false };
+      return prev;
+    });
   }, []);
 
-  const handleChangeUserRole = useCallback(async (userId: string, role: UserRole) => {
-    const updatedUsers = await setUserRole(userId, role);
+  const handleChangeUserRole = useCallback(async (targetUserId: string, role: UserRole) => {
+    const updatedUsers = await setUserRole(targetUserId, role);
     setAllUsers(updatedUsers);
-    const currentUser = await getUser();
-    if (currentUser) setUser(currentUser);
+    setUser((prev) => {
+      if (prev && prev.id === targetUserId) {
+        const isPremium = role === "admin" || role === "moderator" ? true : prev.isPremium;
+        return { ...prev, role, isPremium };
+      }
+      return prev;
+    });
   }, []);
 
   const collectionValue = useMemo(() => getCollectionValue(collection), [collection]);
@@ -188,6 +231,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
       collectionValue,
       allUsers,
       register,
+      sendRegistrationOtp: handleSendRegistrationOtp,
+      sendLoginOtp: handleSendLoginOtp,
+      verifyOtp: handleVerifyOtp,
       socialRegister: handleSocialRegister,
       adminLogin: handleAdminLogin,
       logout,
@@ -205,7 +251,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       isAdminUser,
       isSuperadminUser: superadminFlag,
     }),
-    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleSocialRegister, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, loadData, isStaff, isAdminUser, superadminFlag]
+    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, loadData, isStaff, isAdminUser, superadminFlag]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

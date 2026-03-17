@@ -73,14 +73,20 @@ Preferred communication style: Simple, everyday language.
 - **In-memory storage**: `server/storage.ts` has a `MemStorage` class implementing user CRUD as a Map — this is placeholder storage
 
 ### Authentication & Authorization
-- **User registration**: Simple client-side registration stored in AsyncStorage (no server-side auth yet)
+- **User registration (OTP-verified)**: Server-side registration with email/SMS OTP verification. Users register via `app/register.tsx` (3-step: form → channel selection → OTP entry). Data persisted in PostgreSQL `pokescan_users` table
+- **Login (returning users)**: Re-login via `app/login.tsx` (2-step: credential → OTP). Users enter email or mobile number, receive OTP, and verify to get a session token
+- **Session management**: Secure session tokens stored via `expo-secure-store` (native) with AsyncStorage fallback (web). Sessions persisted in PostgreSQL `pokescan_sessions` table. Auto-restored on app launch
+- **OTP service** (`server/otp-service.ts`): In-memory OTP store with rate limiting (3 requests/minute per credential), attempt tracking (5 max attempts per code), 10-minute expiry, and auto-cleanup
+- **Email delivery**: Via nodemailer (requires `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` env vars). Falls back to console logging in dev mode
+- **SMS delivery**: Via Twilio (requires `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` env vars). Not yet configured — falls back to console logging in dev mode. User declined Replit Twilio integration; manual credential setup needed later
 - **Roles**: Three roles defined in `UserProfile.role` — `user`, `moderator`, `admin`
-- **Superadmin**: Single owner account with hardcoded credentials (email: richiett17@hotmail.com). Login via "Superadmin Login" link on Profile tab. Creates a special `superadmin` user with admin role and OWNER badge
+- **Superadmin**: Single owner account with hardcoded credentials (email: richiett17@hotmail.com). Login via "Superadmin Login" link on Profile tab. Creates a special `superadmin` user with admin role and OWNER badge. Uses local AsyncStorage (unchanged)
 - **Role assignment**: Only the superadmin can assign roles to regular users from the admin panel Users tab. Three role options: Regular User, Market Moderator (can moderate listings), Full App Admin (full panel access). Staff (admin/moderator) automatically get premium access when assigned a role
 - **Admin panel** (`app/admin-panel.tsx`): Two tabs — Listings (view/remove any marketplace listing, visible to all staff) and Users (manage roles and premium, visible to superadmin and admins only). Superadmin sees SUPERADMIN badge, others see their role badge
 - **User registry**: All registered users tracked in `pokescan_all_users` AsyncStorage key for admin user management
 - **Premium membership**: Can be granted/revoked by superadmin from admin panel. Staff roles automatically include premium
 - **Staff access from marketplace**: When logged in as admin/moderator, the marketplace tab shows delete buttons on all listings (not just own)
+- **Social auth**: Social login (Google/Apple) still uses client-side AsyncStorage via `registerSocialUser`. Not connected to PostgreSQL backend
 
 ### Build & Deployment
 - **Dev mode**: Two processes — Expo dev server (`expo:dev`) and Express server (`server:dev`)

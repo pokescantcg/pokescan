@@ -1,38 +1,184 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
+import { Pool } from "pg";
 
-// modify the interface with any CRUD methods
-// you might need
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
+export interface DbUser {
+  id: string;
+  username: string;
+  displayName: string;
+  email: string;
+  mobileNumber: string;
+  authProvider: string;
+  isPremium: boolean;
+  role: string;
+  avatarUrl?: string | null;
+  createdAt: string;
+}
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  createUser(user: Omit<DbUser, "id" | "createdAt">): Promise<DbUser>;
+  getUserById(id: string): Promise<DbUser | null>;
+  getUserByEmail(email: string): Promise<DbUser | null>;
+  getUserByMobile(mobile: string): Promise<DbUser | null>;
+  getUserByUsername(username: string): Promise<DbUser | null>;
+  getAllUsers(): Promise<DbUser[]>;
+  updateUser(id: string, fields: Partial<DbUser>): Promise<DbUser | null>;
+  createSession(userId: string): Promise<string>;
+  validateSession(token: string): Promise<DbUser | null>;
+  deleteSession(token: string): Promise<void>;
+  deleteAllUserSessions(userId: string): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
-  }
-
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
+export class PgStorage implements IStorage {
+  async createUser(user: Omit<DbUser, "id" | "createdAt">): Promise<DbUser> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+    const result = await pool.query(
+      `INSERT INTO pokescan_users (id, username, display_name, email, mobile_number, auth_provider, is_premium, role, avatar_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [
+        id,
+        user.username.toLowerCase().trim(),
+        user.displayName.trim(),
+        user.email.toLowerCase().trim(),
+        user.mobileNumber.trim(),
+        user.authProvider || "local",
+        user.isPremium || false,
+        user.role || "user",
+        user.avatarUrl || null,
+      ]
+    );
+    return mapRow(result.rows[0]);
+  }
+
+  async getUserById(id: string): Promise<DbUser | null> {
+    const result = await pool.query(
+      "SELECT * FROM pokescan_users WHERE id = $1",
+      [id]
+    );
+    return result.rows[0] ? mapRow(result.rows[0]) : null;
+  }
+
+  async getUserByEmail(email: string): Promise<DbUser | null> {
+    const result = await pool.query(
+      "SELECT * FROM pokescan_users WHERE email = $1",
+      [email.toLowerCase().trim()]
+    );
+    return result.rows[0] ? mapRow(result.rows[0]) : null;
+  }
+
+  async getUserByMobile(mobile: string): Promise<DbUser | null> {
+    const normalized = normalizeMobile(mobile);
+    const result = await pool.query(
+      "SELECT * FROM pokescan_users WHERE mobile_number = $1 OR mobile_number = $2",
+      [mobile.trim(), normalized]
+    );
+    return result.rows[0] ? mapRow(result.rows[0]) : null;
+  }
+
+  async getUserByUsername(username: string): Promise<DbUser | null> {
+    const result = await pool.query(
+      "SELECT * FROM pokescan_users WHERE username = $1",
+      [username.toLowerCase().trim()]
+    );
+    return result.rows[0] ? mapRow(result.rows[0]) : null;
+  }
+
+  async getAllUsers(): Promise<DbUser[]> {
+    const result = await pool.query(
+      "SELECT * FROM pokescan_users ORDER BY created_at DESC"
+    );
+    return result.rows.map(mapRow);
+  }
+
+  async updateUser(id: string, fields: Partial<DbUser>): Promise<DbUser | null> {
+    const sets: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (fields.isPremium !== undefined) {
+      sets.push(`is_premium = $${idx++}`);
+      values.push(fields.isPremium);
+    }
+    if (fields.role !== undefined) {
+      sets.push(`role = $${idx++}`);
+      values.push(fields.role);
+    }
+    if (fields.avatarUrl !== undefined) {
+      sets.push(`avatar_url = $${idx++}`);
+      values.push(fields.avatarUrl);
+    }
+    if (fields.displayName !== undefined) {
+      sets.push(`display_name = $${idx++}`);
+      values.push(fields.displayName);
+    }
+
+    if (sets.length === 0) return this.getUserById(id);
+
+    values.push(id);
+    const result = await pool.query(
+      `UPDATE pokescan_users SET ${sets.join(", ")} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+    return result.rows[0] ? mapRow(result.rows[0]) : null;
+  }
+
+  async createSession(userId: string): Promise<string> {
+    const token = randomBytes(32).toString("hex");
+    await pool.query(
+      `INSERT INTO pokescan_sessions (token, user_id, expires_at)
+       VALUES ($1, $2, NOW() + INTERVAL '30 days')`,
+      [token, userId]
+    );
+    return token;
+  }
+
+  async validateSession(token: string): Promise<DbUser | null> {
+    const result = await pool.query(
+      `SELECT u.* FROM pokescan_users u
+       JOIN pokescan_sessions s ON s.user_id = u.id
+       WHERE s.token = $1 AND s.expires_at > NOW()`,
+      [token]
+    );
+    return result.rows[0] ? mapRow(result.rows[0]) : null;
+  }
+
+  async deleteSession(token: string): Promise<void> {
+    await pool.query("DELETE FROM pokescan_sessions WHERE token = $1", [token]);
+  }
+
+  async deleteAllUserSessions(userId: string): Promise<void> {
+    await pool.query("DELETE FROM pokescan_sessions WHERE user_id = $1", [userId]);
   }
 }
 
-export const storage = new MemStorage();
+function mapRow(row: any): DbUser {
+  return {
+    id: row.id,
+    username: row.username,
+    displayName: row.display_name,
+    email: row.email,
+    mobileNumber: row.mobile_number,
+    authProvider: row.auth_provider,
+    isPremium: row.is_premium,
+    role: row.role,
+    avatarUrl: row.avatar_url,
+    createdAt: row.created_at?.toISOString?.() ?? row.created_at,
+  };
+}
+
+function normalizeMobile(mobile: string): string {
+  const digits = mobile.replace(/\D/g, "");
+  if (digits.startsWith("0") && digits.length === 11) {
+    return "+44" + digits.slice(1);
+  }
+  if (!mobile.startsWith("+")) {
+    return "+" + digits;
+  }
+  return mobile.trim();
+}
+
+export const storage = new PgStorage();
