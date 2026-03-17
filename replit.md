@@ -20,12 +20,12 @@ Preferred communication style: Simple, everyday language.
 - **Key UI Libraries**: expo-image, expo-linear-gradient, expo-blur, expo-haptics, react-native-reanimated, react-native-gesture-handler
 
 ### Screen Structure
-- `app/(tabs)/index.tsx` — Browse Pokemon card sets
+- `app/(tabs)/index.tsx` — Browse Pokemon card sets (uses TCG API sets via `/api/pokemon/sets`, NOT PCV sets)
 - `app/(tabs)/scanner.tsx` — Search/scan cards (text search + image picker)
 - `app/(tabs)/collection.tsx` — User's card collection with values
 - `app/(tabs)/market.tsx` — Marketplace for trading/selling cards
 - `app/(tabs)/profile.tsx` — User profile, stats, premium toggle
-- `app/set/[id].tsx` — Set detail with card grid
+- `app/set/[id].tsx` — Set detail: 3-column image grid using TCG API cards (complete list with images, infinite scroll, direct navigation to `/card/[id]`). Receives `{ id: tcgSetId, name }` params from Browse tab
 - `app/card/[id].tsx` — Individual card detail with pricing and add-to-collection
 - `app/register.tsx` — User registration modal
 - `app/admin-login.tsx` — Admin/moderator login

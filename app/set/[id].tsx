@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -7,137 +7,124 @@ import {
   Pressable,
   useColorScheme,
   Platform,
-  Alert,
+  ActivityIndicator,
   Dimensions,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQuery } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
-import { fetchPCVSetCards, PCVCard, formatGBP, findCard } from "@/lib/pokemon-api";
+import { fetchSetCards, PokemonCard, getUKPrice, formatGBP } from "@/lib/pokemon-api";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
+const NUM_COLS = 3;
+const H_PAD = 12;
+const GAP = 6;
+const CARD_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - GAP * (NUM_COLS - 1)) / NUM_COLS;
+const CARD_IMG_HEIGHT = CARD_WIDTH * 1.4;
 
-function CardListItem({
+function CardGridItem({
   card,
   colors,
-  onPress,
-  isLoading,
 }: {
-  card: PCVCard;
+  card: PokemonCard;
   colors: ReturnType<typeof useThemeColors>;
-  onPress: () => void;
-  isLoading: boolean;
 }) {
+  const priceData = getUKPrice(card);
+
   return (
     <Pressable
       style={({ pressed }) => [
-        styles.cardItem,
-        { backgroundColor: colors.card, borderColor: colors.borderLight, opacity: pressed || isLoading ? 0.7 : 1 },
+        styles.gridItem,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.borderLight,
+          width: CARD_WIDTH,
+          opacity: pressed ? 0.8 : 1,
+        },
       ]}
-      onPress={onPress}
-      disabled={isLoading}
+      onPress={() => router.push({ pathname: "/card/[id]", params: { id: card.id } })}
     >
-      <View style={styles.cardInfo}>
-        <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={1}>
+      <Image
+        source={{ uri: card.images?.small || "" }}
+        style={[styles.gridImage, { height: CARD_IMG_HEIGHT, width: CARD_WIDTH }]}
+        contentFit="contain"
+        placeholder={{ color: colors.surface }}
+        transition={200}
+      />
+      <View style={styles.gridInfo}>
+        <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={2}>
           {card.name}
         </Text>
-        {card.number ? (
-          <Text style={[styles.cardNumber, { color: colors.textMuted }]}>
-            #{card.number}
+        <Text style={[styles.gridNumber, { color: colors.textMuted }]}>#{card.number}</Text>
+        {priceData.price ? (
+          <Text style={[styles.gridPrice, { color: colors.success }]}>
+            {formatGBP(priceData.price)}
           </Text>
         ) : null}
-        <View style={styles.cardMeta}>
-          {card.holoType ? (
-            <View style={[styles.chip, { backgroundColor: colors.pokemonRed + "15" }]}>
-              <Text style={[styles.chipText, { color: colors.pokemonRed }]}>{card.holoType}</Text>
-            </View>
-          ) : null}
-          {card.rarity ? (
-            <View style={[styles.chip, { backgroundColor: colors.pokemonYellow + "20" }]}>
-              <Text style={[styles.chipText, { color: colors.pokemonYellow }]}>{card.rarity}</Text>
-            </View>
-          ) : null}
-          {card.edition && card.edition !== "Unlimited" ? (
-            <View style={[styles.chip, { backgroundColor: colors.pokemonBlue + "20" }]}>
-              <Text style={[styles.chipText, { color: colors.pokemonBlue }]}>{card.edition}</Text>
-            </View>
-          ) : null}
-        </View>
       </View>
-      <View style={styles.priceCol}>
-        {card.priceGBP !== null ? (
-          <Text style={[styles.price, { color: colors.success }]}>
-            {formatGBP(card.priceGBP)}
-          </Text>
-        ) : (
-          <Text style={[styles.price, { color: colors.textMuted }]}>N/A</Text>
-        )}
-        <Text style={[styles.priceLabel, { color: colors.textMuted }]}>NM/M</Text>
-      </View>
-      {isLoading ? (
-        <MaterialCommunityIcons name="pokeball" size={16} color={colors.pokemonRed} />
-      ) : (
-        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-      )}
     </Pressable>
   );
 }
 
 export default function SetDetailScreen() {
-  const { id, slug, name } = useLocalSearchParams<{ id: string; slug: string; name: string }>();
+  const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const [loadingCardKey, setLoadingCardKey] = useState<string | null>(null);
 
-  const { isLoading, data: cards } = useQuery({
-    queryKey: ["pcv-set-cards", id, slug],
-    queryFn: () => fetchPCVSetCards(id, slug),
-    staleTime: 1000 * 60 * 30,
-  });
+  const [allCards, setAllCards] = useState<PokemonCard[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  const totalCount = cards?.length || 0;
-  const totalValue = cards?.reduce((sum, c) => sum + (c.priceGBP || 0), 0) || 0;
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setAllCards([]);
+    setPage(1);
+    fetchSetCards(id as string, 1)
+      .then((result) => {
+        if (cancelled) return;
+        setAllCards(result.cards);
+        setTotalCount(result.totalCount);
+        setHasMore(result.cards.length < result.totalCount);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [id]);
 
-  const handleCardPress = useCallback(async (card: PCVCard, cardKey: string) => {
-    if (loadingCardKey) return;
-    setLoadingCardKey(cardKey);
+  const loadMore = useCallback(async () => {
+    if (!hasMore || isLoadingMore || isLoading) return;
+    setIsLoadingMore(true);
+    const nextPage = page + 1;
     try {
-      const found = await findCard(card.name, card.number, card.setId || undefined);
-      if (found) {
-        router.push({ pathname: "/card/[id]", params: { id: found.id } });
-      } else {
-        Alert.alert(
-          card.name,
-          `No database entry found for this card.\n\nSet: ${card.setName || card.setId}\nNumber: #${card.number}\nCondition value: ${formatGBP(card.priceGBP)}`,
-          [{ text: "OK" }]
-        );
-      }
-    } catch {
-      Alert.alert("Error", "Could not load card details. Please try again.");
-    } finally {
-      setLoadingCardKey(null);
+      const result = await fetchSetCards(id as string, nextPage);
+      setAllCards((prev) => {
+        const newCards = [...prev, ...result.cards];
+        setHasMore(newCards.length < result.totalCount);
+        return newCards;
+      });
+      setPage(nextPage);
+    } catch {}
+    finally {
+      setIsLoadingMore(false);
     }
-  }, [loadingCardKey]);
+  }, [hasMore, isLoadingMore, isLoading, page, id]);
+
+  const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const loaded = allCards.length;
 
   const renderItem = useCallback(
-    ({ item }: { item: PCVCard }) => {
-      const cardKey = `${item.name}-${item.number}-${item.holoType}-${item.edition}`;
-      return (
-        <CardListItem
-          card={item}
-          colors={colors}
-          onPress={() => handleCardPress(item, cardKey)}
-          isLoading={loadingCardKey === cardKey}
-        />
-      );
-    },
-    [colors, handleCardPress, loadingCardKey]
+    ({ item }: { item: PokemonCard }) => <CardGridItem card={item} colors={colors} />,
+    [colors]
   );
 
   return (
@@ -156,19 +143,11 @@ export default function SetDetailScreen() {
             </Text>
             <View style={styles.headerMeta}>
               <View style={styles.headerMetaItem}>
-                <MaterialCommunityIcons name="cards-outline" size={14} color={colors.pokemonRed} />
+                <MaterialCommunityIcons name="cards-outline" size={13} color={colors.pokemonRed} />
                 <Text style={[styles.headerCount, { color: colors.textSecondary }]}>
-                  {totalCount} cards
+                  {loaded}{totalCount > 0 ? `/${totalCount}` : ""} cards
                 </Text>
               </View>
-              {totalValue > 0 ? (
-                <View style={styles.headerMetaItem}>
-                  <Ionicons name="cash-outline" size={14} color={colors.success} />
-                  <Text style={[styles.headerValue, { color: colors.success }]}>
-                    {formatGBP(totalValue)}
-                  </Text>
-                </View>
-              ) : null}
             </View>
           </View>
         </View>
@@ -177,15 +156,38 @@ export default function SetDetailScreen() {
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <MaterialCommunityIcons name="pokeball" size={40} color={colors.pokemonRed} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading UK prices...</Text>
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading cards...</Text>
         </View>
       ) : (
         <FlatList
-          data={cards}
+          data={allCards}
           renderItem={renderItem}
-          keyExtractor={(item, index) => `${item.name}-${item.number}-${item.holoType}-${item.edition}-${index}`}
+          keyExtractor={(item) => item.id}
+          numColumns={NUM_COLS}
+          columnWrapperStyle={styles.gridRow}
           contentContainerStyle={[styles.listContent, { paddingBottom: 40 }]}
           showsVerticalScrollIndicator={false}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            isLoadingMore ? (
+              <View style={styles.footerLoader}>
+                <ActivityIndicator color={colors.pokemonRed} />
+                <Text style={[styles.footerText, { color: colors.textSecondary }]}>
+                  Loading more...
+                </Text>
+              </View>
+            ) : hasMore ? (
+              <Pressable
+                style={[styles.loadMoreBtn, { borderColor: colors.pokemonRed + "60" }]}
+                onPress={loadMore}
+              >
+                <Text style={[styles.loadMoreText, { color: colors.pokemonRed }]}>
+                  Load More ({totalCount - loaded} remaining)
+                </Text>
+              </Pressable>
+            ) : null
+          }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <MaterialCommunityIcons name="cards-outline" size={48} color={colors.textMuted} />
@@ -202,36 +204,55 @@ export default function SetDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingBottom: 12 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  header: { paddingHorizontal: 16, paddingBottom: 12 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerInfo: { flex: 1 },
-  headerTitle: { fontSize: 22, fontFamily: "Outfit_700Bold" },
-  headerMeta: { flexDirection: "row", gap: 16, alignItems: "center", marginTop: 4 },
+  headerTitle: { fontSize: 20, fontFamily: "Outfit_700Bold" },
+  headerMeta: { flexDirection: "row", gap: 16, alignItems: "center", marginTop: 3 },
   headerMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   headerCount: { fontSize: 13, fontFamily: "Outfit_500Medium" },
-  headerValue: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
-  listContent: { paddingHorizontal: 16 },
-  cardItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 6,
+  listContent: { paddingHorizontal: H_PAD, paddingTop: 10 },
+  gridRow: { gap: GAP, marginBottom: GAP },
+  gridItem: {
+    borderRadius: 10,
     borderWidth: 1,
-    gap: 12,
+    overflow: "hidden",
   },
-  cardInfo: { flex: 1, gap: 2 },
-  cardName: { fontSize: 15, fontFamily: "Outfit_600SemiBold" },
-  cardNumber: { fontSize: 12, fontFamily: "Outfit_400Regular" },
-  cardMeta: { flexDirection: "row", flexWrap: "wrap", gap: 4, marginTop: 4 },
-  chip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
-  chipText: { fontSize: 10, fontFamily: "Outfit_600SemiBold" },
-  priceCol: { alignItems: "flex-end", gap: 2 },
-  price: { fontSize: 15, fontFamily: "Outfit_700Bold" },
-  priceLabel: { fontSize: 10, fontFamily: "Outfit_400Regular" },
+  gridImage: {
+    borderTopLeftRadius: 9,
+    borderTopRightRadius: 9,
+  },
+  gridInfo: {
+    padding: 6,
+    gap: 1,
+  },
+  gridName: {
+    fontSize: 11,
+    fontFamily: "Outfit_600SemiBold",
+    lineHeight: 14,
+  },
+  gridNumber: {
+    fontSize: 10,
+    fontFamily: "Outfit_400Regular",
+  },
+  gridPrice: {
+    fontSize: 11,
+    fontFamily: "Outfit_700Bold",
+    marginTop: 2,
+  },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
   loadingText: { fontSize: 14, fontFamily: "Outfit_500Medium" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 80, gap: 12 },
   emptyText: { fontSize: 16, fontFamily: "Outfit_500Medium" },
+  footerLoader: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 16 },
+  footerText: { fontSize: 13, fontFamily: "Outfit_400Regular" },
+  loadMoreBtn: {
+    margin: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    alignItems: "center",
+  },
+  loadMoreText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
 });
