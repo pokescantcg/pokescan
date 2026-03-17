@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,6 +8,7 @@ import {
   useColorScheme,
   Platform,
   Alert,
+  RefreshControl,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -92,6 +93,12 @@ export default function MarketScreen() {
   const insets = useSafeAreaInsets();
   const { user, listings, deleteListing, togglePremium, isStaff } = useUser();
   const [filter, setFilter] = useState<"all" | "sale" | "trade">("all");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    setTimeout(() => setIsRefreshing(false), 600);
+  }, []);
 
   const filtered = listings.filter((l) => {
     if (filter === "all") return true;
@@ -248,6 +255,14 @@ export default function MarketScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.pokemonRed}
+            colors={[colors.pokemonRed]}
+          />
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="pricetags-outline" size={56} color={colors.textMuted} />

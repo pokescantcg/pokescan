@@ -9,6 +9,7 @@ import {
   Platform,
   ActivityIndicator,
   Dimensions,
+  RefreshControl,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -104,15 +105,26 @@ export default function SetDetailScreen() {
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const [loadKey, setLoadKey] = useState(0);
+
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    setHasError(false);
+    setAllCards([]);
+    setTotalCount(0);
+    setLoadKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
-    setAllCards([]);
+    if (!isRefreshing) setIsLoading(true);
+    setHasError(false);
 
     const load = async () => {
       // On mobile, check the local device cache first — instant if already downloaded
-      if (Platform.OS !== "web") {
+      if (Platform.OS !== "web" && !isRefreshing) {
         try {
           const { getSetCardsFromCache } = await import("@/lib/card-cache");
           const cached = await getSetCardsFromCache(id as string);
@@ -121,6 +133,7 @@ export default function SetDetailScreen() {
             setAllCards(cards);
             setTotalCount(cards.length);
             setIsLoading(false);
+            setIsRefreshing(false);
             return;
           }
         } catch {}
@@ -133,6 +146,7 @@ export default function SetDetailScreen() {
         setAllCards(result.cards);
         setTotalCount(result.totalCount);
         setIsLoading(false);
+        setIsRefreshing(false);
 
         // Auto-load all remaining pages silently in the background
         if (result.cards.length < result.totalCount) {
@@ -155,13 +169,17 @@ export default function SetDetailScreen() {
           if (!cancelled) setIsLoadingMore(false);
         }
       } catch {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          setHasError(true);
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
     };
 
     load();
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, loadKey]);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const loaded = allCards.length;
@@ -194,6 +212,17 @@ export default function SetDetailScreen() {
               </View>
             </View>
           </View>
+          <Pressable
+            onPress={handleRefresh}
+            style={styles.refreshBtn}
+            disabled={isLoading || isRefreshing}
+          >
+            <Ionicons
+              name="refresh"
+              size={20}
+              color={isLoading || isRefreshing ? colors.textMuted : colors.text}
+            />
+          </Pressable>
         </View>
       </LinearGradient>
 
@@ -211,6 +240,14 @@ export default function SetDetailScreen() {
           columnWrapperStyle={styles.gridRow}
           contentContainerStyle={[styles.listContent, { paddingBottom: 40 }]}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.pokemonRed}
+              colors={[colors.pokemonRed]}
+            />
+          }
           ListFooterComponent={
             isLoadingMore ? (
               <View style={styles.footerLoader}>
@@ -222,12 +259,29 @@ export default function SetDetailScreen() {
             ) : null
           }
           ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <MaterialCommunityIcons name="cards-outline" size={48} color={colors.textMuted} />
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                No cards found for this set
-              </Text>
-            </View>
+            hasError ? (
+              <View style={styles.emptyContainer}>
+                <MaterialCommunityIcons name="wifi-off" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyText, { color: colors.text }]}>Couldn't load cards</Text>
+                <Text style={[styles.emptySubText, { color: colors.textSecondary }]}>
+                  This set may be unavailable. Pull down or tap refresh to try again.
+                </Text>
+                <Pressable
+                  onPress={handleRefresh}
+                  style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}
+                >
+                  <Ionicons name="refresh" size={16} color="#FFF" />
+                  <Text style={styles.retryBtnText}>Retry</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <MaterialCommunityIcons name="cards-outline" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  No cards found for this set
+                </Text>
+              </View>
+            )
           }
         />
       )}
@@ -277,7 +331,11 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
   loadingText: { fontSize: 14, fontFamily: "Outfit_500Medium" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 80, gap: 12 },
-  emptyText: { fontSize: 16, fontFamily: "Outfit_500Medium" },
+  emptyText: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
+  emptySubText: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 32 },
+  refreshBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  retryBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24, marginTop: 4 },
+  retryBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
   footerLoader: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 16 },
   footerText: { fontSize: 13, fontFamily: "Outfit_400Regular" },
   loadMoreBtn: {

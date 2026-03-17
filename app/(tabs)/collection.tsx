@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,6 +8,7 @@ import {
   useColorScheme,
   Platform,
   Alert,
+  RefreshControl,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -89,6 +90,12 @@ export default function CollectionScreen() {
   const insets = useSafeAreaInsets();
   const { user, collection, collectionValue, removeCard, updateQuantity } = useUser();
   const [sortBy, setSortBy] = useState<"name" | "value" | "recent">("recent");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    setTimeout(() => setIsRefreshing(false), 600);
+  }, []);
 
   const sorted = [...collection].sort((a, b) => {
     if (sortBy === "name") return a.cardName.localeCompare(b.cardName);
@@ -205,6 +212,14 @@ export default function CollectionScreen() {
         keyExtractor={(item) => `${item.cardId}-${item.condition}`}
         contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.pokemonRed}
+            colors={[colors.pokemonRed]}
+          />
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Image

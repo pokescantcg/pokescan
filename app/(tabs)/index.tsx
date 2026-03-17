@@ -309,6 +309,9 @@ export default function BrowseScreen() {
                 : "No sets in database"}
             </Text>
           </View>
+          <Pressable onPress={() => refetch()} style={styles.refreshIconBtn} disabled={isRefetching}>
+            <Ionicons name="refresh" size={20} color={isRefetching ? colors.textMuted : colors.text} />
+          </Pressable>
         </View>
 
         {currentLangDef?.hasData && (
@@ -386,6 +389,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 12, gap: 12 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   backBtn: { padding: 2 },
+  refreshIconBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   langFlagHeader: { fontSize: 24 },
   title: { fontSize: 26, fontFamily: "Outfit_700Bold" },
   subtitle: { fontSize: 13, fontFamily: "Outfit_400Regular", marginTop: 2 },
