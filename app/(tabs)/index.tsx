@@ -127,12 +127,21 @@ export default function BrowseScreen() {
       >
         <View style={styles.titleRow}>
           <MaterialCommunityIcons name="pokeball" size={28} color={colors.pokemonRed} />
-          <Text style={[styles.title, { color: colors.text }]}>PokeScan</Text>
-          <Text style={[styles.titleAccent, { color: colors.pokemonRed }]}>TCG</Text>
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={[styles.title, { color: colors.text }]}>PokeScan</Text>
+              <Text style={[styles.titleAccent, { color: colors.pokemonRed }]}>TCG</Text>
+            </View>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              UK card sets & prices
+            </Text>
+          </View>
+          <Image
+            source={{ uri: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/25.png" }}
+            style={styles.pikachuMascot}
+            contentFit="contain"
+          />
         </View>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          UK card sets & prices
-        </Text>
         <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.pokemonRed + "40" }]}>
           <Ionicons name="search" size={18} color={colors.pokemonRed} />
           <TextInput
@@ -191,7 +200,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginBottom: 2,
+    marginBottom: 10,
   },
   title: {
     fontSize: 28,
@@ -204,8 +213,11 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     fontFamily: "Outfit_400Regular",
-    marginBottom: 12,
-    marginLeft: 36,
+    marginTop: 2,
+  },
+  pikachuMascot: {
+    width: 72,
+    height: 72,
   },
   searchBox: {
     flexDirection: "row",

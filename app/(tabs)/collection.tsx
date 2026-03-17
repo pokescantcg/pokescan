@@ -207,9 +207,13 @@ export default function CollectionScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="cards-outline" size={56} color={colors.textMuted} />
+            <Image
+              source={{ uri: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/143.png" }}
+              style={styles.emptyPokemon}
+              contentFit="contain"
+            />
             <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
-              No Cards Yet
+              Your collection is sleeping...
             </Text>
             <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
               Browse sets or scan cards to add them to your collection
@@ -269,7 +273,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   qtyText: { fontSize: 16, fontFamily: "Outfit_700Bold" },
-  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 60, gap: 8 },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 40, gap: 8 },
+  emptyPokemon: { width: 140, height: 140 },
   emptyTitle: { fontSize: 18, fontFamily: "Outfit_600SemiBold" },
   emptySubtext: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 40 },
   signInBtn: { marginTop: 8 },

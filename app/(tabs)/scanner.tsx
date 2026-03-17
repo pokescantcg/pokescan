@@ -496,11 +496,18 @@ export default function ScannerScreen() {
       >
         <View style={styles.titleRow}>
           <Ionicons name="scan" size={22} color={colors.pokemonRed} />
-          <Text style={[styles.title, { color: colors.text }]}>Card Scanner</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.title, { color: colors.text }]}>Card Scanner</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              AI-powered card identification
+            </Text>
+          </View>
+          <Image
+            source={{ uri: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/479.png" }}
+            style={styles.rotomMascot}
+            contentFit="contain"
+          />
         </View>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          AI-powered card identification
-        </Text>
       </LinearGradient>
 
       <View style={styles.scanSection}>
@@ -633,9 +640,10 @@ export default function ScannerScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingBottom: 8 },
-  titleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 2 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
   title: { fontSize: 28, fontFamily: "Outfit_700Bold" },
-  subtitle: { fontSize: 14, fontFamily: "Outfit_400Regular", marginLeft: 30 },
+  subtitle: { fontSize: 14, fontFamily: "Outfit_400Regular", marginTop: 2 },
+  rotomMascot: { width: 64, height: 64 },
   scanSection: { paddingHorizontal: 20, gap: 12, paddingBottom: 8 },
   scanButtons: { flexDirection: "row", gap: 12 },
   scanButton: {

@@ -9,6 +9,7 @@ import {
   Alert,
   ScrollView,
 } from "react-native";
+import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -102,7 +103,12 @@ export default function ProfileScreen() {
         >
           <View style={styles.titleRow}>
             <Ionicons name="person-circle" size={24} color={colors.pokemonRed} />
-            <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
+            <Text style={[styles.title, { color: colors.text, flex: 1 }]}>Profile</Text>
+            <Image
+              source={{ uri: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/133.png" }}
+              style={styles.eeveeDecor}
+              contentFit="contain"
+            />
           </View>
         </LinearGradient>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
@@ -174,7 +180,12 @@ export default function ProfileScreen() {
         >
           <View style={styles.titleRow}>
             <Ionicons name="person-circle" size={24} color={colors.pokemonRed} />
-            <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
+            <Text style={[styles.title, { color: colors.text, flex: 1 }]}>Profile</Text>
+            <Image
+              source={{ uri: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/133.png" }}
+              style={styles.eeveeDecor}
+              contentFit="contain"
+            />
           </View>
 
           <View style={styles.profileSection}>
@@ -481,6 +492,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 8 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
   title: { fontSize: 28, fontFamily: "Outfit_700Bold" },
+  eeveeDecor: { width: 64, height: 64 },
   profileSection: { alignItems: "center", marginBottom: 4 },
   avatarCircle: {
     width: 80,
