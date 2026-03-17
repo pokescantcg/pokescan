@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Dimensions,
   RefreshControl,
+  ScrollView,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -33,6 +34,38 @@ function sortCardsByNumber(cards: PokemonCard[]): PokemonCard[] {
     if (aNum !== bNum) return aNum - bNum;
     return aSuffix.localeCompare(bSuffix);
   });
+}
+
+// Preferred rarity order (most common → rarest)
+const RARITY_ORDER = [
+  "Common",
+  "Uncommon",
+  "Rare",
+  "Rare Holo",
+  "Double Rare",
+  "Amazing Rare",
+  "Rare Holo V",
+  "Rare Holo VMAX",
+  "Rare Holo VSTAR",
+  "Rare Holo EX",
+  "Rare Holo GX",
+  "Trainer Gallery Rare Holo",
+  "ACE SPEC Rare",
+  "Rare Ultra",
+  "Illustration Rare",
+  "Rare Rainbow",
+  "Special Illustration Rare",
+  "Hyper Rare",
+  "Rare Secret",
+  "Rare Shiny",
+  "Rare Shiny GX",
+  "Rare Shining",
+  "Promo",
+];
+
+function rarityRank(r: string): number {
+  const idx = RARITY_ORDER.indexOf(r);
+  return idx === -1 ? RARITY_ORDER.length : idx;
 }
 
 function cachedToPokemonCard(c: CachedCard): PokemonCard {
@@ -123,12 +156,14 @@ export default function SetDetailScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [loadKey, setLoadKey] = useState(0);
+  const [activeFilter, setActiveFilter] = useState<string | null>(null);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
     setHasError(false);
     setAllCards([]);
     setTotalCount(0);
+    setActiveFilter(null);
     setLoadKey((k) => k + 1);
   }, []);
 
@@ -196,8 +231,22 @@ export default function SetDetailScreen() {
     return () => { cancelled = true; };
   }, [id, loadKey]);
 
+  // Derive unique rarities present in this set, sorted by rarity order
+  const availableRarities = useMemo(() => {
+    const seen = new Set<string>();
+    allCards.forEach((c) => { if (c.rarity) seen.add(c.rarity); });
+    return Array.from(seen).sort((a, b) => rarityRank(a) - rarityRank(b));
+  }, [allCards]);
+
+  // Apply active filter
+  const filteredCards = useMemo(() => {
+    if (!activeFilter) return allCards;
+    return allCards.filter((c) => c.rarity === activeFilter);
+  }, [allCards, activeFilter]);
+
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const loaded = allCards.length;
+  const filteredCount = filteredCards.length;
 
   const renderItem = useCallback(
     ({ item }: { item: PokemonCard }) => <CardGridItem card={item} colors={colors} />,
@@ -222,7 +271,9 @@ export default function SetDetailScreen() {
               <View style={styles.headerMetaItem}>
                 <MaterialCommunityIcons name="cards-outline" size={13} color={colors.pokemonRed} />
                 <Text style={[styles.headerCount, { color: colors.textSecondary }]}>
-                  {loaded}{totalCount > 0 ? `/${totalCount}` : ""} cards
+                  {activeFilter
+                    ? `${filteredCount} of ${loaded}${totalCount > loaded ? `/${totalCount}` : ""} cards`
+                    : `${loaded}${totalCount > 0 ? `/${totalCount}` : ""} cards`}
                 </Text>
               </View>
             </View>
@@ -239,6 +290,52 @@ export default function SetDetailScreen() {
             />
           </Pressable>
         </View>
+
+        {/* Filter chips — only show once we have rarities */}
+        {!isLoading && availableRarities.length > 1 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterScroll}
+            contentContainerStyle={styles.filterContent}
+          >
+            <Pressable
+              style={[
+                styles.filterChip,
+                {
+                  backgroundColor: !activeFilter ? colors.pokemonRed : colors.surface,
+                  borderColor: !activeFilter ? colors.pokemonRed : colors.borderLight,
+                },
+              ]}
+              onPress={() => setActiveFilter(null)}
+            >
+              <Text style={[styles.filterChipText, { color: !activeFilter ? "#FFF" : colors.textSecondary }]}>
+                All
+              </Text>
+            </Pressable>
+
+            {availableRarities.map((rarity) => {
+              const active = activeFilter === rarity;
+              return (
+                <Pressable
+                  key={rarity}
+                  style={[
+                    styles.filterChip,
+                    {
+                      backgroundColor: active ? colors.pokemonRed : colors.surface,
+                      borderColor: active ? colors.pokemonRed : colors.borderLight,
+                    },
+                  ]}
+                  onPress={() => setActiveFilter(active ? null : rarity)}
+                >
+                  <Text style={[styles.filterChipText, { color: active ? "#FFF" : colors.textSecondary }]}>
+                    {rarity}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
       </LinearGradient>
 
       {isLoading ? (
@@ -248,7 +345,7 @@ export default function SetDetailScreen() {
         </View>
       ) : (
         <FlatList
-          data={allCards}
+          data={filteredCards}
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
           numColumns={NUM_COLS}
@@ -289,6 +386,13 @@ export default function SetDetailScreen() {
                   <Text style={styles.retryBtnText}>Retry</Text>
                 </Pressable>
               </View>
+            ) : activeFilter ? (
+              <View style={styles.emptyContainer}>
+                <MaterialCommunityIcons name="filter-outline" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  No {activeFilter} cards in this set
+                </Text>
+              </View>
             ) : (
               <View style={styles.emptyContainer}>
                 <MaterialCommunityIcons name="cards-outline" size={48} color={colors.textMuted} />
@@ -306,14 +410,23 @@ export default function SetDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingBottom: 12 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  header: { paddingHorizontal: 16, paddingBottom: 8 },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 0 },
   backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerInfo: { flex: 1 },
   headerTitle: { fontSize: 20, fontFamily: "Outfit_700Bold" },
   headerMeta: { flexDirection: "row", gap: 16, alignItems: "center", marginTop: 3 },
   headerMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   headerCount: { fontSize: 13, fontFamily: "Outfit_500Medium" },
+  filterScroll: { marginTop: 10, marginHorizontal: -16 },
+  filterContent: { paddingHorizontal: 16, paddingBottom: 6, gap: 8, flexDirection: "row" },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  filterChipText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
   listContent: { paddingHorizontal: H_PAD, paddingTop: 10 },
   gridRow: { gap: GAP, marginBottom: GAP },
   gridItem: {
