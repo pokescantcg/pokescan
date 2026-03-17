@@ -31,6 +31,7 @@ import {
   PCVCard,
   generateEbaySearchUrl,
   fetchPCVSearch,
+  findCard,
 } from "@/lib/pokemon-api";
 
 function IdentificationCard({
@@ -118,9 +119,26 @@ function IdentificationCard({
 }
 
 function PCVResultCard({ card, colors }: { card: PCVCard; colors: ReturnType<typeof useThemeColors> }) {
-  const handlePress = () => {
-    if (card.url) {
-      Linking.openURL(card.url);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handlePress = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      const found = await findCard(card.name, card.number, card.setId || undefined);
+      if (found) {
+        router.push({ pathname: "/card/[id]", params: { id: found.id } });
+      } else {
+        Alert.alert(
+          card.name,
+          `Card details:\nSet: ${card.setName || card.setId}\nNumber: #${card.number}\n${card.holoType ? `Type: ${card.holoType}\n` : ""}UK Value: ${formatGBP(card.priceGBP)}`,
+          [{ text: "OK" }]
+        );
+      }
+    } catch {
+      Alert.alert("Error", "Could not load card details. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -128,9 +146,10 @@ function PCVResultCard({ card, colors }: { card: PCVCard; colors: ReturnType<typ
     <Pressable
       style={({ pressed }) => [
         styles.resultCard,
-        { backgroundColor: colors.card, borderColor: colors.borderLight, opacity: pressed ? 0.85 : 1 },
+        { backgroundColor: colors.card, borderColor: colors.borderLight, opacity: pressed || isLoading ? 0.7 : 1 },
       ]}
       onPress={handlePress}
+      disabled={isLoading}
     >
       <View style={styles.resultInfo}>
         <Text style={[styles.resultName, { color: colors.text }]} numberOfLines={1}>
@@ -165,7 +184,11 @@ function PCVResultCard({ card, colors }: { card: PCVCard; colors: ReturnType<typ
       >
         {formatGBP(card.priceGBP)}
       </Text>
-      <Ionicons name="open-outline" size={14} color={colors.textMuted} />
+      {isLoading ? (
+        <MaterialCommunityIcons name="pokeball" size={14} color={colors.pokemonRed} />
+      ) : (
+        <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+      )}
     </Pressable>
   );
 }

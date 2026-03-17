@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -7,9 +7,8 @@ import {
   Pressable,
   useColorScheme,
   Platform,
-  ActivityIndicator,
+  Alert,
   Dimensions,
-  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -18,21 +17,29 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
-import { fetchPCVSetCards, PCVCard, formatGBP } from "@/lib/pokemon-api";
+import { fetchPCVSetCards, PCVCard, formatGBP, findCard } from "@/lib/pokemon-api";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const CARD_WIDTH = (SCREEN_WIDTH - 60) / 2;
 
-function CardListItem({ card, colors }: { card: PCVCard; colors: ReturnType<typeof useThemeColors> }) {
+function CardListItem({
+  card,
+  colors,
+  onPress,
+  isLoading,
+}: {
+  card: PCVCard;
+  colors: ReturnType<typeof useThemeColors>;
+  onPress: () => void;
+  isLoading: boolean;
+}) {
   return (
     <Pressable
       style={({ pressed }) => [
         styles.cardItem,
-        { backgroundColor: colors.card, borderColor: colors.borderLight, opacity: pressed ? 0.85 : 1 },
+        { backgroundColor: colors.card, borderColor: colors.borderLight, opacity: pressed || isLoading ? 0.7 : 1 },
       ]}
-      onPress={() => {
-        if (card.url) Linking.openURL(card.url);
-      }}
+      onPress={onPress}
+      disabled={isLoading}
     >
       <View style={styles.cardInfo}>
         <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={1}>
@@ -71,7 +78,11 @@ function CardListItem({ card, colors }: { card: PCVCard; colors: ReturnType<type
         )}
         <Text style={[styles.priceLabel, { color: colors.textMuted }]}>NM/M</Text>
       </View>
-      <Ionicons name="open-outline" size={14} color={colors.textMuted} />
+      {isLoading ? (
+        <MaterialCommunityIcons name="pokeball" size={16} color={colors.pokemonRed} />
+      ) : (
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      )}
     </Pressable>
   );
 }
@@ -81,6 +92,7 @@ export default function SetDetailScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
+  const [loadingCardKey, setLoadingCardKey] = useState<string | null>(null);
 
   const { isLoading, data: cards } = useQuery({
     queryKey: ["pcv-set-cards", id, slug],
@@ -92,9 +104,40 @@ export default function SetDetailScreen() {
   const totalValue = cards?.reduce((sum, c) => sum + (c.priceGBP || 0), 0) || 0;
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
+  const handleCardPress = useCallback(async (card: PCVCard, cardKey: string) => {
+    if (loadingCardKey) return;
+    setLoadingCardKey(cardKey);
+    try {
+      const found = await findCard(card.name, card.number, card.setId || undefined);
+      if (found) {
+        router.push({ pathname: "/card/[id]", params: { id: found.id } });
+      } else {
+        Alert.alert(
+          card.name,
+          `No database entry found for this card.\n\nSet: ${card.setName || card.setId}\nNumber: #${card.number}\nCondition value: ${formatGBP(card.priceGBP)}`,
+          [{ text: "OK" }]
+        );
+      }
+    } catch {
+      Alert.alert("Error", "Could not load card details. Please try again.");
+    } finally {
+      setLoadingCardKey(null);
+    }
+  }, [loadingCardKey]);
+
   const renderItem = useCallback(
-    ({ item }: { item: PCVCard }) => <CardListItem card={item} colors={colors} />,
-    [colors]
+    ({ item }: { item: PCVCard }) => {
+      const cardKey = `${item.name}-${item.number}-${item.holoType}-${item.edition}`;
+      return (
+        <CardListItem
+          card={item}
+          colors={colors}
+          onPress={() => handleCardPress(item, cardKey)}
+          isLoading={loadingCardKey === cardKey}
+        />
+      );
+    },
+    [colors, handleCardPress, loadingCardKey]
   );
 
   return (

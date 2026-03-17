@@ -72,6 +72,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/pokemon/cards/find", async (req: Request, res: Response) => {
+    try {
+      const name = req.query.name as string;
+      const number = req.query.number as string | undefined;
+      const setId = req.query.setId as string | undefined;
+      if (!name) {
+        res.status(400).json({ error: "name is required" });
+        return;
+      }
+      let query = `name:"${name}"`;
+      if (setId) query += ` set.id:${setId}`;
+      const encodedQuery = encodeURIComponent(query);
+      const text = await fetch(
+        `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&pageSize=20`
+      ).then((r) => r.text()).catch(() => null);
+      if (!text) {
+        res.json({ data: null });
+        return;
+      }
+      let cards: any[] = [];
+      try {
+        const data = JSON.parse(text);
+        cards = data.data || [];
+      } catch {
+        res.json({ data: null });
+        return;
+      }
+      if (number && cards.length > 1) {
+        const numOnly = String(number).split("/")[0].replace(/^0+/, "");
+        const exact = cards.filter((c: any) => {
+          const cn = String(c.number).replace(/^0+/, "");
+          return cn === numOnly;
+        });
+        if (exact.length > 0) cards = exact;
+      }
+      res.json({ data: cards[0] || null });
+    } catch (error) {
+      console.error("Failed to find card:", error);
+      res.json({ data: null });
+    }
+  });
+
   app.get("/api/pokemon/cards/:cardId", async (req: Request, res: Response) => {
     try {
       const { cardId } = req.params;

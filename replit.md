@@ -42,7 +42,21 @@ Preferred communication style: Simple, everyday language.
 - `GET /api/pokemon/sets` — Fetch all card sets
 - `GET /api/pokemon/sets/:setId/cards` — Fetch cards in a set (paginated)
 - `GET /api/pokemon/cards/search?q=` — Search cards by name
+- `GET /api/pokemon/cards/find?name=&number=&setId=` — Find a card by name (and optional number/setId) — must be defined BEFORE `/:cardId` route
 - `GET /api/pokemon/cards/:cardId` — Fetch individual card details
+- `GET /api/pcv/sets` — Fetch all UK sets (scraped from pokecardvalues.co.uk server-side)
+- `GET /api/pcv/sets/:setId/:slug/cards` — Fetch cards with UK GBP pricing
+- `GET /api/pcv/top/:condition` — Top valued cards
+- `GET /api/pcv/search?q=` — Search UK cards by name
+- `GET /api/ebay/search-url` — Generate eBay UK search/sold URLs (client opens these links)
+- `POST /api/identify-card` — AI card identification via OpenAI Vision
+
+### External Navigation Policy
+- **No external websites** are opened from within the app, except eBay UK links
+- pokecardvalues.co.uk is scraped **server-side** only — users never navigate there
+- When a PCV card is tapped (in set detail or scanner results), the app calls `/api/pokemon/cards/find` to look up the TCG card internally and navigate to `/card/[id]`
+- If a card is not found in the TCG database, an in-app Alert shows the card info
+- **Only allowed external links**: `ebay.co.uk` — "Active Listings" and "Sold Items" buttons on card detail page and scanner
 
 ### Data Storage
 - **Client-side**: All user data (profiles, collections, listings) is stored in AsyncStorage on-device via `lib/storage.ts`. This includes user profiles, collection items with pricing, market listings, and admin credentials

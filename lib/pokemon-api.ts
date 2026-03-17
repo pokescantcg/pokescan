@@ -150,6 +150,17 @@ export async function fetchCard(cardId: string): Promise<PokemonCard> {
   return json.data;
 }
 
+export async function findCard(name: string, number?: string, setId?: string): Promise<PokemonCard | null> {
+  const base = apiBase();
+  const params = new URLSearchParams({ name });
+  if (number) params.set("number", number);
+  if (setId) params.set("setId", setId);
+  const res = await fetch(`${base}api/pokemon/cards/find?${params.toString()}`);
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data || null;
+}
+
 export async function fetchPCVSets(): Promise<PCVSet[]> {
   const base = apiBase();
   const res = await fetch(`${base}api/pcv/sets`);
