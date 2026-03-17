@@ -17,6 +17,15 @@ import {
   sendOtpByEmail,
   sendOtpBySms,
 } from "./otp-service";
+import { db } from "./db";
+import {
+  pokemonSets,
+  pokemonCards,
+  cardPricing,
+  ebayPrices,
+} from "@shared/schema";
+import { eq, desc, sql } from "drizzle-orm";
+import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -25,9 +34,128 @@ const openai = new OpenAI({
 
 const POKEMON_API = "https://api.pokemontcg.io/v2";
 
+function dbSetToApiFormat(set: typeof pokemonSets.$inferSelect) {
+  return {
+    id: set.id,
+    name: set.name,
+    series: set.series,
+    printedTotal: set.printedTotal,
+    total: set.total,
+    releaseDate: set.releaseDate,
+    images: {
+      symbol: set.symbolUrl,
+      logo: set.logoUrl,
+    },
+  };
+}
+
+interface FormattedCard {
+  id: string;
+  name: string;
+  number: string;
+  rarity: string | null;
+  supertype: string | null;
+  subtypes: string[];
+  images: { small: string | null; large: string | null };
+  artist: string | null;
+  hp: string | null;
+  set: { id: string; name?: string; series?: string; printedTotal?: number | null; total?: number | null; releaseDate?: string | null; images?: { symbol: string | null; logo: string | null } };
+  tcgplayer?: {
+    prices: {
+      normal: {
+        low: number | null;
+        mid: number | null;
+        high: number | null;
+        market: number | null;
+        directLow: number | null;
+      };
+    };
+  };
+  cardmarket?: {
+    prices: {
+      averageSellPrice: number | null;
+      lowPrice: number | null;
+      trendPrice: number | null;
+    };
+  };
+  priceGBP?: number | null;
+  ebayListings?: Array<{
+    title: string | null;
+    price: number | null;
+    currency: string | null;
+    soldDate: string | null;
+    listingUrl: string | null;
+    isSold: boolean | null;
+  }>;
+}
+
+function dbCardToApiFormat(
+  card: typeof pokemonCards.$inferSelect,
+  pricing?: typeof cardPricing.$inferSelect | null,
+  ebay?: Array<typeof ebayPrices.$inferSelect>
+): FormattedCard {
+  const base: FormattedCard = {
+    id: card.id,
+    name: card.name,
+    number: card.number,
+    rarity: card.rarity,
+    supertype: card.supertype,
+    subtypes: card.subtypes ? card.subtypes.split(",") : [],
+    images: {
+      small: card.imageSmall,
+      large: card.imageLarge,
+    },
+    artist: card.artist,
+    hp: card.hp,
+    set: { id: card.setId },
+  };
+
+  if (pricing) {
+    base.tcgplayer = {
+      prices: {
+        normal: {
+          low: pricing.tcgLow,
+          mid: pricing.tcgMid,
+          high: pricing.tcgHigh,
+          market: pricing.tcgMarket,
+          directLow: pricing.tcgDirectLow,
+        },
+      },
+    };
+    base.cardmarket = {
+      prices: {
+        averageSellPrice: pricing.cardmarketAvg,
+        lowPrice: pricing.cardmarketLow,
+        trendPrice: pricing.cardmarketTrend,
+      },
+    };
+    base.priceGBP = pricing.priceGBP;
+  }
+
+  if (ebay && ebay.length > 0) {
+    base.ebayListings = ebay.map((e) => ({
+      title: e.title,
+      price: e.price,
+      currency: e.currency,
+      soldDate: e.soldDate,
+      listingUrl: e.listingUrl,
+      isSold: e.isSold,
+    }));
+  }
+
+  return base;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
+  startSyncService();
+
   app.get("/api/pokemon/sets", async (_req: Request, res: Response) => {
     try {
+      const dbSets = await db.select().from(pokemonSets).orderBy(desc(pokemonSets.releaseDate));
+      if (dbSets.length > 0) {
+        res.json({ data: dbSets.map(dbSetToApiFormat), count: dbSets.length, source: "db" });
+        return;
+      }
       const response = await fetch(`${POKEMON_API}/sets?orderBy=-releaseDate&pageSize=250`);
       const data = await response.json();
       res.json(data);
@@ -40,9 +168,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/pokemon/sets/:setId/cards", async (req: Request, res: Response) => {
     try {
       const { setId } = req.params;
-      const page = req.query.page || "1";
+      const page = parseInt((req.query.page as string) || "1", 10);
+      const pageSize = 50;
+      const offset = (page - 1) * pageSize;
+
+      const dbSet = await db
+        .select({ id: pokemonSets.id })
+        .from(pokemonSets)
+        .where(eq(pokemonSets.id, setId))
+        .limit(1);
+
+      if (dbSet.length > 0) {
+        const totalCountResult = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(pokemonCards)
+          .where(eq(pokemonCards.setId, setId));
+        const totalCount = totalCountResult[0]?.count ?? 0;
+
+        if (totalCount > 0) {
+          const dbCards = await db
+            .select()
+            .from(pokemonCards)
+            .where(eq(pokemonCards.setId, setId))
+            .orderBy(pokemonCards.number)
+            .limit(pageSize)
+            .offset(offset);
+
+          const cardIds = dbCards.map((c) => c.id);
+          const pricingRows = await Promise.all(
+            cardIds.map((id) =>
+              db.select().from(cardPricing).where(eq(cardPricing.cardId, id)).limit(1)
+            )
+          );
+          const pricingMap = new Map<string, typeof cardPricing.$inferSelect>();
+          dbCards.forEach((card, i) => {
+            if (pricingRows[i][0]) pricingMap.set(card.id, pricingRows[i][0]);
+          });
+
+          const formattedCards = dbCards.map((card) =>
+            dbCardToApiFormat(card, pricingMap.get(card.id) ?? null)
+          );
+
+          res.json({
+            data: formattedCards,
+            count: formattedCards.length,
+            totalCount,
+            page,
+            source: "db",
+          });
+          return;
+        }
+      }
+
       const response = await fetch(
-        `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=50`
+        `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`
       );
       const data = await response.json();
       res.json(data);
@@ -82,6 +261,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/pokemon/sets/:setId/all-cards", async (req: Request, res: Response) => {
     try {
       const { setId } = req.params;
+
+      const dbCards = await db
+        .select()
+        .from(pokemonCards)
+        .where(eq(pokemonCards.setId, setId))
+        .orderBy(pokemonCards.number);
+
+      if (dbCards.length > 0) {
+        const pricingRows = await Promise.all(
+          dbCards.map((c) =>
+            db.select().from(cardPricing).where(eq(cardPricing.cardId, c.id)).limit(1)
+          )
+        );
+        const formattedCards = dbCards.map((card, i) =>
+          dbCardToApiFormat(card, pricingRows[i][0] ?? null)
+        );
+        res.json({ data: formattedCards, count: formattedCards.length, source: "db" });
+        return;
+      }
+
       let allCards: any[] = [];
       let page = 1;
       let hasMore = true;
@@ -153,12 +352,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/pokemon/cards/:cardId", async (req: Request, res: Response) => {
     try {
       const { cardId } = req.params;
+
+      const dbCard = await db
+        .select()
+        .from(pokemonCards)
+        .where(eq(pokemonCards.id, cardId))
+        .limit(1);
+
+      if (dbCard.length > 0) {
+        const pricing = await db
+          .select()
+          .from(cardPricing)
+          .where(eq(cardPricing.cardId, cardId))
+          .limit(1);
+
+        const ebayData = await db
+          .select()
+          .from(ebayPrices)
+          .where(eq(ebayPrices.cardId, cardId))
+          .orderBy(desc(ebayPrices.fetchedAt))
+          .limit(10);
+
+        const formattedCard = dbCardToApiFormat(dbCard[0], pricing[0] ?? null, ebayData);
+
+        const setData = await db
+          .select()
+          .from(pokemonSets)
+          .where(eq(pokemonSets.id, dbCard[0].setId))
+          .limit(1);
+
+        if (setData.length > 0) {
+          formattedCard.set = dbSetToApiFormat(setData[0]);
+        }
+
+        res.json({ data: formattedCard, source: "db" });
+        return;
+      }
+
       const response = await fetch(`${POKEMON_API}/cards/${cardId}`);
       const data = await response.json();
       res.json(data);
     } catch (error) {
       console.error("Failed to fetch card:", error);
       res.status(500).json({ error: "Failed to fetch card" });
+    }
+  });
+
+  app.get("/api/sync/status", async (_req: Request, res: Response) => {
+    try {
+      const status = await getSyncStatus();
+      res.json({ data: status });
+    } catch (error) {
+      console.error("Failed to get sync status:", error);
+      res.status(500).json({ error: "Failed to get sync status" });
+    }
+  });
+
+  app.post("/api/sync/trigger", async (req: Request, res: Response) => {
+    try {
+      const syncSecret = process.env.SYNC_SECRET;
+      const authHeader = req.headers["x-sync-secret"] as string | undefined;
+      const isDevMode = process.env.NODE_ENV === "development";
+      if (syncSecret) {
+        if (authHeader !== syncSecret) {
+          res.status(401).json({ error: "Unauthorized: valid x-sync-secret header required" });
+          return;
+        }
+      } else if (!isDevMode) {
+        res.status(403).json({ error: "Forbidden: set SYNC_SECRET environment variable to enable manual sync in production" });
+        return;
+      }
+      runFullSync(true).catch((err) => console.error("[CardSync] Manual sync error:", err));
+      res.json({ message: "Sync triggered", running: true });
+    } catch (error) {
+      console.error("Failed to trigger sync:", error);
+      res.status(500).json({ error: "Failed to trigger sync" });
     }
   });
 
