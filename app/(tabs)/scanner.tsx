@@ -304,7 +304,7 @@ export default function ScannerScreen() {
         });
       } else {
         const fileBase64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
+          encoding: "base64" as any,
         });
         base64 = `data:image/jpeg;base64,${fileBase64}`;
       }
