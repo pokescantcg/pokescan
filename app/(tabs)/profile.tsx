@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -17,13 +17,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
-import {
-  getCacheStatus,
-  syncDatabase,
-  clearCache,
-  CacheMeta,
-  SyncProgress,
-} from "@/lib/card-cache";
+import { useCardCache } from "@/lib/card-cache-context";
+import { CacheMeta } from "@/lib/card-cache";
 
 function formatNumber(n: number): string {
   return n.toLocaleString();
@@ -40,69 +35,49 @@ export default function ProfileScreen() {
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
   const { user, collection, collectionValue, listings, logout, togglePremium, isStaff, isSuperadminUser } = useUser();
-
-  const [cacheStatus, setCacheStatus] = useState<CacheMeta | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  const { cacheStatus, isDownloading, downloadPercent, progress, startDownload, clearCardCache, refreshStatus } = useCardCache();
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
   const myListings = listings.filter((l) => l.userId === user?.id);
 
-  const loadCacheStatus = useCallback(async () => {
-    const status = await getCacheStatus();
-    setCacheStatus(status);
-  }, []);
-
-  useEffect(() => {
-    loadCacheStatus();
-  }, [loadCacheStatus]);
-
   const handleSync = useCallback(async () => {
-    if (isSyncing) return;
-    setIsSyncing(true);
-    setSyncProgress(null);
+    if (isDownloading) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      const meta = await syncDatabase((progress) => {
-        setSyncProgress(progress);
-      });
-      setCacheStatus(meta);
+      await startDownload();
+      const meta = await refreshStatus().then(() => cacheStatus);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
-        "Database Synced!",
-        `${formatNumber(meta.totalCards)} cards across ${meta.cachedSets} sets are now stored locally.`
+        "Database Ready!",
+        `Cards are now saved on your device for instant searching.`
       );
     } catch (e: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Sync Failed", e.message || "Could not sync card database. Check your connection and try again.");
-    } finally {
-      setIsSyncing(false);
-      setSyncProgress(null);
+      Alert.alert("Download Failed", e.message || "Could not download card database. Check your connection and try again.");
     }
-  }, [isSyncing]);
+  }, [isDownloading, startDownload, refreshStatus, cacheStatus]);
 
   const handleClearCache = useCallback(() => {
     Alert.alert(
       "Clear Card Database",
-      "This will delete all locally cached card data. The app will need to re-download it.",
+      "This will delete all locally saved card data. The app will need to re-download it.",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Clear",
           style: "destructive",
           onPress: async () => {
-            await clearCache();
-            await loadCacheStatus();
+            await clearCardCache();
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           },
         },
       ]
     );
-  }, [loadCacheStatus]);
+  }, [clearCardCache]);
 
-  const syncButtonLabel = () => {
-    if (!isSyncing) {
+  const syncButtonLabel = (() => {
+    if (!isDownloading) {
       if (cacheStatus && cacheStatus.totalCards > 0) {
         if (cacheStatus.cachedSets < cacheStatus.totalSets) {
           return `Resume Download (${cacheStatus.cachedSets}/${cacheStatus.totalSets} sets)`;
@@ -111,18 +86,12 @@ export default function ProfileScreen() {
       }
       return "Download Card Database";
     }
-    if (syncProgress?.stage === "sets") return "Fetching sets list...";
-    if (syncProgress?.stage === "cards" && syncProgress.setName) {
-      return `Downloading: ${syncProgress.setName} (${syncProgress.current}/${syncProgress.total})`;
+    if (progress?.stage === "sets") return "Fetching sets list...";
+    if (progress?.stage === "cards" && progress.setName) {
+      return `Saving: ${progress.setName} (${progress.current}/${progress.total})`;
     }
-    return "Syncing...";
-  };
-
-  const syncPercent = () => {
-    if (!isSyncing || !syncProgress) return 0;
-    if (syncProgress.stage === "sets") return 2;
-    return Math.round(2 + (syncProgress.current / Math.max(syncProgress.total, 1)) * 98);
-  };
+    return "Downloading...";
+  })();
 
   if (!user) {
     return (
@@ -180,9 +149,9 @@ export default function ProfileScreen() {
           <View style={[styles.dbSection, { marginTop: 0 }]}>
             <DatabaseSyncCard
               cacheStatus={cacheStatus}
-              isSyncing={isSyncing}
-              syncPercent={syncPercent()}
-              syncButtonLabel={syncButtonLabel()}
+              isSyncing={isDownloading}
+              syncPercent={downloadPercent}
+              syncButtonLabel={syncButtonLabel}
               onSync={handleSync}
               onClear={handleClearCache}
               colors={colors}
@@ -275,9 +244,9 @@ export default function ProfileScreen() {
         <View style={styles.dbSection}>
           <DatabaseSyncCard
             cacheStatus={cacheStatus}
-            isSyncing={isSyncing}
-            syncPercent={syncPercent()}
-            syncButtonLabel={syncButtonLabel()}
+            isSyncing={isDownloading}
+            syncPercent={downloadPercent}
+            syncButtonLabel={syncButtonLabel}
             onSync={handleSync}
             onClear={handleClearCache}
             colors={colors}

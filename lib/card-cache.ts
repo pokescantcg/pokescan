@@ -111,7 +111,8 @@ export type SyncProgress = {
 };
 
 export async function syncDatabase(
-  onProgress?: (progress: SyncProgress) => void
+  onProgress?: (progress: SyncProgress) => void,
+  concurrency = 3
 ): Promise<CacheMeta> {
   const base = getApiUrl();
 
@@ -126,27 +127,19 @@ export async function syncDatabase(
 
   const meta = await getCacheStatus();
   const alreadySynced = new Set(meta.syncedSetIds);
-
   const setsToSync = sets.filter((s) => !alreadySynced.has(s.id));
+
+  // Shared mutable state protected by sequential saves
   let totalCards = meta.totalCards;
   const syncedSetIds = [...meta.syncedSetIds];
+  let completed = 0;
 
-  for (let i = 0; i < setsToSync.length; i++) {
-    const set = setsToSync[i];
-    onProgress?.({
-      stage: "cards",
-      current: i + 1,
-      total: setsToSync.length,
-      setName: set.name,
-    });
-
+  async function downloadSet(set: { id: string; name: string; total: number }): Promise<void> {
     try {
-      const cardsRes = await fetch(
-        `${base}api/pokemon/sets/${set.id}/all-cards`
-      );
-      if (!cardsRes.ok) continue;
+      const cardsRes = await fetch(`${base}api/pokemon/sets/${set.id}/all-cards`);
+      if (!cardsRes.ok) return;
       const cardsData = await cardsRes.json();
-      const rawCards = cardsData.data || [];
+      const rawCards: any[] = cardsData.data || [];
 
       const cached: CachedCard[] = rawCards.map((c: any) => ({
         id: c.id,
@@ -163,25 +156,35 @@ export async function syncDatabase(
         imageLarge: c.images?.large || "",
       }));
 
-      await AsyncStorage.setItem(
-        KEYS.CARDS_PREFIX + set.id,
-        JSON.stringify(cached)
-      );
+      await AsyncStorage.setItem(KEYS.CARDS_PREFIX + set.id, JSON.stringify(cached));
 
       totalCards += cached.length;
       syncedSetIds.push(set.id);
+      completed++;
 
-      const updatedMeta: CacheMeta = {
+      onProgress?.({
+        stage: "cards",
+        current: completed,
+        total: setsToSync.length,
+        setName: set.name,
+      });
+
+      await saveMeta({
         totalSets: sets.length,
         cachedSets: syncedSetIds.length,
         totalCards,
         lastSync: new Date().toISOString(),
-        syncedSetIds,
-      };
-      await saveMeta(updatedMeta);
+        syncedSetIds: [...syncedSetIds],
+      });
     } catch (e) {
       console.warn(`Failed to cache set ${set.id}:`, e);
     }
+  }
+
+  // Process in concurrent batches
+  for (let i = 0; i < setsToSync.length; i += concurrency) {
+    const batch = setsToSync.slice(i, i + concurrency);
+    await Promise.allSettled(batch.map(downloadSet));
   }
 
   const finalMeta: CacheMeta = {

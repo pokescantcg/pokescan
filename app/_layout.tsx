@@ -7,6 +7,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/query-client";
 import { UserProvider } from "@/lib/user-context";
+import { CardCacheProvider } from "@/lib/card-cache-context";
 import { useFonts, Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold, Outfit_700Bold } from "@expo-google-fonts/outfit";
 
 SplashScreen.preventAutoHideAsync();
@@ -46,9 +47,11 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView>
           <KeyboardProvider>
-            <UserProvider>
-              <RootLayoutNav />
-            </UserProvider>
+            <CardCacheProvider>
+              <UserProvider>
+                <RootLayoutNav />
+              </UserProvider>
+            </CardCacheProvider>
           </KeyboardProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>
