@@ -36,6 +36,7 @@ import {
   upsertUserInRegistry,
   sendOtpForRegistration,
   sendOtpForLogin,
+  updateUserAvatar,
 } from "./storage";
 
 interface UserContextValue {
@@ -64,6 +65,7 @@ interface UserContextValue {
   revokePremium: (userId: string) => Promise<void>;
   changeUserRole: (userId: string, role: UserRole) => Promise<void>;
   editUserAccount: (userId: string, updates: { displayName?: string; email?: string; mobileNumber?: string }) => Promise<void>;
+  updateAvatar: (avatarUri: string) => Promise<void>;
   deleteUserAccount: (userId: string) => Promise<void>;
   refreshData: () => Promise<void>;
   isStaff: boolean;
@@ -244,6 +246,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const handleUpdateAvatar = useCallback(async (avatarUri: string) => {
+    if (!user) return;
+    const updated = await updateUserAvatar(user.id, avatarUri);
+    if (updated) setUser(updated);
+  }, [user]);
+
   const handleDeleteUserAccount = useCallback(async (targetUserId: string) => {
     const updatedUsers = await deleteUserFromRegistry(targetUserId);
     setAllUsers(updatedUsers);
@@ -297,13 +305,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
       revokePremium: handleRevokePremium,
       changeUserRole: handleChangeUserRole,
       editUserAccount: handleEditUserAccount,
+      updateAvatar: handleUpdateAvatar,
       deleteUserAccount: handleDeleteUserAccount,
       refreshData: loadData,
       isStaff,
       isAdminUser,
       isSuperadminUser: superadminFlag,
     }),
-    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleDeleteUserAccount, loadData, isStaff, isAdminUser, superadminFlag]
+    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, isStaff, isAdminUser, superadminFlag]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

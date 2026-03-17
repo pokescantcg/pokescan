@@ -20,6 +20,7 @@ import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
 import { MarketListing } from "@/lib/storage";
+import PokeBackground from "@/components/PokeBackground";
 
 function ListingCard({
   listing,
@@ -190,6 +191,7 @@ export default function MarketScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <PokeBackground opacity={colorScheme === "dark" ? 0.055 : 0.045} />
       <LinearGradient
         colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
         style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}

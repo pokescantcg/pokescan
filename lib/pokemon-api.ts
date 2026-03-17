@@ -135,6 +135,42 @@ export async function fetchSetCards(setId: string, page: number = 1): Promise<{ 
 }
 
 export async function searchCards(query: string, page: number = 1): Promise<{ cards: PokemonCard[]; totalCount: number }> {
+  // Try local cache first — avoids API calls when DB has been downloaded
+  if (page === 1) {
+    try {
+      const { getCacheStatus, searchLocalCardsByQuery } = await import("./card-cache");
+      const meta = await getCacheStatus();
+      if (meta.cachedSets > 0) {
+        const localResults = await searchLocalCardsByQuery(query, 30);
+        if (localResults.length > 0) {
+          const cards: PokemonCard[] = localResults.map((c) => ({
+            id: c.id,
+            name: c.name,
+            number: c.number,
+            supertype: c.supertype || "Pokémon",
+            types: c.types,
+            hp: c.hp,
+            artist: c.artist,
+            rarity: c.rarity,
+            set: {
+              id: c.setId,
+              name: c.setName,
+              series: "",
+              printedTotal: 0,
+              total: 0,
+              releaseDate: "",
+              updatedAt: "",
+              images: { symbol: "", logo: "" },
+            },
+            images: { small: c.imageSmall, large: c.imageLarge },
+          }));
+          return { cards, totalCount: localResults.length };
+        }
+      }
+    } catch {
+      // fall through to API
+    }
+  }
   const base = apiBase();
   const res = await fetch(`${base}api/pokemon/cards/search?q=${encodeURIComponent(query)}&page=${page}`);
   if (!res.ok) throw new Error("Failed to search cards");

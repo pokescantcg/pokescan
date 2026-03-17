@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,18 +8,21 @@ import {
   Platform,
   Alert,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
 import { useCardCache } from "@/lib/card-cache-context";
 import { CacheMeta, LangFilter, LANG_INFO, SyncProgress } from "@/lib/card-cache";
+import PokeBackground from "@/components/PokeBackground";
 
 function formatNumber(n: number): string {
   return n.toLocaleString();
@@ -35,12 +38,42 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user, collection, collectionValue, listings, logout, isStaff, isSuperadminUser } = useUser();
+  const { user, collection, collectionValue, listings, logout, isStaff, isSuperadminUser, updateAvatar } = useUser();
   const { cacheStatus, isDownloading, downloadPercent, progress, startDownload, clearCardCache, refreshStatus, selectedLanguages, setSelectedLanguages } = useCardCache();
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
   const myListings = listings.filter((l) => l.userId === user?.id);
+
+  const handlePickAvatar = useCallback(async () => {
+    if (!user?.isPremium) {
+      Alert.alert("Premium Required", "Upgrade to Premium to set a profile picture.");
+      return;
+    }
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Needed", "Please allow access to your photo library to upload a profile picture.");
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: false,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+      setUploadingAvatar(true);
+      await updateAvatar(result.assets[0].uri);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert("Error", "Failed to update profile picture.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }, [user?.isPremium, updateAvatar]);
 
   const handleSync = useCallback(async () => {
     if (isDownloading) return;
@@ -166,6 +199,7 @@ export default function ProfileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <PokeBackground opacity={colorScheme === "dark" ? 0.055 : 0.045} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: 120 }]}
@@ -185,14 +219,44 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.profileSection}>
-            <LinearGradient
-              colors={["#CC0000", "#8B0000"]}
-              style={styles.avatarCircle}
-            >
-              <Text style={styles.avatarText}>
-                {user.displayName.charAt(0).toUpperCase()}
-              </Text>
-            </LinearGradient>
+            <Pressable onPress={handlePickAvatar} style={{ marginBottom: 10 }}>
+              {user.avatarUrl ? (
+                <View style={styles.avatarCircle}>
+                  {uploadingAvatar ? (
+                    <ActivityIndicator color="#FFF" size="large" />
+                  ) : (
+                    <Image
+                      source={{ uri: user.avatarUrl }}
+                      style={{ width: 80, height: 80, borderRadius: 40 }}
+                      contentFit="cover"
+                    />
+                  )}
+                  {user.isPremium && (
+                    <View style={styles.cameraOverlay}>
+                      <Ionicons name="camera" size={14} color="#FFF" />
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <LinearGradient
+                  colors={["#CC0000", "#8B0000"]}
+                  style={styles.avatarCircle}
+                >
+                  {uploadingAvatar ? (
+                    <ActivityIndicator color="#FFF" size="large" />
+                  ) : (
+                    <Text style={styles.avatarText}>
+                      {user.displayName.charAt(0).toUpperCase()}
+                    </Text>
+                  )}
+                  {user.isPremium && (
+                    <View style={styles.cameraOverlay}>
+                      <Ionicons name="camera" size={14} color="#FFF" />
+                    </View>
+                  )}
+                </LinearGradient>
+              )}
+            </Pressable>
             <Text style={[styles.displayName, { color: colors.text }]}>{user.displayName}</Text>
             <Text style={[styles.username, { color: colors.textSecondary }]}>@{user.username}</Text>
             {user.isPremium && (
@@ -614,6 +678,19 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   avatarText: { fontSize: 32, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  cameraOverlay: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    backgroundColor: "#CC0000",
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#FFF",
+  },
   avatarPlaceholder: {
     width: 80,
     height: 80,

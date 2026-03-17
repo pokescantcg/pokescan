@@ -452,9 +452,25 @@ export async function setUserRole(userId: string, role: UserRole): Promise<UserP
   return users;
 }
 
+export async function updateUserAvatar(userId: string, avatarUrl: string): Promise<UserProfile | null> {
+  const users = await getAllUsers();
+  const target = users.find((u) => u.id === userId);
+  if (target) {
+    target.avatarUrl = avatarUrl;
+    await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+  }
+  const currentUser = await getUser();
+  if (currentUser && currentUser.id === userId) {
+    currentUser.avatarUrl = avatarUrl;
+    await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
+    return currentUser;
+  }
+  return target || null;
+}
+
 export async function adminUpdateUser(
   userId: string,
-  updates: { displayName?: string; email?: string; mobileNumber?: string }
+  updates: { displayName?: string; email?: string; mobileNumber?: string; avatarUrl?: string }
 ): Promise<UserProfile[]> {
   // Update in local registry
   const users = await getAllUsers();
@@ -463,6 +479,7 @@ export async function adminUpdateUser(
     if (updates.displayName) target.displayName = updates.displayName;
     if (updates.email !== undefined) target.email = updates.email;
     if (updates.mobileNumber !== undefined) target.mobileNumber = updates.mobileNumber;
+    if (updates.avatarUrl !== undefined) target.avatarUrl = updates.avatarUrl;
     await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
     // If this user is the currently logged-in user, update local user too
     const currentUser = await getUser();
@@ -470,6 +487,7 @@ export async function adminUpdateUser(
       if (updates.displayName) currentUser.displayName = updates.displayName;
       if (updates.email !== undefined) currentUser.email = updates.email;
       if (updates.mobileNumber !== undefined) currentUser.mobileNumber = updates.mobileNumber;
+      if (updates.avatarUrl !== undefined) currentUser.avatarUrl = updates.avatarUrl;
       await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
     }
   }

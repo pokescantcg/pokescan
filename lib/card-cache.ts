@@ -128,6 +128,54 @@ export async function searchLocalCards(
   return namePrefixResults[0] || null;
 }
 
+export async function searchLocalCardsByQuery(
+  query: string,
+  limit: number = 30
+): Promise<CachedCard[]> {
+  const meta = await getCacheStatus();
+  if (meta.cachedSets === 0) return [];
+
+  const queryLower = query.toLowerCase().trim();
+  if (!queryLower) return [];
+
+  const results: CachedCard[] = [];
+  const seen = new Set<string>();
+
+  // First pass: exact name starts-with (most relevant)
+  for (const sid of meta.syncedSetIds) {
+    if (results.length >= limit) break;
+    const raw = await AsyncStorage.getItem(KEYS.CARDS_PREFIX + sid);
+    if (!raw) continue;
+    const cards: CachedCard[] = JSON.parse(raw);
+    for (const c of cards) {
+      if (c.name.toLowerCase().startsWith(queryLower) && !seen.has(c.id)) {
+        seen.add(c.id);
+        results.push(c);
+        if (results.length >= limit) break;
+      }
+    }
+  }
+
+  // Second pass: contains match (if we still need more)
+  if (results.length < limit) {
+    for (const sid of meta.syncedSetIds) {
+      if (results.length >= limit) break;
+      const raw = await AsyncStorage.getItem(KEYS.CARDS_PREFIX + sid);
+      if (!raw) continue;
+      const cards: CachedCard[] = JSON.parse(raw);
+      for (const c of cards) {
+        if (c.name.toLowerCase().includes(queryLower) && !seen.has(c.id)) {
+          seen.add(c.id);
+          results.push(c);
+          if (results.length >= limit) break;
+        }
+      }
+    }
+  }
+
+  return results;
+}
+
 // ── Sync ──────────────────────────────────────────────────────────────────────
 
 export type SyncProgress = {

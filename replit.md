@@ -24,7 +24,7 @@ Preferred communication style: Simple, everyday language.
 - `app/(tabs)/scanner.tsx` — Search/scan cards (text search + image picker)
 - `app/(tabs)/collection.tsx` — User's card collection with values
 - `app/(tabs)/market.tsx` — Marketplace for trading/selling cards
-- `app/(tabs)/profile.tsx` — User profile, stats, premium toggle
+- `app/(tabs)/profile.tsx` — User profile, stats, premium info, profile picture upload (premium only)
 - `app/set/[id].tsx` — Set detail: 3-column image grid using TCG API cards (complete list with images, infinite scroll, direct navigation to `/card/[id]`). Receives `{ id: tcgSetId, name }` params from Browse tab
 - `app/card/[id].tsx` — Individual card detail with pricing and add-to-collection
 - `app/register.tsx` — User registration modal
@@ -40,11 +40,19 @@ Preferred communication style: Simple, everyday language.
 
 ### Local Card Cache (`lib/card-cache.ts`)
 - `syncDatabase(onProgress)` — downloads all cards from all sets via `/api/pokemon/sets/:setId/all-cards` and stores in AsyncStorage. Supports resume (skips already-synced sets)
-- `searchLocalCards(query)` — instant in-device card search against cached data
+- `searchLocalCards(name, number?, setId?)` — finds a single card by name in local cache
+- `searchLocalCardsByQuery(query, limit?)` — returns array of matching cards (starts-with first, then contains). Used for cache-first search in scanner
 - `getCacheStatus()` — returns `CacheMeta` with totalCards, cachedSets, totalSets, lastSync
 - `clearCache()` — wipes all cached card data
 - Cache keys: `pokescan_cache_meta`, `pokescan_cache_sets`, `pokescan_cache_cards_<setId>`
 - `findCard()` in `lib/pokemon-api.ts` checks local cache first before hitting server API
+- `searchCards()` in `lib/pokemon-api.ts` checks local cache first when any sets are cached — falls back to API if no local results
+- **PokeBackground** (`components/PokeBackground.tsx`) — subtle Pokemon artwork watermark rendered on all main tab screens using official artwork sprites at low opacity
+
+### Profile Picture
+- Premium users can upload a profile picture via the Profile tab (tapping the avatar shows image picker)
+- Stored as a local file URI in AsyncStorage via `updateUserAvatar()` in `lib/storage.ts`
+- Exposed via `updateAvatar()` in user context
 
 ### API Routes (server/routes.ts)
 - `GET /api/pokemon/sets` — Fetch all card sets
