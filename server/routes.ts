@@ -26,7 +26,7 @@ import {
   pokescanUsers,
   pokescanSessions,
 } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, ilike, or } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
 
 const openai = new OpenAI({
@@ -300,32 +300,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Silent — background seed failure is non-critical
         }
       })();
-    } catch (error) {
-      console.error("Failed to fetch set cards:", error);
-      res.status(500).json({ error: "Failed to fetch cards. Please try again." });
+    } catch (error: any) {
+      if (error?.name === "AbortError") {
+        res.status(504).json({ error: "Cards took too long to load. Please try again." });
+      } else {
+        console.error("Failed to fetch set cards:", error);
+        res.status(500).json({ error: "Failed to fetch cards. Please try again." });
+      }
     }
   });
 
   app.get("/api/pokemon/cards/search", async (req: Request, res: Response) => {
     try {
       const query = req.query.q as string;
-      const page = req.query.page || "1";
-      const encodedQuery = encodeURIComponent(`name:"${query}*"`);
-      const response = await fetch(
-        `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&page=${page}&pageSize=20`
-      );
-      const text = await response.text();
-      if (!response.ok) {
-        console.error(`Pokemon TCG API error ${response.status}: ${text.substring(0, 200)}`);
+      if (!query || query.trim().length < 2) {
         res.json({ data: [], count: 0, totalCount: 0 });
         return;
       }
+      const page = parseInt(String(req.query.page || "1"), 10);
+      const pageSize = 20;
+      const offset = (page - 1) * pageSize;
+
+      // 1. Search local DB first (fast, no network dependency)
       try {
+        const dbResults = await db
+          .select({ card: pokemonCards, set: pokemonSets })
+          .from(pokemonCards)
+          .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
+          .where(ilike(pokemonCards.name, `%${query.trim()}%`))
+          .orderBy(desc(pokemonSets.releaseDate))
+          .limit(pageSize)
+          .offset(offset);
+
+        if (dbResults.length > 0) {
+          const formatted = dbResults.map(({ card, set }) => {
+            const base = dbCardToApiFormat(card, null);
+            if (set) {
+              base.set = {
+                id: set.id,
+                name: set.name,
+                series: set.series ?? undefined,
+                printedTotal: set.printedTotal,
+                total: set.total,
+                releaseDate: set.releaseDate,
+                images: { symbol: set.symbolUrl, logo: set.logoUrl },
+              };
+            }
+            return base;
+          });
+
+          const totalCountResult = await db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(pokemonCards)
+            .where(ilike(pokemonCards.name, `%${query.trim()}%`));
+
+          const totalCount = totalCountResult[0]?.count ?? formatted.length;
+          res.json({ data: formatted, count: formatted.length, totalCount, source: "db" });
+          return;
+        }
+      } catch (dbErr) {
+        console.error("DB card search failed, falling back to API:", dbErr);
+      }
+
+      // 2. Fall back to live TCG API with a strict 12s timeout
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 12000);
+      try {
+        const encodedQuery = encodeURIComponent(`name:"${query.trim()}*"`);
+        const response = await fetch(
+          `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&page=${page}&pageSize=${pageSize}`,
+          { signal: ctrl.signal, headers: tcgHeaders() }
+        );
+        clearTimeout(timer);
+        const text = await response.text();
+        if (!response.ok) {
+          console.error(`Pokemon TCG API error ${response.status}: ${text.substring(0, 200)}`);
+          res.json({ data: [], count: 0, totalCount: 0 });
+          return;
+        }
         const data = JSON.parse(text);
         res.json(data);
-      } catch {
-        console.error("Pokemon TCG API returned non-JSON:", text.substring(0, 200));
-        res.json({ data: [], count: 0, totalCount: 0 });
+      } catch (apiErr: any) {
+        clearTimeout(timer);
+        if (apiErr.name === "AbortError") {
+          res.json({ data: [], count: 0, totalCount: 0, error: "Search timed out" });
+        } else {
+          console.error("Failed to search cards:", apiErr);
+          res.json({ data: [], count: 0, totalCount: 0 });
+        }
       }
     } catch (error) {
       console.error("Failed to search cards:", error);
@@ -574,11 +636,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      const aiController = new AbortController();
-      const aiTimeout = setTimeout(() => aiController.abort(), 35000);
       let response: Awaited<ReturnType<typeof openai.chat.completions.create>>;
       try {
-        response = await openai.chat.completions.create({
+        const aiPromise = openai.chat.completions.create({
           model: "gpt-5.2",
           messages: [
             {
@@ -618,7 +678,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
                 {
                   type: "image_url",
                   image_url: {
-                    url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`
+                    url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
+                    detail: "low"
                   }
                 }
               ]
@@ -626,12 +687,14 @@ If you cannot identify the card, set confidence to "low" and provide your best g
           ],
           response_format: { type: "json_object" },
           max_completion_tokens: 500,
-        }, { signal: aiController.signal });
-        clearTimeout(aiTimeout);
+        });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(Object.assign(new Error("AI identification timed out. Please try again."), { isTimeout: true })), 30000)
+        );
+        response = await Promise.race([aiPromise, timeoutPromise]);
       } catch (aiErr: any) {
-        clearTimeout(aiTimeout);
-        if (aiErr.name === "AbortError" || aiErr.code === "ERR_CANCELED") {
-          res.status(408).json({ error: "AI identification timed out. Please try again." });
+        if (aiErr.isTimeout || aiErr.name === "AbortError" || aiErr.code === "ERR_CANCELED") {
+          res.status(408).json({ error: aiErr.message || "AI identification timed out. Please try again." });
           return;
         }
         throw aiErr;
@@ -661,25 +724,77 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       }
 
       let tcgApiResults: any[] = [];
+      // 1. Search local DB first for identified card name (fast, offline-capable)
       try {
-        const encodedQuery = encodeURIComponent(`name:"${identification.englishName}"`);
-        const tcgRes = await fetch(
-          `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&pageSize=10`
-        );
-        if (tcgRes.ok) {
-          const tcgData = await tcgRes.json();
-          tcgApiResults = tcgData.data || [];
-          if (identification.cardNumber && tcgApiResults.length > 1) {
-            const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
-            const exactMatch = tcgApiResults.filter((c: any) => {
-              const cn = String(c.number).replace(/^0+/, "");
-              return cn === numOnly;
+        const cardName = identification.englishName?.trim();
+        if (cardName && cardName.length >= 2) {
+          const dbMatches = await db
+            .select({ card: pokemonCards, set: pokemonSets })
+            .from(pokemonCards)
+            .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
+            .where(ilike(pokemonCards.name, `%${cardName}%`))
+            .orderBy(desc(pokemonSets.releaseDate))
+            .limit(10);
+
+          if (dbMatches.length > 0) {
+            let formatted = dbMatches.map(({ card, set }) => {
+              const base = dbCardToApiFormat(card, null);
+              if (set) {
+                base.set = {
+                  id: set.id,
+                  name: set.name,
+                  series: set.series ?? undefined,
+                  printedTotal: set.printedTotal,
+                  total: set.total,
+                  releaseDate: set.releaseDate,
+                  images: { symbol: set.symbolUrl, logo: set.logoUrl },
+                };
+              }
+              return base;
             });
-            if (exactMatch.length > 0) tcgApiResults = exactMatch;
+
+            // Filter by card number if AI identified one
+            if (identification.cardNumber && formatted.length > 1) {
+              const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
+              const exactMatch = formatted.filter((c: any) => {
+                const cn = String(c.number).replace(/^0+/, "");
+                return cn === numOnly;
+              });
+              if (exactMatch.length > 0) formatted = exactMatch;
+            }
+            tcgApiResults = formatted;
           }
         }
-      } catch (e) {
-        console.error("TCG API search after identification failed:", e);
+      } catch (dbErr) {
+        console.error("DB card search after identification failed:", dbErr);
+      }
+
+      // 2. If not found in DB, fall back to TCG API with a strict 10s timeout
+      if (tcgApiResults.length === 0) {
+        try {
+          const encodedQuery = encodeURIComponent(`name:"${identification.englishName}"`);
+          const apiCtrl = new AbortController();
+          const apiTimer = setTimeout(() => apiCtrl.abort(), 10000);
+          const tcgRes = await fetch(
+            `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&pageSize=10`,
+            { signal: apiCtrl.signal, headers: tcgHeaders() }
+          );
+          clearTimeout(apiTimer);
+          if (tcgRes.ok) {
+            const tcgData = await tcgRes.json();
+            tcgApiResults = tcgData.data || [];
+            if (identification.cardNumber && tcgApiResults.length > 1) {
+              const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
+              const exactMatch = tcgApiResults.filter((c: any) => {
+                const cn = String(c.number).replace(/^0+/, "");
+                return cn === numOnly;
+              });
+              if (exactMatch.length > 0) tcgApiResults = exactMatch;
+            }
+          }
+        } catch (e) {
+          console.error("TCG API search after identification failed:", e);
+        }
       }
 
       res.json({

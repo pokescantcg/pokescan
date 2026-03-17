@@ -385,7 +385,7 @@ export default function ScannerScreen() {
     }
   }, [searchText]);
 
-  const processImage = useCallback(async (uri: string) => {
+  const processImageFromBase64 = useCallback(async (uri: string, base64Data: string | null | undefined) => {
     setCapturedImage(uri);
     setIsIdentifying(true);
     setIdentifyError(null);
@@ -398,7 +398,11 @@ export default function ScannerScreen() {
 
     try {
       let base64: string;
-      if (Platform.OS === "web") {
+      if (base64Data) {
+        // ImagePicker already returned base64 directly — use it
+        base64 = base64Data.startsWith("data:") ? base64Data : `data:image/jpeg;base64,${base64Data}`;
+      } else if (Platform.OS === "web") {
+        // Web: fetch the blob and convert to data URL
         const response = await fetch(uri);
         const blob = await response.blob();
         base64 = await new Promise<string>((resolve, reject) => {
@@ -408,6 +412,7 @@ export default function ScannerScreen() {
           reader.readAsDataURL(blob);
         });
       } else {
+        // Native fallback: read via FileSystem legacy
         const fileBase64 = await FileSystem.readAsStringAsync(uri, {
           encoding: "base64" as any,
         });
@@ -440,14 +445,15 @@ export default function ScannerScreen() {
         quality: 0.5,
         allowsEditing: true,
         aspect: [3, 4],
+        base64: true,
       });
       if (!result.canceled && result.assets[0]) {
-        processImage(result.assets[0].uri);
+        processImageFromBase64(result.assets[0].uri, result.assets[0].base64);
       }
     } catch (e) {
       console.error("Camera error:", e);
     }
-  }, [processImage]);
+  }, [processImageFromBase64]);
 
   const handleGallery = useCallback(async () => {
     try {
@@ -455,14 +461,15 @@ export default function ScannerScreen() {
         quality: 0.5,
         allowsEditing: true,
         aspect: [3, 4],
+        base64: true,
       });
       if (!result.canceled && result.assets[0]) {
-        processImage(result.assets[0].uri);
+        processImageFromBase64(result.assets[0].uri, result.assets[0].base64);
       }
     } catch (e) {
       console.error("Gallery error:", e);
     }
-  }, [processImage]);
+  }, [processImageFromBase64]);
 
   const handleEbayListings = useCallback((name: string, setName?: string, number?: string) => {
     const url = generateEbaySearchUrl(name, setName, number);
