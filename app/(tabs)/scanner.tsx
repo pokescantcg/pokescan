@@ -437,7 +437,7 @@ export default function ScannerScreen() {
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
-        quality: 0.8,
+        quality: 0.5,
         allowsEditing: true,
         aspect: [3, 4],
       });
@@ -452,7 +452,7 @@ export default function ScannerScreen() {
   const handleGallery = useCallback(async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        quality: 0.8,
+        quality: 0.5,
         allowsEditing: true,
         aspect: [3, 4],
       });

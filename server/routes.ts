@@ -197,9 +197,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { setId } = req.params;
       const page = parseInt((req.query.page as string) || "1", 10);
-      const pageSize = 50;
+      const pageSize = parseInt((req.query.pageSize as string) || "250", 10);
       const offset = (page - 1) * pageSize;
-      const cacheKey = `${setId}:${page}`;
+      const cacheKey = `${setId}:${page}:${pageSize}`;
 
       // 1. Check in-memory cache (instant)
       const memHit = getMemCache(cacheKey);
@@ -235,9 +235,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("DB query failed for set cards:", dbErr);
       }
 
-      // 3. Fetch from TCG API (15s timeout)
+      // 3. Fetch from TCG API (30s timeout)
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timeout = setTimeout(() => controller.abort(), 30000);
       const response = await fetch(
         `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`,
         { signal: controller.signal, headers: tcgHeaders() }
@@ -257,7 +257,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let seeded = 0;
           while (true) {
             const ctrl2 = new AbortController();
-            const t2 = setTimeout(() => ctrl2.abort(), 15000);
+            const t2 = setTimeout(() => ctrl2.abort(), 30000);
             const r2 = await fetch(
               `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${bgPage}&pageSize=250`,
               { signal: ctrl2.signal }
@@ -626,7 +626,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
           ],
           response_format: { type: "json_object" },
           max_completion_tokens: 500,
-        });
+        }, { signal: aiController.signal });
         clearTimeout(aiTimeout);
       } catch (aiErr: any) {
         clearTimeout(aiTimeout);

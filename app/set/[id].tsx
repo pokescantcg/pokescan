@@ -101,9 +101,7 @@ export default function SetDetailScreen() {
   const insets = useSafeAreaInsets();
 
   const [allCards, setAllCards] = useState<PokemonCard[]>([]);
-  const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
@@ -111,7 +109,6 @@ export default function SetDetailScreen() {
     let cancelled = false;
     setIsLoading(true);
     setAllCards([]);
-    setPage(1);
 
     const load = async () => {
       // On mobile, check the local device cache first — instant if already downloaded
@@ -123,46 +120,48 @@ export default function SetDetailScreen() {
             const cards = cached.map(cachedToPokemonCard);
             setAllCards(cards);
             setTotalCount(cards.length);
-            setHasMore(false);
             setIsLoading(false);
             return;
           }
         } catch {}
       }
 
-      // Fall back to the server API (DB or live TCG API)
+      // Fetch page 1, then auto-load all remaining pages in background
       try {
         const result = await fetchSetCards(id as string, 1);
-        if (!cancelled) {
-          setAllCards(result.cards);
-          setTotalCount(result.totalCount);
-          setHasMore(result.cards.length < result.totalCount);
+        if (cancelled) return;
+        setAllCards(result.cards);
+        setTotalCount(result.totalCount);
+        setIsLoading(false);
+
+        // Auto-load all remaining pages silently in the background
+        if (result.cards.length < result.totalCount) {
+          setIsLoadingMore(true);
+          let pg = 2;
+          let accumulated = [...result.cards];
+          while (!cancelled && accumulated.length < result.totalCount) {
+            try {
+              const next = await fetchSetCards(id as string, pg);
+              if (cancelled) break;
+              accumulated = [...accumulated, ...next.cards];
+              setAllCards([...accumulated]);
+              setTotalCount(next.totalCount);
+              if (next.cards.length === 0) break;
+              pg++;
+            } catch {
+              break;
+            }
+          }
+          if (!cancelled) setIsLoadingMore(false);
         }
-      } catch {}
-      if (!cancelled) setIsLoading(false);
+      } catch {
+        if (!cancelled) setIsLoading(false);
+      }
     };
 
     load();
     return () => { cancelled = true; };
   }, [id]);
-
-  const loadMore = useCallback(async () => {
-    if (!hasMore || isLoadingMore || isLoading) return;
-    setIsLoadingMore(true);
-    const nextPage = page + 1;
-    try {
-      const result = await fetchSetCards(id as string, nextPage);
-      setAllCards((prev) => {
-        const newCards = [...prev, ...result.cards];
-        setHasMore(newCards.length < result.totalCount);
-        return newCards;
-      });
-      setPage(nextPage);
-    } catch {}
-    finally {
-      setIsLoadingMore(false);
-    }
-  }, [hasMore, isLoadingMore, isLoading, page, id]);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const loaded = allCards.length;
@@ -212,25 +211,14 @@ export default function SetDetailScreen() {
           columnWrapperStyle={styles.gridRow}
           contentContainerStyle={[styles.listContent, { paddingBottom: 40 }]}
           showsVerticalScrollIndicator={false}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.4}
           ListFooterComponent={
             isLoadingMore ? (
               <View style={styles.footerLoader}>
                 <ActivityIndicator color={colors.pokemonRed} />
                 <Text style={[styles.footerText, { color: colors.textSecondary }]}>
-                  Loading more...
+                  Loading {totalCount - loaded} more cards...
                 </Text>
               </View>
-            ) : hasMore ? (
-              <Pressable
-                style={[styles.loadMoreBtn, { borderColor: colors.pokemonRed + "60" }]}
-                onPress={loadMore}
-              >
-                <Text style={[styles.loadMoreText, { color: colors.pokemonRed }]}>
-                  Load More ({totalCount - loaded} remaining)
-                </Text>
-              </Pressable>
             ) : null
           }
           ListEmptyComponent={

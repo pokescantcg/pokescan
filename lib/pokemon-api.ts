@@ -293,8 +293,15 @@ export async function identifyCard(imageBase64: string): Promise<IdentifyCardRes
     });
     clearTimeout(timeout);
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error(err || "Failed to identify card");
+      let errMsg = "Failed to identify card";
+      try {
+        const errJson = await res.json();
+        errMsg = errJson.error || errMsg;
+      } catch {
+        const errText = await res.text().catch(() => "");
+        errMsg = errText || errMsg;
+      }
+      throw new Error(errMsg);
     }
     return res.json();
   } catch (e: any) {

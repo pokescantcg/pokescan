@@ -561,8 +561,9 @@ async function runFastCardSeed(): Promise<void> {
 
   let totalInserted = 0;
 
-  // Sets known to have no cards in the TCG API (Chinese/regional editions that 404/timeout)
-  const NO_CARD_PREFIXES = ["me", "zsv", "rsv"];
+  // Sets known to have no cards in the TCG API
+  // Note: me*, zsv*, rsv* sets DO have cards — they are not skipped
+  const NO_CARD_PREFIXES: string[] = [];
 
   for (const set of sets) {
     // Skip regional sets with no TCG API card data immediately

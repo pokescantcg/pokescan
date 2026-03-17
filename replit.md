@@ -104,7 +104,7 @@ Preferred communication style: Simple, everyday language.
 
 ### Database
 - **PostgreSQL**: Configured via Drizzle ORM with `DATABASE_URL` environment variable. Schema in `shared/schema.ts`
-- **Card seeding**: `runFastCardSeed()` in `server/card-sync.ts` populates `pokemon_cards` table on startup if fewer than 80% of sets are seeded. Resumes mid-seed across restarts. Immediately skips known no-card prefixes (`me*`, `zsv*`, `rsv*`) without wasting API time. Handles 429 rate-limits with backoff (30s/60s/90s wait), retries AbortErrors up to 3×, 30s per-page timeout. Optional `POKEMON_TCG_API_KEY` env var for higher rate limits
+- **Card seeding**: `runFastCardSeed()` in `server/card-sync.ts` populates `pokemon_cards` table on startup if fewer than 80% of sets are seeded. Resumes mid-seed across restarts. All sets attempted (no prefix skip list — `me*`, `zsv*`, `rsv*` sets like Ascended Heroes and Phantasmal Flames DO have TCG API cards). Handles 429 rate-limits with backoff (30s/60s/90s wait), retries AbortErrors up to 3×, 30s per-page timeout. Optional `POKEMON_TCG_API_KEY` env var for higher rate limits
 - **Admin - Delete User**: `DELETE /api/admin/delete-user` endpoint; `deleteUserFromRegistry()` in `lib/storage.ts`; `deleteUserAccount()` in user context; red trash button in admin panel Users tab (superadmin only, with confirmation alert)
 
 ### Key npm packages
