@@ -31,6 +31,7 @@ import {
   restoreSession,
   verifyOtpAndLogin,
   registerUserWithOtp,
+  upsertUserInRegistry,
   sendOtpForRegistration,
   sendOtpForLogin,
 } from "./storage";
@@ -42,7 +43,7 @@ interface UserContextValue {
   listings: MarketListing[];
   collectionValue: number;
   allUsers: UserProfile[];
-  register: (username: string, displayName: string, email: string, mobileNumber: string) => Promise<{ userId: string }>;
+  register: (username: string, displayName: string, email: string, mobileNumber: string) => Promise<{ user: UserProfile }>;
   sendRegistrationOtp: (userId: string, channel: "email" | "sms") => Promise<void>;
   sendLoginOtp: (credential: string, channel: "email" | "sms") => Promise<{ userId: string }>;
   verifyOtp: (credential: string, code: string) => Promise<void>;
@@ -113,7 +114,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, [loadData]);
 
   const register = useCallback(async (username: string, displayName: string, email: string, mobileNumber: string) => {
-    return registerUserWithOtp(username, displayName, email, mobileNumber);
+    const { user: newUser } = await registerUserWithOtp(username, displayName, email, mobileNumber);
+    setUser(newUser);
+    await upsertUserInRegistry(newUser);
+    const users = await getAllUsers();
+    setAllUsers(users);
+    return { user: newUser };
   }, []);
 
   const handleSendRegistrationOtp = useCallback(async (userId: string, channel: "email" | "sms") => {

@@ -120,14 +120,18 @@ export async function registerUserWithOtp(
   displayName: string,
   email: string,
   mobileNumber: string
-): Promise<{ userId: string }> {
+): Promise<{ user: UserProfile }> {
   const res = await apiRequest("POST", "/api/auth/register", {
     username,
     displayName,
     email,
     mobileNumber,
   });
-  return res.json();
+  const data = await res.json();
+  const user = dbUserToProfile(data.user);
+  await saveSessionToken(data.token);
+  await saveLocalUser(user);
+  return { user };
 }
 
 export async function sendOtpForRegistration(
@@ -356,7 +360,7 @@ export function getCollectionValue(collection: CollectionItem[]): number {
   }, 0);
 }
 
-async function upsertUserInRegistry(user: UserProfile): Promise<void> {
+export async function upsertUserInRegistry(user: UserProfile): Promise<void> {
   const users = await getAllUsers();
   const idx = users.findIndex((u) => u.id === user.id);
   if (idx >= 0) {

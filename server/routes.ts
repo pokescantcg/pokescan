@@ -712,7 +712,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         role: "user",
         avatarUrl: null,
       });
-      res.json({ userId: user.id, message: "Account created. Please verify with OTP." });
+      const token = await storage.createSession(user.id);
+      res.json({ token, user });
     } catch (error: any) {
       console.error("Register error:", error);
       res.status(500).json({ error: error.message || "Registration failed" });

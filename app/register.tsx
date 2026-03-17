@@ -282,9 +282,9 @@ export default function RegisterScreen() {
     }
     setIsSubmitting(true);
     try {
-      const result = await register(username.trim(), displayName.trim(), email.trim(), mobileNumber.trim());
-      setUserId(result.userId);
-      setStep("channel");
+      await register(username.trim(), displayName.trim(), email.trim(), mobileNumber.trim());
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.back();
     } catch (e: any) {
       const msg = e?.message || "";
       if (msg.includes("409")) {
