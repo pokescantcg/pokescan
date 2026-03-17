@@ -51,10 +51,11 @@ export default function CardDetailScreen() {
   const { user, addCard, createListing, collection } = useUser();
   const [selectedCondition, setSelectedCondition] = useState("Near Mint");
 
-  const { data: card, isLoading } = useQuery({
+  const { data: card, isLoading, isError, refetch } = useQuery({
     queryKey: ["card", id],
     queryFn: () => fetchCard(id),
     staleTime: 1000 * 60 * 30,
+    retry: 1,
   });
 
   const conditions = ["Mint", "Near Mint", "Excellent", "Good", "Light Play", "Played"];
@@ -146,7 +147,7 @@ export default function CardDetailScreen() {
     Linking.openURL(url);
   };
 
-  if (isLoading || !card) {
+  if (isLoading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}>
@@ -156,6 +157,28 @@ export default function CardDetailScreen() {
         </View>
         <View style={styles.loadingContainer}>
           <MaterialCommunityIcons name="pokeball" size={40} color={colors.pokemonRed} />
+        </View>
+      </View>
+    );
+  }
+
+  if (isError || !card) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}>
+          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={24} color={colors.text} />
+          </Pressable>
+        </View>
+        <View style={styles.loadingContainer}>
+          <MaterialCommunityIcons name="pokeball" size={48} color={colors.textMuted} />
+          <Text style={[styles.errorTitle, { color: colors.text }]}>Card unavailable</Text>
+          <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
+            This card couldn't be loaded right now.
+          </Text>
+          <Pressable onPress={() => refetch()} style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}>
+            <Text style={styles.retryBtnText}>Try again</Text>
+          </Pressable>
         </View>
       </View>
     );
@@ -459,5 +482,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actionBtnSmallText: { fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
+  errorTitle: { fontSize: 18, fontFamily: "Outfit_600SemiBold", marginTop: 4 },
+  errorSubtitle: { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 32 },
+  retryBtn: { marginTop: 8, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 24 },
+  retryBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
 });

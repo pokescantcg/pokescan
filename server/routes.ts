@@ -526,10 +526,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      const response = await fetch(`${POKEMON_API}/cards/${cardId}`);
+      const cardAbort = new AbortController();
+      const cardTimeout = setTimeout(() => cardAbort.abort(), 15000);
+      let response: globalThis.Response;
+      try {
+        response = await fetch(`${POKEMON_API}/cards/${cardId}`, { signal: cardAbort.signal });
+      } finally {
+        clearTimeout(cardTimeout);
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      if (!response.ok || !contentType.includes("application/json")) {
+        res.status(502).json({ error: "Card not available right now. Please try again." });
+        return;
+      }
+
       const data = await response.json();
       res.json(data);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === "AbortError") {
+        res.status(504).json({ error: "Card took too long to load. Please try again." });
+        return;
+      }
       console.error("Failed to fetch card:", error);
       res.status(500).json({ error: "Failed to fetch card" });
     }
