@@ -578,44 +578,32 @@ async function runFastCardSeed(): Promise<void> {
       let page = 1;
       while (true) {
         let pageData: { data?: PokemonTcgCard[]; totalCount?: number } | null = null;
-        // Up to 2 attempts per page (1 retry) with fast back-off
-        for (let attempt = 0; attempt < 2; attempt++) {
-          const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), 12000); // 12s timeout — fail fast
-          try {
-            const res = await fetch(
-              `${POKEMON_API}/cards?q=set.id:${set.id}&orderBy=number&page=${page}&pageSize=250`,
-              { headers: buildTcgHeaders(), signal: ctrl.signal }
-            );
-            clearTimeout(timer);
-            if (res.status === 429) {
-              // Rate limited — back off and let user requests through
-              const waitSec = 15 + attempt * 15;
-              console.log(`[CardSync] Rate limited for ${set.id}, waiting ${waitSec}s...`);
-              await sleep(waitSec * 1000);
-              continue;
-            }
-            if (!res.ok) {
-              // Skip sets the TCG API genuinely can't serve
-              if (res.status === 404 || res.status === 503 || res.status === 504) {
-                pageData = null;
-                break;
-              }
-              throw new Error(`HTTP ${res.status}`);
-            }
+        // Single attempt per page — fail fast, no retry (saves API quota for user requests)
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 12000); // 12s timeout — fail fast
+        try {
+          const res = await fetch(
+            `${POKEMON_API}/cards?q=set.id:${set.id}&orderBy=number&page=${page}&pageSize=250`,
+            { headers: buildTcgHeaders(), signal: ctrl.signal }
+          );
+          clearTimeout(timer);
+          if (res.status === 429) {
+            // Rate limited — back off and let user requests through
+            console.log(`[CardSync] Rate limited for ${set.id}, waiting 20s...`);
+            await sleep(20000);
+            // don't retry this set — skip it
+          } else if (res.ok) {
             const ct = res.headers.get("content-type") || "";
-            if (!ct.includes("application/json")) { pageData = null; break; }
-            pageData = await res.json();
-            break; // success
-          } catch (fetchErr: any) {
-            clearTimeout(timer);
-            if (fetchErr.name === "AbortError" && attempt < 1) {
-              console.log(`[CardSync] Timeout for ${set.id} page ${page}, retrying...`);
-              await sleep(2000);
-              continue;
+            if (ct.includes("application/json")) {
+              pageData = await res.json();
             }
-            // Network error — break this page loop and skip set
-            break;
+          }
+          // Any non-ok, non-429 status: leave pageData null → skip set
+        } catch (fetchErr: any) {
+          clearTimeout(timer);
+          // Timeout or network error — skip this set immediately
+          if (fetchErr.name === "AbortError") {
+            console.log(`[CardSync] Timeout for ${set.id} page ${page}, skipping set`);
           }
         }
         if (!pageData) break; // couldn't fetch this page — skip set
@@ -654,7 +642,7 @@ async function runFastCardSeed(): Promise<void> {
       } else {
         console.log(`[CardSync] Skipped set ${set.id} (no cards available)`);
       }
-      await sleep(1500); // Be polite to the TCG API
+      await sleep(5000); // Be polite to the TCG API — 5s gap protects user request quota
     } catch (err) {
       console.error(`[CardSync] Fast seed error for set ${set.id}:`, err);
       await sleep(1000);

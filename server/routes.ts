@@ -227,15 +227,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      // 2. Check DB
+      // 2. Check DB — only serve if the set is fully seeded (≥90% of expected cards)
       try {
-        const totalCountResult = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(pokemonCards)
-          .where(eq(pokemonCards.setId, setId));
+        const [totalCountResult, setInfoResult] = await Promise.all([
+          db.select({ count: sql<number>`count(*)::int` }).from(pokemonCards).where(eq(pokemonCards.setId, setId)),
+          db.select({ total: pokemonSets.total }).from(pokemonSets).where(eq(pokemonSets.id, setId)).limit(1),
+        ]);
         const totalCount = totalCountResult[0]?.count ?? 0;
+        const expectedTotal = setInfoResult[0]?.total ?? 0;
+        const fullySeeded = totalCount > 0 && (expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
 
-        if (totalCount > 0) {
+        if (fullySeeded) {
           const dbCards = await db
             .select()
             .from(pokemonCards)
@@ -420,13 +422,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { setId } = req.params;
 
+      // Only serve from DB if the set is fully seeded (≥90% of expected cards)
+      const setInfoResult = await db.select({ total: pokemonSets.total }).from(pokemonSets).where(eq(pokemonSets.id, setId)).limit(1);
+      const expectedTotal = setInfoResult[0]?.total ?? 0;
       const dbCards = await db
         .select()
         .from(pokemonCards)
         .where(eq(pokemonCards.setId, setId))
         .orderBy(pokemonCards.number);
+      const fullySeeded = dbCards.length > 0 && (expectedTotal === 0 || dbCards.length >= Math.floor(expectedTotal * 0.9));
 
-      if (dbCards.length > 0) {
+      if (fullySeeded) {
         const pricingRows = await Promise.all(
           dbCards.map((c) =>
             db.select().from(cardPricing).where(eq(cardPricing.cardId, c.id)).limit(1)
@@ -573,16 +579,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Cache the fetched card so retries and subsequent views are instant
       if (data?.data?.id) {
         setCardCache(data.data.id, data);
-        // Also seed into DB in the background for persistence across restarts
-        const c = data.data;
-        db.insert(pokemonCards).values({
-          id: c.id, setId: c.set?.id ?? "", name: c.name, number: c.number,
-          rarity: c.rarity ?? null, supertype: c.supertype ?? null,
-          subtypes: Array.isArray(c.subtypes) ? c.subtypes.join(",") : null,
-          hp: c.hp ?? null, artist: c.artist ?? null,
-          imageSmall: c.images?.small ?? null, imageLarge: c.images?.large ?? null,
-          syncedAt: new Date(),
-        }).onConflictDoNothing().catch(() => {});
       }
       res.json(data);
     } catch (error: any) {
