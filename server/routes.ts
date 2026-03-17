@@ -574,12 +574,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-5.2",
-        messages: [
-          {
-            role: "system",
-            content: `You are a Pokemon Trading Card Game expert. You can identify any Pokemon card from any language including English, Japanese, Korean, and Chinese.
+      const aiController = new AbortController();
+      const aiTimeout = setTimeout(() => aiController.abort(), 35000);
+      let response: Awaited<ReturnType<typeof openai.chat.completions.create>>;
+      try {
+        response = await openai.chat.completions.create({
+          model: "gpt-5.2",
+          messages: [
+            {
+              role: "system",
+              content: `You are a Pokemon Trading Card Game expert. You can identify any Pokemon card from any language including English, Japanese, Korean, and Chinese.
 
 When shown a Pokemon card image, identify:
 1. The Pokemon's ENGLISH name (translate if card is in Japanese/Korean/Chinese)
@@ -603,26 +607,35 @@ Always respond with valid JSON in this exact format:
 }
 
 If you cannot identify the card, set confidence to "low" and provide your best guess. The "originalName" field should contain the name as printed on the card (in its original language). If the card is English, originalName equals englishName.`
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "Identify this Pokemon card. Provide the English name, card number, set name, language, holo type, and rarity."
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "Identify this Pokemon card. Provide the English name, card number, set name, language, holo type, and rarity."
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`
+                  }
                 }
-              }
-            ]
-          }
-        ],
-        response_format: { type: "json_object" },
-        max_completion_tokens: 500,
-      });
+              ]
+            }
+          ],
+          response_format: { type: "json_object" },
+          max_completion_tokens: 500,
+        });
+        clearTimeout(aiTimeout);
+      } catch (aiErr: any) {
+        clearTimeout(aiTimeout);
+        if (aiErr.name === "AbortError" || aiErr.code === "ERR_CANCELED") {
+          res.status(408).json({ error: "AI identification timed out. Please try again." });
+          return;
+        }
+        throw aiErr;
+      }
 
       const content = response.choices[0]?.message?.content;
       if (!content) {

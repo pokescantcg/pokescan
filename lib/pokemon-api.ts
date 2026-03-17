@@ -282,16 +282,28 @@ export interface IdentifyCardResult {
 
 export async function identifyCard(imageBase64: string): Promise<IdentifyCardResult> {
   const base = apiBase();
-  const res = await fetch(`${base}api/identify-card`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageBase64 }),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err || "Failed to identify card");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  try {
+    const res = await fetch(`${base}api/identify-card`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageBase64 }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || "Failed to identify card");
+    }
+    return res.json();
+  } catch (e: any) {
+    clearTimeout(timeout);
+    if (e.name === "AbortError") {
+      throw new Error("Connection timed out. Please check your signal and try again.");
+    }
+    throw e;
   }
-  return res.json();
 }
 
 export function formatGBP(price: number | null): string {
