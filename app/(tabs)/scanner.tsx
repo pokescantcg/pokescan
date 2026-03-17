@@ -194,6 +194,111 @@ function PCVResultCard({ card, colors }: { card: PCVCard; colors: ReturnType<typ
   );
 }
 
+function DatabaseMatchCard({
+  card,
+  pcvCard,
+  identification,
+  colors,
+  onEbayListings,
+  onEbaySold,
+}: {
+  card: PokemonCard;
+  pcvCard: PCVCard | null;
+  identification: CardIdentification;
+  colors: ReturnType<typeof useThemeColors>;
+  onEbayListings: () => void;
+  onEbaySold: () => void;
+}) {
+  const tcgPrice = getUKPrice(card);
+  const displayPrice = pcvCard?.priceGBP || tcgPrice.price;
+
+  return (
+    <View style={[dbMatchStyles.wrap, { backgroundColor: colors.card, borderColor: colors.success + "60" }]}>
+      <LinearGradient colors={[colors.success + "18", "transparent"]} style={dbMatchStyles.gradient} />
+
+      <View style={dbMatchStyles.header}>
+        <View style={[dbMatchStyles.badgeBg, { backgroundColor: colors.success + "20" }]}>
+          <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+          <Text style={[dbMatchStyles.badgeText, { color: colors.success }]}>Database Match</Text>
+        </View>
+        {displayPrice ? (
+          <Text style={[dbMatchStyles.price, { color: colors.success }]}>{formatGBP(displayPrice)}</Text>
+        ) : null}
+      </View>
+
+      <Pressable
+        style={({ pressed }) => [dbMatchStyles.cardRow, { opacity: pressed ? 0.85 : 1 }]}
+        onPress={() => router.push({ pathname: "/card/[id]", params: { id: card.id } })}
+      >
+        <Image source={{ uri: card.images.small }} style={dbMatchStyles.cardImage} contentFit="contain" />
+        <View style={dbMatchStyles.cardInfo}>
+          <Text style={[dbMatchStyles.cardName, { color: colors.text }]} numberOfLines={2}>{card.name}</Text>
+          <Text style={[dbMatchStyles.cardSet, { color: colors.textSecondary }]} numberOfLines={1}>
+            {card.set.name}
+          </Text>
+          <Text style={[dbMatchStyles.cardNumber, { color: colors.textMuted }]}>
+            #{card.number}
+          </Text>
+          {card.rarity && (
+            <Text style={[dbMatchStyles.cardRarity, { color: colors.pokemonYellow }]} numberOfLines={1}>
+              {card.rarity}
+            </Text>
+          )}
+          <View style={dbMatchStyles.viewRow}>
+            <Text style={[dbMatchStyles.viewText, { color: colors.pokemonRed }]}>View Full Details</Text>
+            <Ionicons name="chevron-forward" size={13} color={colors.pokemonRed} />
+          </View>
+        </View>
+      </Pressable>
+
+      <View style={dbMatchStyles.ebayRow}>
+        <Pressable
+          style={({ pressed }) => [dbMatchStyles.ebayBtn, { backgroundColor: "#E53238", opacity: pressed ? 0.85 : 1 }]}
+          onPress={onEbayListings}
+        >
+          <Ionicons name="search" size={14} color="#FFF" />
+          <Text style={dbMatchStyles.ebayBtnText}>eBay Listings</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [dbMatchStyles.ebayBtn, { backgroundColor: "#0064D2", opacity: pressed ? 0.85 : 1 }]}
+          onPress={onEbaySold}
+        >
+          <Ionicons name="checkmark-done" size={14} color="#FFF" />
+          <Text style={dbMatchStyles.ebayBtnText}>Sold Items</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const dbMatchStyles = StyleSheet.create({
+  wrap: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 14,
+    gap: 12,
+    marginBottom: 12,
+    overflow: "hidden",
+  },
+  gradient: { position: "absolute", top: 0, left: 0, right: 0, height: 70 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  badgeBg: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  badgeText: { fontSize: 12, fontFamily: "Outfit_700Bold" },
+  price: { fontSize: 20, fontFamily: "Outfit_700Bold" },
+  cardRow: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
+  cardImage: { width: 72, height: 100, borderRadius: 8 },
+  cardInfo: { flex: 1, gap: 3 },
+  cardName: { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  cardSet: { fontSize: 13, fontFamily: "Outfit_500Medium" },
+  cardNumber: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  cardRarity: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
+  viewRow: { flexDirection: "row", alignItems: "center", gap: 2, marginTop: 4 },
+  viewText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
+  ebayRow: { flexDirection: "row", gap: 8 },
+  ebayBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderRadius: 10, gap: 6 },
+  ebayBtnText: { fontSize: 12, fontFamily: "Outfit_700Bold", color: "#FFF" },
+});
+
 function SearchResultCard({ card, colors }: { card: PokemonCard; colors: ReturnType<typeof useThemeColors> }) {
   const priceData = getUKPrice(card);
   return (
@@ -421,64 +526,51 @@ export default function ScannerScreen() {
       {identification && !isIdentifying && (
         <>
           <IdentificationCard identification={identification} colors={colors} />
-          {identification.englishName && (
+
+          {tcgApiResults.length > 0 ? (
+            <DatabaseMatchCard
+              card={tcgApiResults[0]}
+              pcvCard={pcvResults[0] || null}
+              identification={identification}
+              colors={colors}
+              onEbayListings={() => handleEbayListings(identification.englishName, identification.setName, identification.cardNumber)}
+              onEbaySold={() => handleEbaySold(identification.englishName, identification.setName, identification.cardNumber)}
+            />
+          ) : identification.englishName ? (
             <View style={[styles.ebaySection, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
               <View style={styles.ebaySectionHeader}>
                 <Ionicons name="globe-outline" size={16} color="#E53238" />
-                <Text style={[styles.ebaySectionTitle, { color: colors.text }]}>eBay UK Prices</Text>
+                <Text style={[styles.ebaySectionTitle, { color: colors.text }]}>eBay UK Search</Text>
               </View>
               <Text style={[styles.ebaySectionDesc, { color: colors.textSecondary }]}>
-                Compare real sold prices and active listings
+                No exact database match found — search eBay UK directly
               </Text>
               <View style={styles.ebayBtns}>
                 <Pressable
-                  style={({ pressed }) => [
-                    styles.ebayBtn,
-                    { backgroundColor: "#E53238", opacity: pressed ? 0.85 : 1 },
-                  ]}
-                  onPress={() => handleEbayListings(
-                    identification.englishName,
-                    identification.setName,
-                    identification.cardNumber
-                  )}
+                  style={({ pressed }) => [styles.ebayBtn, { backgroundColor: "#E53238", opacity: pressed ? 0.85 : 1 }]}
+                  onPress={() => handleEbayListings(identification.englishName, identification.setName, identification.cardNumber)}
                 >
                   <Ionicons name="search" size={15} color="#FFF" />
                   <Text style={styles.ebayBtnText}>Active Listings</Text>
                 </Pressable>
                 <Pressable
-                  style={({ pressed }) => [
-                    styles.ebayBtn,
-                    { backgroundColor: "#0064D2", opacity: pressed ? 0.85 : 1 },
-                  ]}
-                  onPress={() => handleEbaySold(
-                    identification.englishName,
-                    identification.setName,
-                    identification.cardNumber
-                  )}
+                  style={({ pressed }) => [styles.ebayBtn, { backgroundColor: "#0064D2", opacity: pressed ? 0.85 : 1 }]}
+                  onPress={() => handleEbaySold(identification.englishName, identification.setName, identification.cardNumber)}
                 >
                   <Ionicons name="checkmark-done" size={15} color="#FFF" />
                   <Text style={styles.ebayBtnText}>Sold Items</Text>
                 </Pressable>
               </View>
             </View>
-          )}
+          ) : null}
         </>
       )}
 
-      {pcvResults.length > 0 && (
+      {pcvResults.length > 1 && (
         <View style={styles.resultsHeaderRow}>
           <View style={[styles.resultsHeaderDot, { backgroundColor: colors.success }]} />
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            UK Price Matches ({pcvResults.length})
-          </Text>
-        </View>
-      )}
-
-      {pcvResults.length === 0 && tcgApiResults.length > 0 && (
-        <View style={styles.resultsHeaderRow}>
-          <View style={[styles.resultsHeaderDot, { backgroundColor: colors.pokemonBlue }]} />
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Card Matches ({tcgApiResults.length})
+            UK Price Options ({pcvResults.length})
           </Text>
         </View>
       )}
@@ -582,11 +674,29 @@ export default function ScannerScreen() {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={renderHeader}
         />
-      ) : hasIdentifiedResults && tcgApiResults.length > 0 ? (
+      ) : hasIdentifiedResults && tcgApiResults.length > 1 ? (
         <FlatList
-          data={tcgApiResults}
+          data={tcgApiResults.slice(1)}
           renderItem={({ item }) => <SearchResultCard card={item} colors={colors} />}
           keyExtractor={(item) => item.id}
+          contentContainerStyle={[styles.resultsList, { paddingBottom: 100 }]}
+          showsVerticalScrollIndicator={false}
+          ListHeaderComponent={() => (
+            <>
+              {renderHeader()}
+              <View style={styles.resultsHeaderRow}>
+                <View style={[styles.resultsHeaderDot, { backgroundColor: colors.pokemonBlue }]} />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                  Other Versions ({tcgApiResults.length - 1})
+                </Text>
+              </View>
+            </>
+          )}
+        />
+      ) : hasIdentifiedResults ? (
+        <FlatList
+          data={[]}
+          renderItem={() => null}
           contentContainerStyle={[styles.resultsList, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={renderHeader}
