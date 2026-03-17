@@ -19,6 +19,8 @@ import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
+import { getSessionToken } from "@/lib/storage";
+import { getApiUrl } from "@/lib/query-client";
 import { formatGBP } from "@/lib/pokemon-api";
 import { useCardCache } from "@/lib/card-cache-context";
 import { CacheMeta, LangFilter, LANG_INFO, SyncProgress } from "@/lib/card-cache";
@@ -68,12 +70,42 @@ export default function ProfileScreen() {
         mediaTypes: ["images"],
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.8,
-        base64: false,
+        quality: 0.6,
+        base64: true,
       });
       if (result.canceled || !result.assets?.[0]) return;
       setUploadingAvatar(true);
-      await updateAvatar(result.assets[0].uri);
+
+      const asset = result.assets[0];
+      let finalUrl: string = asset.uri;
+
+      // Try to upload to server so the picture persists across devices & sessions
+      const token = await getSessionToken();
+      if (token && asset.base64) {
+        try {
+          const mimeType = asset.mimeType || "image/jpeg";
+          const apiBase = getApiUrl();
+          const uploadUrl = new URL("/api/user/avatar", apiBase).toString();
+          const resp = await fetch(uploadUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ base64: asset.base64, mimeType }),
+          });
+          const json = await resp.json();
+          if (resp.ok && json.avatarUrl) {
+            finalUrl = json.avatarUrl;
+          } else {
+            console.warn("Avatar upload failed:", json.error);
+          }
+        } catch (uploadErr) {
+          console.warn("Avatar upload error, falling back to local:", uploadErr);
+        }
+      }
+
+      await updateAvatar(finalUrl);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
       Alert.alert("Error", "Failed to update profile picture.");

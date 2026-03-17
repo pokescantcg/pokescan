@@ -1107,6 +1107,34 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  // ─── Avatar upload ────────────────────────────────────────────────────────────
+  app.post("/api/user/avatar", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+
+      const { base64, mimeType } = req.body;
+      if (!base64 || typeof base64 !== "string") {
+        res.status(400).json({ error: "base64 image data required" });
+        return;
+      }
+      // ~1.5 MB base64 cap (~1.1 MB raw image)
+      if (base64.length > 1572864) {
+        res.status(400).json({ error: "Image too large. Please choose a smaller image." });
+        return;
+      }
+      const dataUrl = `data:${mimeType || "image/jpeg"};base64,${base64}`;
+      const updated = await storage.updateUser(user.id, { avatarUrl: dataUrl });
+      if (!updated) { res.status(404).json({ error: "User not found" }); return; }
+      res.json({ avatarUrl: dataUrl });
+    } catch (error: any) {
+      console.error("Avatar upload error:", error);
+      res.status(500).json({ error: error.message || "Upload failed" });
+    }
+  });
+
   app.get("/api/auth/users", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
