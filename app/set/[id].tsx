@@ -20,6 +20,21 @@ import { useThemeColors } from "@/constants/colors";
 import { fetchSetCards, PokemonCard, getUKPrice, formatGBP } from "@/lib/pokemon-api";
 import { CachedCard } from "@/lib/card-cache";
 
+function parseCardNumber(num: string): [number, string] {
+  const match = num.match(/^(\d+)(.*)/);
+  if (match) return [parseInt(match[1], 10), match[2]];
+  return [Infinity, num];
+}
+
+function sortCardsByNumber(cards: PokemonCard[]): PokemonCard[] {
+  return [...cards].sort((a, b) => {
+    const [aNum, aSuffix] = parseCardNumber(a.number || "");
+    const [bNum, bSuffix] = parseCardNumber(b.number || "");
+    if (aNum !== bNum) return aNum - bNum;
+    return aSuffix.localeCompare(bSuffix);
+  });
+}
+
 function cachedToPokemonCard(c: CachedCard): PokemonCard {
   return {
     id: c.id,
@@ -129,7 +144,7 @@ export default function SetDetailScreen() {
           const { getSetCardsFromCache } = await import("@/lib/card-cache");
           const cached = await getSetCardsFromCache(id as string);
           if (!cancelled && cached.length > 0) {
-            const cards = cached.map(cachedToPokemonCard);
+            const cards = sortCardsByNumber(cached.map(cachedToPokemonCard));
             setAllCards(cards);
             setTotalCount(cards.length);
             setIsLoading(false);
@@ -143,7 +158,7 @@ export default function SetDetailScreen() {
       try {
         const result = await fetchSetCards(id as string, 1);
         if (cancelled) return;
-        setAllCards(result.cards);
+        setAllCards(sortCardsByNumber(result.cards));
         setTotalCount(result.totalCount);
         setIsLoading(false);
         setIsRefreshing(false);
@@ -158,7 +173,7 @@ export default function SetDetailScreen() {
               const next = await fetchSetCards(id as string, pg);
               if (cancelled) break;
               accumulated = [...accumulated, ...next.cards];
-              setAllCards([...accumulated]);
+              setAllCards(sortCardsByNumber(accumulated));
               setTotalCount(next.totalCount);
               if (next.cards.length === 0) break;
               pg++;
