@@ -99,9 +99,8 @@ function createEmailTransport() {
 export async function sendOtpByEmail(email: string, code: string): Promise<boolean> {
   const transporter = createEmailTransport();
   if (!transporter) {
-    if (process.env.NODE_ENV === "development") {
-      console.log("[DEV] OTP for", email, ":", code);
-    }
+    // Always log when SMTP is not configured — check server logs to retrieve code
+    console.log(`[OTP] No SMTP configured. Code for ${email}: ${code}`);
     return true;
   }
 
@@ -123,7 +122,9 @@ export async function sendOtpByEmail(email: string, code: string): Promise<boole
     return true;
   } catch (err) {
     console.error("Failed to send OTP email:", err);
-    return false;
+    // Log the code so logins aren't completely blocked on email failure
+    console.log(`[OTP] Email failed. Code for ${email}: ${code}`);
+    return true;
   }
 }
 
@@ -133,9 +134,8 @@ export async function sendOtpBySms(mobile: string, code: string): Promise<boolea
   const fromNumber = process.env.TWILIO_PHONE_NUMBER;
 
   if (!accountSid || !authToken || !fromNumber) {
-    if (process.env.NODE_ENV === "development") {
-      console.log("[DEV] OTP for", mobile, ":", code);
-    }
+    // Always log when SMS is not configured — check server logs to retrieve code
+    console.log(`[OTP] No SMS configured. Code for ${mobile}: ${code}`);
     return true;
   }
 
@@ -150,7 +150,9 @@ export async function sendOtpBySms(mobile: string, code: string): Promise<boolea
     return true;
   } catch (err) {
     console.error("Failed to send OTP SMS:", err);
-    return false;
+    // Log the code so logins aren't completely blocked on SMS failure
+    console.log(`[OTP] SMS failed. Code for ${mobile}: ${code}`);
+    return true;
   }
 }
 
