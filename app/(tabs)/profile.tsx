@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -17,6 +17,23 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
+import {
+  getCacheStatus,
+  syncDatabase,
+  clearCache,
+  CacheMeta,
+  SyncProgress,
+} from "@/lib/card-cache";
+
+function formatNumber(n: number): string {
+  return n.toLocaleString();
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
 
 export default function ProfileScreen() {
   const colorScheme = useColorScheme();
@@ -24,9 +41,88 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, collection, collectionValue, listings, logout, togglePremium, isStaff, isSuperadminUser } = useUser();
 
+  const [cacheStatus, setCacheStatus] = useState<CacheMeta | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
   const myListings = listings.filter((l) => l.userId === user?.id);
+
+  const loadCacheStatus = useCallback(async () => {
+    const status = await getCacheStatus();
+    setCacheStatus(status);
+  }, []);
+
+  useEffect(() => {
+    loadCacheStatus();
+  }, [loadCacheStatus]);
+
+  const handleSync = useCallback(async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    setSyncProgress(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const meta = await syncDatabase((progress) => {
+        setSyncProgress(progress);
+      });
+      setCacheStatus(meta);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        "Database Synced!",
+        `${formatNumber(meta.totalCards)} cards across ${meta.cachedSets} sets are now stored locally.`
+      );
+    } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Sync Failed", e.message || "Could not sync card database. Check your connection and try again.");
+    } finally {
+      setIsSyncing(false);
+      setSyncProgress(null);
+    }
+  }, [isSyncing]);
+
+  const handleClearCache = useCallback(() => {
+    Alert.alert(
+      "Clear Card Database",
+      "This will delete all locally cached card data. The app will need to re-download it.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: async () => {
+            await clearCache();
+            await loadCacheStatus();
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          },
+        },
+      ]
+    );
+  }, [loadCacheStatus]);
+
+  const syncButtonLabel = () => {
+    if (!isSyncing) {
+      if (cacheStatus && cacheStatus.totalCards > 0) {
+        if (cacheStatus.cachedSets < cacheStatus.totalSets) {
+          return `Resume Download (${cacheStatus.cachedSets}/${cacheStatus.totalSets} sets)`;
+        }
+        return "Sync Updates";
+      }
+      return "Download Card Database";
+    }
+    if (syncProgress?.stage === "sets") return "Fetching sets list...";
+    if (syncProgress?.stage === "cards" && syncProgress.setName) {
+      return `Downloading: ${syncProgress.setName} (${syncProgress.current}/${syncProgress.total})`;
+    }
+    return "Syncing...";
+  };
+
+  const syncPercent = () => {
+    if (!isSyncing || !syncProgress) return 0;
+    if (syncProgress.stage === "sets") return 2;
+    return Math.round(2 + (syncProgress.current / Math.max(syncProgress.total, 1)) * 98);
+  };
 
   if (!user) {
     return (
@@ -40,37 +136,51 @@ export default function ProfileScreen() {
             <Text style={[styles.title, { color: colors.text }]}>Profile</Text>
           </View>
         </LinearGradient>
-        <View style={styles.emptyContainer}>
-          <View style={[styles.avatarPlaceholder, { backgroundColor: colors.pokemonRed + "20" }]}>
-            <MaterialCommunityIcons name="pokeball" size={48} color={colors.pokemonRed} />
-          </View>
-          <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
-            Welcome to PokeScan TCG
-          </Text>
-          <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
-            Create an account to track your collection, get price alerts, and join the marketplace
-          </Text>
-          <Pressable
-            style={styles.signInBtnWrap}
-            onPress={() => router.push("/register")}
-          >
-            <LinearGradient
-              colors={["#CC0000", "#8B0000"]}
-              style={styles.signInGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+          <View style={styles.emptyContainer}>
+            <View style={[styles.avatarPlaceholder, { backgroundColor: colors.pokemonRed + "20" }]}>
+              <MaterialCommunityIcons name="pokeball" size={48} color={colors.pokemonRed} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
+              Welcome to PokeScan TCG
+            </Text>
+            <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
+              Create an account to track your collection, get price alerts, and join the marketplace
+            </Text>
+            <Pressable
+              style={styles.signInBtnWrap}
+              onPress={() => router.push("/register")}
             >
-              <Text style={styles.signInBtnText}>Create Account</Text>
-            </LinearGradient>
-          </Pressable>
-          <Pressable
-            style={styles.staffLink}
-            onPress={() => router.push("/admin-login")}
-          >
-            <Ionicons name="shield-checkmark-outline" size={14} color={colors.textMuted} />
-            <Text style={[styles.staffLinkText, { color: colors.textMuted }]}>Superadmin Login</Text>
-          </Pressable>
-        </View>
+              <LinearGradient
+                colors={["#CC0000", "#8B0000"]}
+                style={styles.signInGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.signInBtnText}>Create Account</Text>
+              </LinearGradient>
+            </Pressable>
+            <Pressable
+              style={styles.staffLink}
+              onPress={() => router.push("/admin-login")}
+            >
+              <Ionicons name="shield-checkmark-outline" size={14} color={colors.textMuted} />
+              <Text style={[styles.staffLinkText, { color: colors.textMuted }]}>Superadmin Login</Text>
+            </Pressable>
+          </View>
+
+          <View style={[styles.dbSection, { marginTop: 0 }]}>
+            <DatabaseSyncCard
+              cacheStatus={cacheStatus}
+              isSyncing={isSyncing}
+              syncPercent={syncPercent()}
+              syncButtonLabel={syncButtonLabel()}
+              onSync={handleSync}
+              onClear={handleClearCache}
+              colors={colors}
+            />
+          </View>
+        </ScrollView>
       </View>
     );
   }
@@ -154,6 +264,18 @@ export default function ProfileScreen() {
           </Pressable>
         )}
 
+        <View style={styles.dbSection}>
+          <DatabaseSyncCard
+            cacheStatus={cacheStatus}
+            isSyncing={isSyncing}
+            syncPercent={syncPercent()}
+            syncButtonLabel={syncButtonLabel()}
+            onSync={handleSync}
+            onClear={handleClearCache}
+            colors={colors}
+          />
+        </View>
+
         <View style={styles.menuSection}>
           {isStaff && (
             <Pressable
@@ -211,6 +333,170 @@ export default function ProfileScreen() {
     </View>
   );
 }
+
+function DatabaseSyncCard({
+  cacheStatus,
+  isSyncing,
+  syncPercent,
+  syncButtonLabel,
+  onSync,
+  onClear,
+  colors,
+}: {
+  cacheStatus: CacheMeta | null;
+  isSyncing: boolean;
+  syncPercent: number;
+  syncButtonLabel: string;
+  onSync: () => void;
+  onClear: () => void;
+  colors: ReturnType<typeof useThemeColors>;
+}) {
+  const hasData = cacheStatus && cacheStatus.totalCards > 0;
+  const isComplete = hasData && cacheStatus.cachedSets >= cacheStatus.totalSets;
+
+  return (
+    <View style={[dbStyles.card, { backgroundColor: colors.card, borderColor: colors.pokemonBlue + "40" }]}>
+      <View style={dbStyles.header}>
+        <View style={[dbStyles.iconBg, { backgroundColor: colors.pokemonBlue + "20" }]}>
+          <MaterialCommunityIcons name="database" size={20} color={colors.pokemonBlue} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[dbStyles.title, { color: colors.text }]}>Card Database</Text>
+          <Text style={[dbStyles.subtitle, { color: colors.textMuted }]}>
+            {hasData
+              ? `${formatNumber(cacheStatus.totalCards)} cards · ${cacheStatus.cachedSets} sets`
+              : "Not downloaded"}
+          </Text>
+        </View>
+        {isComplete && (
+          <View style={[dbStyles.badge, { backgroundColor: colors.success + "20" }]}>
+            <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+            <Text style={[dbStyles.badgeText, { color: colors.success }]}>Ready</Text>
+          </View>
+        )}
+      </View>
+
+      {hasData && (
+        <View style={dbStyles.statsRow}>
+          <View style={dbStyles.stat}>
+            <Text style={[dbStyles.statNum, { color: colors.pokemonBlue }]}>
+              {formatNumber(cacheStatus.totalCards)}
+            </Text>
+            <Text style={[dbStyles.statLabel, { color: colors.textMuted }]}>Cards</Text>
+          </View>
+          <View style={[dbStyles.statDivider, { backgroundColor: colors.borderLight }]} />
+          <View style={dbStyles.stat}>
+            <Text style={[dbStyles.statNum, { color: colors.pokemonBlue }]}>
+              {cacheStatus.cachedSets}
+            </Text>
+            <Text style={[dbStyles.statLabel, { color: colors.textMuted }]}>Sets</Text>
+          </View>
+          <View style={[dbStyles.statDivider, { backgroundColor: colors.borderLight }]} />
+          <View style={dbStyles.stat}>
+            <Text style={[dbStyles.statNum, { color: colors.textSecondary }]} numberOfLines={1}>
+              {formatDate(cacheStatus.lastSync)}
+            </Text>
+            <Text style={[dbStyles.statLabel, { color: colors.textMuted }]}>Last Sync</Text>
+          </View>
+        </View>
+      )}
+
+      {isSyncing && (
+        <View style={dbStyles.progressWrap}>
+          <View style={[dbStyles.progressTrack, { backgroundColor: colors.border }]}>
+            <View
+              style={[dbStyles.progressBar, { backgroundColor: colors.pokemonBlue, width: `${syncPercent}%` as any }]}
+            />
+          </View>
+          <Text style={[dbStyles.progressLabel, { color: colors.textMuted }]}>
+            {syncPercent}%
+          </Text>
+        </View>
+      )}
+
+      <Text style={[dbStyles.desc, { color: colors.textSecondary }]}>
+        {hasData
+          ? isComplete
+            ? "All cards cached locally. Searches use local data first for instant results."
+            : `${cacheStatus.totalSets - cacheStatus.cachedSets} sets remaining to download.`
+          : "Download all Pokemon card data for instant offline search and faster lookups."}
+      </Text>
+
+      <View style={dbStyles.buttons}>
+        <Pressable
+          style={({ pressed }) => [
+            dbStyles.syncBtn,
+            { backgroundColor: colors.pokemonBlue, opacity: pressed || isSyncing ? 0.8 : 1 },
+          ]}
+          onPress={onSync}
+          disabled={isSyncing}
+        >
+          {isSyncing ? (
+            <MaterialCommunityIcons name="pokeball" size={16} color="#FFF" />
+          ) : (
+            <Ionicons name="cloud-download" size={16} color="#FFF" />
+          )}
+          <Text style={dbStyles.syncBtnText} numberOfLines={1}>{syncButtonLabel}</Text>
+        </Pressable>
+        {hasData && !isSyncing && (
+          <Pressable
+            style={({ pressed }) => [
+              dbStyles.clearBtn,
+              { borderColor: colors.borderLight, opacity: pressed ? 0.7 : 1 },
+            ]}
+            onPress={onClear}
+          >
+            <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const dbStyles = StyleSheet.create({
+  card: {
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    gap: 12,
+  },
+  header: { flexDirection: "row", alignItems: "center", gap: 12 },
+  iconBg: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  title: { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  subtitle: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  badge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  badgeText: { fontSize: 11, fontFamily: "Outfit_600SemiBold" },
+  statsRow: { flexDirection: "row", alignItems: "center", gap: 0 },
+  stat: { flex: 1, alignItems: "center", gap: 2 },
+  statNum: { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  statLabel: { fontSize: 10, fontFamily: "Outfit_400Regular" },
+  statDivider: { width: 1, height: 30, marginHorizontal: 8 },
+  progressWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
+  progressTrack: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },
+  progressBar: { height: 6, borderRadius: 3 },
+  progressLabel: { fontSize: 11, fontFamily: "Outfit_600SemiBold", width: 32, textAlign: "right" },
+  desc: { fontSize: 12, fontFamily: "Outfit_400Regular", lineHeight: 18 },
+  buttons: { flexDirection: "row", gap: 8 },
+  syncBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 11,
+    borderRadius: 12,
+    gap: 7,
+  },
+  syncBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+  clearBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -277,6 +563,7 @@ const styles = StyleSheet.create({
   },
   premiumBannerTitle: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#000" },
   premiumBannerDesc: { fontSize: 12, fontFamily: "Outfit_400Regular", color: "#000", opacity: 0.7 },
+  dbSection: { paddingHorizontal: 20, marginBottom: 20 },
   menuSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
   menuItem: {
     flexDirection: "row",
@@ -287,7 +574,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   menuText: { flex: 1, fontSize: 15, fontFamily: "Outfit_500Medium" },
-  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 60, gap: 8, paddingHorizontal: 20 },
+  emptyContainer: { justifyContent: "center", alignItems: "center", paddingTop: 60, gap: 8, paddingHorizontal: 20 },
   emptyTitle: { fontSize: 20, fontFamily: "Outfit_600SemiBold" },
   emptySubtext: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 20 },
   signInBtnWrap: { marginTop: 12 },
@@ -298,7 +585,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   signInBtnText: { fontSize: 16, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
-  staffLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20 },
+  staffLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 20, marginBottom: 24 },
   staffLinkText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
   versionText: { fontSize: 12, fontFamily: "Outfit_400Regular", textAlign: "center", marginTop: 8 },
 });

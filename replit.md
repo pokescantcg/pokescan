@@ -38,6 +38,14 @@ Preferred communication style: Simple, everyday language.
 - **CORS**: Configured for Replit domains and localhost development
 - **API routes are all proxy endpoints** — no direct database-backed API routes for the main app features yet
 
+### Local Card Cache (`lib/card-cache.ts`)
+- `syncDatabase(onProgress)` — downloads all cards from all sets via `/api/pokemon/sets/:setId/all-cards` and stores in AsyncStorage. Supports resume (skips already-synced sets)
+- `searchLocalCards(query)` — instant in-device card search against cached data
+- `getCacheStatus()` — returns `CacheMeta` with totalCards, cachedSets, totalSets, lastSync
+- `clearCache()` — wipes all cached card data
+- Cache keys: `pokescan_cache_meta`, `pokescan_cache_sets`, `pokescan_cache_cards_<setId>`
+- `findCard()` in `lib/pokemon-api.ts` checks local cache first before hitting server API
+
 ### API Routes (server/routes.ts)
 - `GET /api/pokemon/sets` — Fetch all card sets
 - `GET /api/pokemon/sets/:setId/cards` — Fetch cards in a set (paginated)

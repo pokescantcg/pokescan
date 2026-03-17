@@ -151,6 +151,34 @@ export async function fetchCard(cardId: string): Promise<PokemonCard> {
 }
 
 export async function findCard(name: string, number?: string, setId?: string): Promise<PokemonCard | null> {
+  try {
+    const { searchLocalCards } = await import("./card-cache");
+    const cached = await searchLocalCards(name, number, setId);
+    if (cached) {
+      return {
+        id: cached.id,
+        name: cached.name,
+        number: cached.number,
+        supertype: cached.supertype || "Pokémon",
+        types: cached.types,
+        hp: cached.hp,
+        artist: cached.artist,
+        rarity: cached.rarity,
+        set: {
+          id: cached.setId,
+          name: cached.setName,
+          series: "",
+          printedTotal: 0,
+          total: 0,
+          releaseDate: "",
+          updatedAt: "",
+          images: { symbol: "", logo: "" },
+        },
+        images: { small: cached.imageSmall, large: cached.imageLarge },
+      } as PokemonCard;
+    }
+  } catch {}
+
   const base = apiBase();
   const params = new URLSearchParams({ name });
   if (number) params.set("number", number);

@@ -30,6 +30,7 @@ import {
   CardIdentification,
   PCVCard,
   generateEbaySearchUrl,
+  generateEbaySoldUrl,
   fetchPCVSearch,
   findCard,
 } from "@/lib/pokemon-api";
@@ -358,15 +359,15 @@ export default function ScannerScreen() {
     }
   }, [processImage]);
 
-  const handleEbaySearch = useCallback(() => {
-    if (!identification) return;
-    const url = generateEbaySearchUrl(
-      identification.englishName,
-      identification.setName,
-      identification.cardNumber
-    );
+  const handleEbayListings = useCallback((name: string, setName?: string, number?: string) => {
+    const url = generateEbaySearchUrl(name, setName, number);
     Linking.openURL(url);
-  }, [identification]);
+  }, []);
+
+  const handleEbaySold = useCallback((name: string, setName?: string, number?: string) => {
+    const url = generateEbaySoldUrl(name, setName, number);
+    Linking.openURL(url);
+  }, []);
 
   const clearAll = useCallback(() => {
     setCapturedImage(null);
@@ -421,16 +422,45 @@ export default function ScannerScreen() {
         <>
           <IdentificationCard identification={identification} colors={colors} />
           {identification.englishName && (
-            <Pressable
-              style={({ pressed }) => [
-                styles.ebayButton,
-                { backgroundColor: "#E53238", opacity: pressed ? 0.85 : 1 },
-              ]}
-              onPress={handleEbaySearch}
-            >
-              <MaterialCommunityIcons name="shopping" size={18} color="#FFF" />
-              <Text style={styles.ebayButtonText}>Search eBay UK</Text>
-            </Pressable>
+            <View style={[styles.ebaySection, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+              <View style={styles.ebaySectionHeader}>
+                <Ionicons name="globe-outline" size={16} color="#E53238" />
+                <Text style={[styles.ebaySectionTitle, { color: colors.text }]}>eBay UK Prices</Text>
+              </View>
+              <Text style={[styles.ebaySectionDesc, { color: colors.textSecondary }]}>
+                Compare real sold prices and active listings
+              </Text>
+              <View style={styles.ebayBtns}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.ebayBtn,
+                    { backgroundColor: "#E53238", opacity: pressed ? 0.85 : 1 },
+                  ]}
+                  onPress={() => handleEbayListings(
+                    identification.englishName,
+                    identification.setName,
+                    identification.cardNumber
+                  )}
+                >
+                  <Ionicons name="search" size={15} color="#FFF" />
+                  <Text style={styles.ebayBtnText}>Active Listings</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.ebayBtn,
+                    { backgroundColor: "#0064D2", opacity: pressed ? 0.85 : 1 },
+                  ]}
+                  onPress={() => handleEbaySold(
+                    identification.englishName,
+                    identification.setName,
+                    identification.cardNumber
+                  )}
+                >
+                  <Ionicons name="checkmark-done" size={15} color="#FFF" />
+                  <Text style={styles.ebayBtnText}>Sold Items</Text>
+                </Pressable>
+              </View>
+            </View>
           )}
         </>
       )}
@@ -713,16 +743,27 @@ const styles = StyleSheet.create({
   idTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   idTagText: { fontSize: 11, fontFamily: "Outfit_600SemiBold" },
   idNotes: { fontSize: 12, fontFamily: "Outfit_400Regular", fontStyle: "italic", marginTop: 4 },
-  ebayButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    borderRadius: 12,
+  ebaySection: {
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
     gap: 8,
     marginBottom: 12,
   },
-  ebayButtonText: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+  ebaySectionHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  ebaySectionTitle: { fontSize: 14, fontFamily: "Outfit_700Bold" },
+  ebaySectionDesc: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  ebayBtns: { flexDirection: "row", gap: 8 },
+  ebayBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6,
+  },
+  ebayBtnText: { fontSize: 12, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
   resultsHeaderRow: {
     flexDirection: "row",
     alignItems: "center",

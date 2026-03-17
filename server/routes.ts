@@ -72,6 +72,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/pokemon/sets/:setId/all-cards", async (req: Request, res: Response) => {
+    try {
+      const { setId } = req.params;
+      let allCards: any[] = [];
+      let page = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const response = await fetch(
+          `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=250`
+        );
+        const text = await response.text();
+        if (!response.ok) break;
+        try {
+          const data = JSON.parse(text);
+          const cards = data.data || [];
+          allCards = allCards.concat(cards);
+          hasMore = allCards.length < (data.totalCount || 0) && cards.length === 250;
+          page++;
+        } catch {
+          break;
+        }
+      }
+      res.json({ data: allCards, count: allCards.length });
+    } catch (error) {
+      console.error("Failed to fetch all set cards:", error);
+      res.status(500).json({ error: "Failed to fetch cards" });
+    }
+  });
+
   app.get("/api/pokemon/cards/find", async (req: Request, res: Response) => {
     try {
       const name = req.query.name as string;
