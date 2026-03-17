@@ -142,6 +142,50 @@ export default function CollectionScreen() {
     );
   }
 
+  if (!user.isPremium) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <LinearGradient
+          colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+          style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}
+        >
+          <View style={styles.titleRow}>
+            <MaterialCommunityIcons name="pokeball" size={24} color={colors.pokemonRed} />
+            <Text style={[styles.title, { color: colors.text }]}>My Collection</Text>
+          </View>
+        </LinearGradient>
+        <View style={styles.emptyContainer}>
+          <LinearGradient
+            colors={[colors.pokemonYellow, "#FF9800"]}
+            style={{ borderRadius: 20, padding: 28, alignItems: "center", gap: 10, width: "100%", maxWidth: 360 }}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <MaterialCommunityIcons name="pokeball" size={48} color="#000" />
+            <Text style={{ fontSize: 22, fontFamily: "Outfit_700Bold", color: "#000" }}>Premium Required</Text>
+            <Text style={{ fontSize: 14, fontFamily: "Outfit_400Regular", color: "#000", textAlign: "center", opacity: 0.75 }}>
+              Upgrade to Premium to save cards to your collection and track your portfolio value.
+            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(0,0,0,0.15)", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 4 }}>
+              <Ionicons name="lock-closed" size={16} color="#000" />
+              <Text style={{ fontSize: 15, fontFamily: "Outfit_700Bold", color: "#000" }}>Contact admin to unlock</Text>
+            </View>
+          </LinearGradient>
+          <View style={{ marginTop: 24, gap: 14 }}>
+            {["Save cards to your collection", "Track portfolio value in GBP", "View collection stats", "Access marketplace"].map(
+              (feature, i) => (
+                <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Ionicons name="checkmark-circle" size={20} color={colors.pokemonRed} />
+                  <Text style={{ fontSize: 15, fontFamily: "Outfit_500Medium", color: colors.text }}>{feature}</Text>
+                </View>
+              )
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient

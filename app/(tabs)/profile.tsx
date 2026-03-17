@@ -35,7 +35,7 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user, collection, collectionValue, listings, logout, togglePremium, isStaff, isSuperadminUser } = useUser();
+  const { user, collection, collectionValue, listings, logout, isStaff, isSuperadminUser } = useUser();
   const { cacheStatus, isDownloading, downloadPercent, progress, startDownload, clearCardCache, refreshStatus, selectedLanguages, setSelectedLanguages } = useCardCache();
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -224,28 +224,15 @@ export default function ProfileScreen() {
         </View>
 
         {!user.isPremium && (
-          <Pressable
-            onPress={() => {
-              togglePremium();
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }}
-          >
-            <LinearGradient
-              colors={[colors.pokemonYellow, "#FF9800"]}
-              style={styles.premiumBanner}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <MaterialCommunityIcons name="pokeball" size={24} color="#000" />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.premiumBannerTitle}>Upgrade to Premium</Text>
-                <Text style={styles.premiumBannerDesc}>
-                  Access the marketplace to trade and sell cards
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="#000" />
-            </LinearGradient>
-          </Pressable>
+          <View style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <MaterialCommunityIcons name="pokeball" size={24} color={colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.premiumBannerTitle, { color: colors.textSecondary }]}>Premium Member</Text>
+              <Text style={[styles.premiumBannerDesc, { color: colors.textMuted }]}>
+                Contact an admin to unlock premium access
+              </Text>
+            </View>
+          </View>
         )}
 
         <View style={styles.dbSection}>
@@ -276,19 +263,6 @@ export default function ProfileScreen() {
             </Pressable>
           )}
 
-          {user.isPremium && (
-            <Pressable
-              style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
-              onPress={() => {
-                togglePremium();
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }}
-            >
-              <Ionicons name="diamond-outline" size={22} color={colors.warning} />
-              <Text style={[styles.menuText, { color: colors.text }]}>Cancel Premium</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
-          )}
 
           <Pressable
             style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
@@ -687,8 +661,8 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 20,
   },
-  premiumBannerTitle: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#000" },
-  premiumBannerDesc: { fontSize: 12, fontFamily: "Outfit_400Regular", color: "#000", opacity: 0.7 },
+  premiumBannerTitle: { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  premiumBannerDesc: { fontSize: 12, fontFamily: "Outfit_400Regular", opacity: 0.7 },
   dbSection: { paddingHorizontal: 20, marginBottom: 20 },
   menuSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
   menuItem: {

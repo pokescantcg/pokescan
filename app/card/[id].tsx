@@ -71,6 +71,10 @@ export default function CardDetailScreen() {
       ]);
       return;
     }
+    if (!user.isPremium) {
+      Alert.alert("Premium Required", "Upgrade to Premium to save cards to your collection.");
+      return;
+    }
     if (!card) return;
     const priceData = getUKPrice(card);
     addCard({

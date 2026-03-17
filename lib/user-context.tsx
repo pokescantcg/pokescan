@@ -31,6 +31,8 @@ import {
   restoreSession,
   verifyOtpAndLogin,
   registerUserWithOtp,
+  registerWithPassword as registerWithPasswordStorage,
+  loginWithPassword as loginWithPasswordStorage,
   upsertUserInRegistry,
   sendOtpForRegistration,
   sendOtpForLogin,
@@ -44,6 +46,8 @@ interface UserContextValue {
   collectionValue: number;
   allUsers: UserProfile[];
   register: (username: string, displayName: string, email: string, mobileNumber: string) => Promise<{ user: UserProfile }>;
+  registerWithPassword: (username: string, displayName: string, email: string, password: string, mobileNumber?: string) => Promise<void>;
+  loginWithPassword: (credential: string, password: string) => Promise<void>;
   sendRegistrationOtp: (userId: string, channel: "email" | "sms") => Promise<void>;
   sendLoginOtp: (credential: string, channel: "email" | "sms") => Promise<{ userId: string }>;
   verifyOtp: (credential: string, code: string) => Promise<void>;
@@ -120,6 +124,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const users = await getAllUsers();
     setAllUsers(users);
     return { user: newUser };
+  }, []);
+
+  const registerWithPassword = useCallback(async (username: string, displayName: string, email: string, password: string, mobileNumber?: string) => {
+    const { user: newUser } = await registerWithPasswordStorage(username, displayName, email, password, mobileNumber);
+    setUser(newUser);
+    await upsertUserInRegistry(newUser);
+    const users = await getAllUsers();
+    setAllUsers(users);
+  }, []);
+
+  const loginWithPassword = useCallback(async (credential: string, password: string) => {
+    const { user: newUser } = await loginWithPasswordStorage(credential, password);
+    setUser(newUser);
+    await upsertUserInRegistry(newUser);
+    const users = await getAllUsers();
+    setAllUsers(users);
   }, []);
 
   const handleSendRegistrationOtp = useCallback(async (userId: string, channel: "email" | "sms") => {
@@ -259,6 +279,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       collectionValue,
       allUsers,
       register,
+      registerWithPassword,
+      loginWithPassword,
       sendRegistrationOtp: handleSendRegistrationOtp,
       sendLoginOtp: handleSendLoginOtp,
       verifyOtp: handleVerifyOtp,

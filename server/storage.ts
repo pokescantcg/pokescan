@@ -11,6 +11,7 @@ export interface DbUser {
   displayName: string;
   email: string;
   mobileNumber: string;
+  passwordHash?: string | null;
   authProvider: string;
   isPremium: boolean;
   role: string;
@@ -26,6 +27,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<DbUser | null>;
   getAllUsers(): Promise<DbUser[]>;
   updateUser(id: string, fields: Partial<DbUser>): Promise<DbUser | null>;
+  setPassword(userId: string, passwordHash: string): Promise<void>;
   createSession(userId: string): Promise<string>;
   validateSession(token: string): Promise<DbUser | null>;
   deleteSession(token: string): Promise<void>;
@@ -36,15 +38,16 @@ export class PgStorage implements IStorage {
   async createUser(user: Omit<DbUser, "id" | "createdAt">): Promise<DbUser> {
     const id = randomUUID();
     const result = await pool.query(
-      `INSERT INTO pokescan_users (id, username, display_name, email, mobile_number, auth_provider, is_premium, role, avatar_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO pokescan_users (id, username, display_name, email, mobile_number, password_hash, auth_provider, is_premium, role, avatar_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [
         id,
         user.username.toLowerCase().trim(),
         user.displayName.trim(),
         user.email.toLowerCase().trim(),
-        user.mobileNumber.trim(),
+        user.mobileNumber?.trim() || "",
+        user.passwordHash || null,
         user.authProvider || "local",
         user.isPremium || false,
         user.role || "user",
@@ -115,6 +118,14 @@ export class PgStorage implements IStorage {
       sets.push(`display_name = $${idx++}`);
       values.push(fields.displayName);
     }
+    if (fields.email !== undefined) {
+      sets.push(`email = $${idx++}`);
+      values.push(fields.email.toLowerCase().trim());
+    }
+    if (fields.mobileNumber !== undefined) {
+      sets.push(`mobile_number = $${idx++}`);
+      values.push(fields.mobileNumber.trim());
+    }
 
     if (sets.length === 0) return this.getUserById(id);
 
@@ -124,6 +135,13 @@ export class PgStorage implements IStorage {
       values
     );
     return result.rows[0] ? mapRow(result.rows[0]) : null;
+  }
+
+  async setPassword(userId: string, passwordHash: string): Promise<void> {
+    await pool.query(
+      "UPDATE pokescan_users SET password_hash = $1 WHERE id = $2",
+      [passwordHash, userId]
+    );
   }
 
   async createSession(userId: string): Promise<string> {
@@ -162,6 +180,7 @@ function mapRow(row: any): DbUser {
     displayName: row.display_name,
     email: row.email,
     mobileNumber: row.mobile_number,
+    passwordHash: row.password_hash,
     authProvider: row.auth_provider,
     isPremium: row.is_premium,
     role: row.role,

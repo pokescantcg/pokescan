@@ -91,7 +91,7 @@ export default function MarketScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user, listings, deleteListing, togglePremium, isStaff } = useUser();
+  const { user, listings, deleteListing, isStaff } = useUser();
   const [filter, setFilter] = useState<"all" | "sale" | "trade">("all");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -167,15 +167,10 @@ export default function MarketScreen() {
             <Text style={styles.premiumDesc}>
               Upgrade to Premium to list cards for trade or sale and browse marketplace listings from other collectors.
             </Text>
-            <Pressable
-              style={styles.premiumBtn}
-              onPress={() => {
-                togglePremium();
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              }}
-            >
-              <Text style={styles.premiumBtnText}>Activate Premium</Text>
-            </Pressable>
+            <View style={[styles.premiumBtn, { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(0,0,0,0.15)" }]}>
+              <Ionicons name="lock-closed" size={16} color="#000" />
+              <Text style={[styles.premiumBtnText, { color: "#000" }]}>Contact admin to unlock</Text>
+            </View>
           </LinearGradient>
 
           <View style={styles.premiumFeatures}>

@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import express from "express";
 import OpenAI from "openai";
+import bcrypt from "bcryptjs";
 import {
   scrapeSets,
   scrapeSetCards,
@@ -866,9 +867,13 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
-      const { username, displayName, email, mobileNumber } = req.body;
-      if (!username || !displayName || !email || !mobileNumber) {
-        res.status(400).json({ error: "All fields are required" });
+      const { username, displayName, email, mobileNumber, password } = req.body;
+      if (!username || !displayName || !email || !password) {
+        res.status(400).json({ error: "Username, display name, email and password are required" });
+        return;
+      }
+      if (password.length < 6) {
+        res.status(400).json({ error: "Password must be at least 6 characters" });
         return;
       }
       const existingEmail = await storage.getUserByEmail(email);
@@ -881,26 +886,55 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         res.status(409).json({ error: "Username is already taken" });
         return;
       }
-      const existingMobile = await storage.getUserByMobile(mobileNumber);
-      if (existingMobile) {
-        res.status(409).json({ error: "An account with this mobile number already exists" });
-        return;
-      }
+      const passwordHash = await bcrypt.hash(password, 10);
       const user = await storage.createUser({
         username: username.toLowerCase().trim(),
         displayName: displayName.trim(),
         email: email.toLowerCase().trim(),
-        mobileNumber: mobileNumber.trim(),
+        mobileNumber: mobileNumber?.trim() || "",
+        passwordHash,
         authProvider: "local",
         isPremium: false,
         role: "user",
         avatarUrl: null,
       });
       const token = await storage.createSession(user.id);
-      res.json({ token, user });
+      const { passwordHash: _ph, ...safeUser } = user as any;
+      res.json({ token, user: safeUser });
     } catch (error: any) {
       console.error("Register error:", error);
       res.status(500).json({ error: error.message || "Registration failed" });
+    }
+  });
+
+  app.post("/api/auth/login", async (req: Request, res: Response) => {
+    try {
+      const { credential, password } = req.body;
+      if (!credential || !password) {
+        res.status(400).json({ error: "Email/username and password are required" });
+        return;
+      }
+      let user = await storage.getUserByEmail(credential.toLowerCase().trim());
+      if (!user) user = await storage.getUserByUsername(credential.toLowerCase().trim());
+      if (!user) {
+        res.status(401).json({ error: "Invalid email/username or password" });
+        return;
+      }
+      if (!user.passwordHash) {
+        res.status(401).json({ error: "This account does not have a password set. Contact an admin." });
+        return;
+      }
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) {
+        res.status(401).json({ error: "Invalid email/username or password" });
+        return;
+      }
+      const token = await storage.createSession(user.id);
+      const { passwordHash: _ph, ...safeUser } = user as any;
+      res.json({ token, user: safeUser });
+    } catch (error: any) {
+      console.error("Login error:", error);
+      res.status(500).json({ error: error.message || "Login failed" });
     }
   });
 
@@ -1129,7 +1163,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   // Superadmin-authenticated user edit endpoint (no session token needed)
   app.patch("/api/admin/edit-user", async (req: Request, res: Response) => {
     try {
-      const { superadminPassword, userId, displayName, email, mobileNumber } = req.body;
+      const { superadminPassword, userId, displayName, email, mobileNumber, password } = req.body;
       if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
         res.status(403).json({ error: "Forbidden" });
         return;
@@ -1138,31 +1172,77 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         res.status(400).json({ error: "userId required" });
         return;
       }
-      // Build update object with only provided fields
-      const updates: Record<string, any> = {};
-      if (displayName !== undefined && displayName.trim()) updates.displayName = displayName.trim();
-      if (email !== undefined && email.trim()) updates.email = email.trim().toLowerCase();
-      if (mobileNumber !== undefined) updates.mobileNumber = mobileNumber.trim();
+      const profileUpdates: Record<string, any> = {};
+      if (displayName !== undefined && displayName.trim()) profileUpdates.displayName = displayName.trim();
+      if (email !== undefined && email.trim()) profileUpdates.email = email.trim().toLowerCase();
+      if (mobileNumber !== undefined) profileUpdates.mobileNumber = mobileNumber.trim();
 
-      if (Object.keys(updates).length === 0) {
+      if (Object.keys(profileUpdates).length === 0 && !password) {
         res.status(400).json({ error: "No fields to update" });
         return;
       }
 
-      const updated = await db
-        .update(pokescanUsers)
-        .set(updates)
-        .where(eq(pokescanUsers.id, userId))
-        .returning();
-
-      if (!updated.length) {
+      let updated = Object.keys(profileUpdates).length > 0 ? await storage.updateUser(userId, profileUpdates) : await storage.getUserById(userId);
+      if (!updated) {
         res.status(404).json({ error: "User not found" });
         return;
       }
-      res.json({ user: updated[0] });
+
+      if (password !== undefined && password.trim().length >= 6) {
+        const passwordHash = await bcrypt.hash(password.trim(), 10);
+        await storage.setPassword(userId, passwordHash);
+      }
+
+      const { passwordHash: _ph, ...safeUser } = updated as any;
+      res.json({ user: safeUser });
     } catch (error: any) {
       console.error("Admin edit-user error:", error);
       res.status(500).json({ error: error.message || "Update failed" });
+    }
+  });
+
+  app.post("/api/admin/create-user", async (req: Request, res: Response) => {
+    try {
+      const { superadminPassword, username, displayName, email, mobileNumber, password, isPremium, role } = req.body;
+      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      if (!username || !displayName || !email || !password) {
+        res.status(400).json({ error: "Username, display name, email and password are required" });
+        return;
+      }
+      if (password.length < 6) {
+        res.status(400).json({ error: "Password must be at least 6 characters" });
+        return;
+      }
+      const existing = await storage.getUserByEmail(email.toLowerCase().trim());
+      if (existing) {
+        res.status(409).json({ error: "An account with this email already exists" });
+        return;
+      }
+      const existingUser = await storage.getUserByUsername(username.toLowerCase().trim());
+      if (existingUser) {
+        res.status(409).json({ error: "Username is already taken" });
+        return;
+      }
+      const passwordHash = await bcrypt.hash(password, 10);
+      const user = await storage.createUser({
+        username: username.toLowerCase().trim(),
+        displayName: displayName.trim(),
+        email: email.toLowerCase().trim(),
+        mobileNumber: mobileNumber?.trim() || "",
+        passwordHash,
+        authProvider: "local",
+        isPremium: isPremium === true,
+        role: role || "user",
+        avatarUrl: null,
+      });
+      const { passwordHash: _ph, ...safeUser } = user as any;
+      res.json({ user: safeUser });
+    } catch (error: any) {
+      console.error("Admin create-user error:", error);
+      res.status(500).json({ error: error.message || "Create user failed" });
     }
   });
 

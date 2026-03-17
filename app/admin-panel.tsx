@@ -37,27 +37,34 @@ function EditUserModal({
   colors: ReturnType<typeof useThemeColors>;
   visible: boolean;
   onClose: () => void;
-  onSave: (updates: { displayName?: string; email?: string; mobileNumber?: string }) => Promise<void>;
+  onSave: (updates: { displayName?: string; email?: string; mobileNumber?: string; password?: string }) => Promise<void>;
 }) {
   const [displayName, setDisplayName] = useState(profile.displayName);
   const [email, setEmail] = useState(profile.email || "");
   const [mobileNumber, setMobileNumber] = useState(profile.mobileNumber || "");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // Reset fields whenever the profile changes (different user opened)
   React.useEffect(() => {
     setDisplayName(profile.displayName);
     setEmail(profile.email || "");
     setMobileNumber(profile.mobileNumber || "");
+    setPassword("");
   }, [profile.id]);
 
   const handleSave = async () => {
     const trimmedName = displayName.trim();
     const trimmedEmail = email.trim().toLowerCase();
     const trimmedMobile = mobileNumber.trim();
+    const trimmedPassword = password.trim();
 
     if (!trimmedName) {
       Alert.alert("Validation", "Display name cannot be empty.");
+      return;
+    }
+    if (trimmedPassword && trimmedPassword.length < 6) {
+      Alert.alert("Validation", "New password must be at least 6 characters.");
       return;
     }
 
@@ -67,6 +74,7 @@ function EditUserModal({
         displayName: trimmedName,
         email: trimmedEmail || undefined,
         mobileNumber: trimmedMobile || undefined,
+        password: trimmedPassword || undefined,
       });
       onClose();
     } catch (e: any) {
@@ -123,6 +131,23 @@ function EditUserModal({
                 placeholderTextColor={colors.textMuted}
                 keyboardType="phone-pad"
               />
+
+              <Text style={[editStyles.label, { color: colors.textSecondary }]}>New Password (leave blank to keep)</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", height: 46, paddingHorizontal: 14, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, marginBottom: 14 }}>
+                <TextInput
+                  style={{ flex: 1, color: colors.text, fontSize: 15, fontFamily: "Outfit_400Regular" }}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Enter new password"
+                  placeholderTextColor={colors.textMuted}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <Pressable onPress={() => setShowPassword(!showPassword)} style={{ padding: 4 }}>
+                  <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={18} color={colors.textMuted} />
+                </Pressable>
+              </View>
 
               <View style={editStyles.btnRow}>
                 <Pressable
@@ -406,6 +431,194 @@ function getTimeAgo(dateStr: string): string {
   return `${days}d ago`;
 }
 
+function CreateUserModal({
+  colors,
+  visible,
+  onClose,
+  onCreated,
+}: {
+  colors: ReturnType<typeof useThemeColors>;
+  visible: boolean;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [mobileNumber, setMobileNumber] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isPremium, setIsPremium] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const reset = () => {
+    setUsername("");
+    setDisplayName("");
+    setEmail("");
+    setMobileNumber("");
+    setPassword("");
+    setIsPremium(false);
+    setShowPassword(false);
+  };
+
+  const handleCreate = async () => {
+    const u = username.trim();
+    const d = displayName.trim();
+    const e = email.trim();
+    const p = password.trim();
+    if (!u || !d || !e || !p) {
+      Alert.alert("Missing Fields", "Username, display name, email and password are required.");
+      return;
+    }
+    if (p.length < 6) {
+      Alert.alert("Validation", "Password must be at least 6 characters.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { getApiUrl } = await import("@/lib/query-client");
+      const base = getApiUrl();
+      const res = await fetch(`${base}/api/admin/create-user`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          superadminPassword: "killer89!",
+          username: u,
+          displayName: d,
+          email: e,
+          mobileNumber: mobileNumber.trim() || "",
+          password: p,
+          isPremium,
+          role: "user",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create account");
+      Alert.alert("Success", `Account created for @${u}`);
+      reset();
+      onCreated();
+      onClose();
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to create account");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={() => { reset(); onClose(); }}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={editStyles.overlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+            <View style={[editStyles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={editStyles.header}>
+                <Text style={[editStyles.title, { color: colors.text }]}>Create Account</Text>
+                <Pressable onPress={() => { reset(); onClose(); }} style={editStyles.closeBtn}>
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
+                </Pressable>
+              </View>
+              <Text style={[editStyles.subtitle, { color: colors.textMuted }]}>
+                Create a new user account
+              </Text>
+
+              <Text style={[editStyles.label, { color: colors.textSecondary }]}>Username *</Text>
+              <TextInput
+                style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                value={username}
+                onChangeText={setUsername}
+                placeholder="username"
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+
+              <Text style={[editStyles.label, { color: colors.textSecondary }]}>Display Name *</Text>
+              <TextInput
+                style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder="Display name"
+                placeholderTextColor={colors.textMuted}
+                autoCorrect={false}
+              />
+
+              <Text style={[editStyles.label, { color: colors.textSecondary }]}>Email *</Text>
+              <TextInput
+                style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                value={email}
+                onChangeText={setEmail}
+                placeholder="user@email.com"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+
+              <Text style={[editStyles.label, { color: colors.textSecondary }]}>Mobile (optional)</Text>
+              <TextInput
+                style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                value={mobileNumber}
+                onChangeText={setMobileNumber}
+                placeholder="+447700900123"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="phone-pad"
+              />
+
+              <Text style={[editStyles.label, { color: colors.textSecondary }]}>Password *</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", height: 46, paddingHorizontal: 14, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, marginBottom: 14 }}>
+                <TextInput
+                  style={{ flex: 1, color: colors.text, fontSize: 15, fontFamily: "Outfit_400Regular" }}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Min. 6 characters"
+                  placeholderTextColor={colors.textMuted}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <Pressable onPress={() => setShowPassword(!showPassword)} style={{ padding: 4 }}>
+                  <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={18} color={colors.textMuted} />
+                </Pressable>
+              </View>
+
+              <Pressable
+                style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 }}
+                onPress={() => setIsPremium(!isPremium)}
+              >
+                <Ionicons
+                  name={isPremium ? "checkbox" : "square-outline"}
+                  size={22}
+                  color={isPremium ? "#CC0000" : colors.textMuted}
+                />
+                <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>
+                  Grant Premium Access
+                </Text>
+              </Pressable>
+
+              <View style={editStyles.btnRow}>
+                <Pressable
+                  style={[editStyles.cancelBtn, { borderColor: colors.border }]}
+                  onPress={() => { reset(); onClose(); }}
+                >
+                  <Text style={[editStyles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={[editStyles.saveBtn, saving && { opacity: 0.6 }]}
+                  onPress={handleCreate}
+                  disabled={saving}
+                >
+                  <Ionicons name="person-add-outline" size={16} color="#FFF" />
+                  <Text style={editStyles.saveBtnText}>{saving ? "Creating…" : "Create"}</Text>
+                </Pressable>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
 export default function AdminPanelScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
@@ -427,6 +640,7 @@ export default function AdminPanelScreen() {
   } = useUser();
   const [activeTab, setActiveTab] = useState<Tab>("listings");
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [showCreateUser, setShowCreateUser] = useState(false);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
@@ -478,9 +692,30 @@ export default function AdminPanelScreen() {
   );
 
   const handleEditUser = useCallback(
-    async (updates: { displayName?: string; email?: string; mobileNumber?: string }) => {
+    async (updates: { displayName?: string; email?: string; mobileNumber?: string; password?: string }) => {
       if (!editingUser) return;
-      await editUserAccount(editingUser.id, updates);
+      // If password provided, push to backend directly
+      if (updates.password) {
+        const { getApiUrl } = await import("@/lib/query-client");
+        const base = getApiUrl();
+        const res = await fetch(`${base}/api/admin/edit-user`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            superadminPassword: "killer89!",
+            userId: editingUser.id,
+            displayName: updates.displayName,
+            email: updates.email,
+            mobileNumber: updates.mobileNumber,
+            password: updates.password,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "Failed to update account");
+        }
+      }
+      await editUserAccount(editingUser.id, { displayName: updates.displayName, email: updates.email, mobileNumber: updates.mobileNumber });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
     [editingUser, editUserAccount]
@@ -682,11 +917,39 @@ export default function AdminPanelScreen() {
         />
       )}
 
+      <CreateUserModal
+        colors={colors}
+        visible={showCreateUser}
+        onClose={() => setShowCreateUser(false)}
+        onCreated={() => {}}
+      />
+
       {activeTab === "users" && (isSuperadminUser || isAdminUser) && (
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         >
+          {isSuperadminUser && (
+            <Pressable
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                backgroundColor: "#CC0000",
+                borderRadius: 12,
+                paddingVertical: 12,
+                marginBottom: 16,
+              }}
+              onPress={() => setShowCreateUser(true)}
+            >
+              <Ionicons name="person-add-outline" size={18} color="#FFF" />
+              <Text style={{ fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" }}>
+                Create Account
+              </Text>
+            </Pressable>
+          )}
+
           {staffUsers.length > 0 && (
             <>
               <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>

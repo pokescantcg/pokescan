@@ -115,23 +115,46 @@ export async function restoreSession(): Promise<UserProfile | null> {
   }
 }
 
-export async function registerUserWithOtp(
+export async function registerWithPassword(
   username: string,
   displayName: string,
   email: string,
-  mobileNumber: string
+  password: string,
+  mobileNumber?: string
 ): Promise<{ user: UserProfile }> {
   const res = await apiRequest("POST", "/api/auth/register", {
     username,
     displayName,
     email,
-    mobileNumber,
+    password,
+    mobileNumber: mobileNumber || "",
   });
   const data = await res.json();
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
   await saveLocalUser(user);
   return { user };
+}
+
+export async function loginWithPassword(
+  credential: string,
+  password: string
+): Promise<{ user: UserProfile }> {
+  const res = await apiRequest("POST", "/api/auth/login", { credential, password });
+  const data = await res.json();
+  const user = dbUserToProfile(data.user);
+  await saveSessionToken(data.token);
+  await saveLocalUser(user);
+  return { user };
+}
+
+export async function registerUserWithOtp(
+  username: string,
+  displayName: string,
+  email: string,
+  mobileNumber: string
+): Promise<{ user: UserProfile }> {
+  return registerWithPassword(username, displayName, email, "changeme", mobileNumber);
 }
 
 export async function sendOtpForRegistration(
