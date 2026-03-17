@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -23,6 +23,7 @@ import { formatGBP } from "@/lib/pokemon-api";
 import { useCardCache } from "@/lib/card-cache-context";
 import { CacheMeta, LangFilter, LANG_INFO, SyncProgress } from "@/lib/card-cache";
 import PokeBackground from "@/components/PokeBackground";
+import { socialApi } from "@/lib/social-api";
 
 function formatNumber(n: number): string {
   return n.toLocaleString();
@@ -41,6 +42,12 @@ export default function ProfileScreen() {
   const { user, collection, collectionValue, listings, logout, isStaff, isSuperadminUser, updateAvatar } = useUser();
   const { cacheStatus, isDownloading, downloadPercent, progress, startDownload, clearCardCache, refreshStatus, selectedLanguages, setSelectedLanguages } = useCardCache();
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    socialApi.getUnreadCount().then(d => setUnreadCount(d.count)).catch(() => {});
+  }, [user]);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
@@ -211,6 +218,18 @@ export default function ProfileScreen() {
           <View style={styles.titleRow}>
             <Ionicons name="person-circle" size={24} color={colors.pokemonRed} />
             <Text style={[styles.title, { color: colors.text, flex: 1 }]}>Profile</Text>
+            <Pressable
+              onPress={() => router.push("/messages")}
+              style={{ marginRight: 10, position: "relative" }}
+              testID="messages-icon-btn"
+            >
+              <Ionicons name="mail-outline" size={24} color={colors.text} />
+              {unreadCount > 0 && (
+                <View style={[styles.mailBadge, { backgroundColor: colors.pokemonRed }]}>
+                  <Text style={styles.mailBadgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+                </View>
+              )}
+            </Pressable>
             <Image
               source={{ uri: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/133.png" }}
               style={styles.eeveeDecor}
@@ -666,6 +685,8 @@ const styles = StyleSheet.create({
   scrollContent: {},
   header: { paddingHorizontal: 20, paddingBottom: 8 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
+  mailBadge: { position: "absolute", top: -5, right: -7, minWidth: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center", paddingHorizontal: 3 },
+  mailBadgeText: { fontSize: 9, fontFamily: "Outfit_700Bold", color: "#FFF" },
   title: { fontSize: 28, fontFamily: "Outfit_700Bold" },
   eeveeDecor: { width: 64, height: 64 },
   profileSection: { alignItems: "center", marginBottom: 4 },

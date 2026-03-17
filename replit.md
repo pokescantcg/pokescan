@@ -95,6 +95,7 @@ Preferred communication style: Simple, everyday language.
 - **Premium membership**: Can be granted/revoked by superadmin from admin panel. Staff roles automatically include premium
 - **Staff access from marketplace**: When logged in as admin/moderator, the marketplace tab shows delete buttons on all listings (not just own)
 - **Social auth**: Social login (Google/Apple) still uses client-side AsyncStorage via `registerSocialUser`. Not connected to PostgreSQL backend
+- **Friends & Messaging**: Full social system via PostgreSQL. `pokescanFriendships` (requester/addressee/status) and `pokescanMessages` (sender/recipient/subject/body/isRead/deletedBySender/deletedByRecipient) tables. Social routes: `GET/POST /api/social/friends`, `/api/social/friend-request`, `/api/social/friend-respond`, `DELETE /api/social/friend-remove`, `GET /api/social/user-search`, `/api/social/messages/inbox`, `/api/social/messages/sent`, `/api/social/messages/unread-count`, `POST /api/social/messages/send`, `PATCH /api/social/messages/:id/read`, `DELETE /api/social/messages/:id`. All routes require Bearer session token. Client helpers in `lib/social-api.ts`. Messages screen at `app/messages.tsx` — Inbox/Sent/Friends tabs with compose modal, reply, delete, friend search/add/accept/decline. Mail icon with unread badge in Profile tab header. Market listings show "Message" button to sellers.
 
 ### Build & Deployment
 - **Dev mode**: Two processes — Expo dev server (`expo:dev`) and Express server (`server:dev`)

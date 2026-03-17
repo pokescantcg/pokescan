@@ -26,8 +26,10 @@ import {
   ebayPrices,
   pokescanUsers,
   pokescanSessions,
+  pokescanFriendships,
+  pokescanMessages,
 } from "@shared/schema";
-import { eq, desc, sql, ilike, or } from "drizzle-orm";
+import { eq, desc, sql, ilike, or, and, ne } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
 
 const openai = new OpenAI({
@@ -1286,6 +1288,178 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       console.error("Admin delete-user error:", error);
       res.status(500).json({ error: error.message || "Delete failed" });
     }
+  });
+
+  // ─── Social helpers ──────────────────────────────────────────────────────────
+  async function getUserFromToken(req: Request): Promise<{ id: string; username: string; displayName: string } | null> {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) return null;
+    const user = await storage.validateSession(token);
+    if (!user) return null;
+    return { id: user.id, username: user.username, displayName: user.displayName };
+  }
+
+  // ─── Friends ─────────────────────────────────────────────────────────────────
+  app.get("/api/social/friends", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const rows = await db.select().from(pokescanFriendships).where(
+      or(eq(pokescanFriendships.requesterId, me.id), eq(pokescanFriendships.addresseeId, me.id))
+    );
+    const friendIds = new Set<string>();
+    for (const r of rows) {
+      if (r.status === "accepted") {
+        friendIds.add(r.requesterId === me.id ? r.addresseeId : r.requesterId);
+      }
+    }
+    const friends = friendIds.size > 0
+      ? await db.select({ id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl })
+          .from(pokescanUsers).where(or(...[...friendIds].map(id => eq(pokescanUsers.id, id))))
+      : [];
+    const pendingReceived = rows.filter(r => r.addresseeId === me.id && r.status === "pending");
+    const pendingSent = rows.filter(r => r.requesterId === me.id && r.status === "pending");
+    const pendingUsers = pendingReceived.length > 0
+      ? await db.select({ id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl })
+          .from(pokescanUsers).where(or(...pendingReceived.map(r => eq(pokescanUsers.id, r.requesterId))))
+      : [];
+    const sentUsers = pendingSent.length > 0
+      ? await db.select({ id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl })
+          .from(pokescanUsers).where(or(...pendingSent.map(r => eq(pokescanUsers.id, r.addresseeId))))
+      : [];
+    res.json({ friends, pendingReceived: pendingUsers, pendingSent: sentUsers });
+  });
+
+  app.post("/api/social/friend-request", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const { targetUserId } = req.body;
+    if (!targetUserId || targetUserId === me.id) { res.status(400).json({ error: "Invalid target" }); return; }
+    const existing = await db.select().from(pokescanFriendships).where(
+      or(
+        and(eq(pokescanFriendships.requesterId, me.id), eq(pokescanFriendships.addresseeId, targetUserId)),
+        and(eq(pokescanFriendships.requesterId, targetUserId), eq(pokescanFriendships.addresseeId, me.id))
+      )
+    );
+    if (existing.length > 0) { res.status(400).json({ error: "Request already exists" }); return; }
+    const [row] = await db.insert(pokescanFriendships).values({ requesterId: me.id, addresseeId: targetUserId, status: "pending" }).returning();
+    res.json({ friendship: row });
+  });
+
+  app.post("/api/social/friend-respond", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const { requesterId, action } = req.body;
+    if (!requesterId || !["accept", "decline"].includes(action)) { res.status(400).json({ error: "Bad request" }); return; }
+    const rows = await db.select().from(pokescanFriendships).where(
+      and(eq(pokescanFriendships.requesterId, requesterId), eq(pokescanFriendships.addresseeId, me.id), eq(pokescanFriendships.status, "pending"))
+    );
+    if (!rows.length) { res.status(404).json({ error: "Request not found" }); return; }
+    if (action === "accept") {
+      await db.update(pokescanFriendships).set({ status: "accepted" }).where(eq(pokescanFriendships.id, rows[0].id));
+      res.json({ status: "accepted" });
+    } else {
+      await db.delete(pokescanFriendships).where(eq(pokescanFriendships.id, rows[0].id));
+      res.json({ status: "declined" });
+    }
+  });
+
+  app.delete("/api/social/friend-remove", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const { friendId } = req.body;
+    await db.delete(pokescanFriendships).where(
+      or(
+        and(eq(pokescanFriendships.requesterId, me.id), eq(pokescanFriendships.addresseeId, friendId)),
+        and(eq(pokescanFriendships.requesterId, friendId), eq(pokescanFriendships.addresseeId, me.id))
+      )
+    );
+    res.json({ success: true });
+  });
+
+  app.get("/api/social/user-search", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const q = (req.query.q as string || "").trim();
+    if (q.length < 2) { res.json({ users: [] }); return; }
+    const users = await db.select({ id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl })
+      .from(pokescanUsers)
+      .where(and(ne(pokescanUsers.id, me.id), or(ilike(pokescanUsers.username, `%${q}%`), ilike(pokescanUsers.displayName, `%${q}%`))))
+      .limit(20);
+    res.json({ users });
+  });
+
+  // ─── Messages ────────────────────────────────────────────────────────────────
+  app.get("/api/social/messages/inbox", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const rows = await db.select({
+      id: pokescanMessages.id, subject: pokescanMessages.subject, body: pokescanMessages.body,
+      isRead: pokescanMessages.isRead, createdAt: pokescanMessages.createdAt,
+      senderId: pokescanMessages.senderId,
+      senderUsername: pokescanUsers.username, senderDisplayName: pokescanUsers.displayName, senderAvatarUrl: pokescanUsers.avatarUrl,
+    }).from(pokescanMessages)
+      .innerJoin(pokescanUsers, eq(pokescanMessages.senderId, pokescanUsers.id))
+      .where(and(eq(pokescanMessages.recipientId, me.id), eq(pokescanMessages.deletedByRecipient, false)))
+      .orderBy(desc(pokescanMessages.createdAt));
+    res.json({ messages: rows });
+  });
+
+  app.get("/api/social/messages/sent", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const rows = await db.select({
+      id: pokescanMessages.id, subject: pokescanMessages.subject, body: pokescanMessages.body,
+      isRead: pokescanMessages.isRead, createdAt: pokescanMessages.createdAt,
+      recipientId: pokescanMessages.recipientId,
+      recipientUsername: pokescanUsers.username, recipientDisplayName: pokescanUsers.displayName, recipientAvatarUrl: pokescanUsers.avatarUrl,
+    }).from(pokescanMessages)
+      .innerJoin(pokescanUsers, eq(pokescanMessages.recipientId, pokescanUsers.id))
+      .where(and(eq(pokescanMessages.senderId, me.id), eq(pokescanMessages.deletedBySender, false)))
+      .orderBy(desc(pokescanMessages.createdAt));
+    res.json({ messages: rows });
+  });
+
+  app.get("/api/social/messages/unread-count", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const result = await db.select({ count: sql<number>`count(*)::int` }).from(pokescanMessages)
+      .where(and(eq(pokescanMessages.recipientId, me.id), eq(pokescanMessages.isRead, false), eq(pokescanMessages.deletedByRecipient, false)));
+    res.json({ count: result[0]?.count ?? 0 });
+  });
+
+  app.post("/api/social/messages/send", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const { recipientId, subject, body } = req.body;
+    if (!recipientId || !body?.trim()) { res.status(400).json({ error: "recipientId and body required" }); return; }
+    const target = await storage.getUserById(recipientId);
+    if (!target) { res.status(404).json({ error: "Recipient not found" }); return; }
+    const [msg] = await db.insert(pokescanMessages).values({
+      senderId: me.id, recipientId, subject: (subject || "").trim(), body: body.trim(),
+    }).returning();
+    res.json({ message: msg });
+  });
+
+  app.patch("/api/social/messages/:id/read", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    await db.update(pokescanMessages).set({ isRead: true }).where(
+      and(eq(pokescanMessages.id, req.params.id), eq(pokescanMessages.recipientId, me.id))
+    );
+    res.json({ success: true });
+  });
+
+  app.delete("/api/social/messages/:id", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const [msg] = await db.select().from(pokescanMessages).where(eq(pokescanMessages.id, req.params.id));
+    if (!msg) { res.status(404).json({ error: "Not found" }); return; }
+    if (msg.senderId === me.id) {
+      await db.update(pokescanMessages).set({ deletedBySender: true }).where(eq(pokescanMessages.id, msg.id));
+    } else if (msg.recipientId === me.id) {
+      await db.update(pokescanMessages).set({ deletedByRecipient: true }).where(eq(pokescanMessages.id, msg.id));
+    }
+    res.json({ success: true });
   });
 
   const httpServer = createServer(app);

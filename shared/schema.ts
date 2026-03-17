@@ -110,6 +110,29 @@ export const ebayPrices = pgTable("ebay_prices", {
   fetchedAt: timestamp("fetched_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const pokescanFriendships = pgTable("pokescan_friendships", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  requesterId: varchar("requester_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  addresseeId: varchar("addressee_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export const pokescanMessages = pgTable("pokescan_messages", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  senderId: varchar("sender_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  recipientId: varchar("recipient_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  subject: text("subject").notNull().default(""),
+  body: text("body").notNull(),
+  isRead: boolean("is_read").notNull().default(false),
+  deletedBySender: boolean("deleted_by_sender").notNull().default(false),
+  deletedByRecipient: boolean("deleted_by_recipient").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type PokescanFriendship = typeof pokescanFriendships.$inferSelect;
+export type PokescanMessage = typeof pokescanMessages.$inferSelect;
+
 export const syncStatus = pgTable("sync_status", {
   id: serial("id").primaryKey(),
   totalSets: integer("total_sets").default(0),

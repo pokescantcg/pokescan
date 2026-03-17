@@ -26,13 +26,18 @@ function ListingCard({
   listing,
   colors,
   isOwner,
+  currentUserId,
   onDelete,
+  onMessage,
 }: {
   listing: MarketListing;
   colors: ReturnType<typeof useThemeColors>;
   isOwner: boolean;
+  currentUserId: string;
   onDelete: () => void;
+  onMessage: () => void;
 }) {
+  const canMessage = listing.userId !== currentUserId;
   return (
     <Pressable
       style={({ pressed }) => [
@@ -72,6 +77,15 @@ function ListingCard({
         <Text style={[styles.listingUser, { color: colors.textMuted }]}>
           by {listing.userName}
         </Text>
+        {canMessage && (
+          <Pressable
+            style={[styles.messageBtn, { backgroundColor: colors.pokemonBlue }]}
+            onPress={(e) => { e.stopPropagation(); onMessage(); }}
+          >
+            <Ionicons name="mail-outline" size={13} color="#FFF" />
+            <Text style={styles.messageBtnText}>Message</Text>
+          </Pressable>
+        )}
       </View>
       {isOwner && (
         <Pressable
@@ -230,6 +244,17 @@ export default function MarketScreen() {
             listing={item}
             colors={colors}
             isOwner={item.userId === user.id || isStaff}
+            currentUserId={user.id}
+            onMessage={() => {
+              router.push({
+                pathname: "/messages",
+                params: {
+                  recipientId: item.userId,
+                  recipientName: item.userName,
+                  recipientUsername: item.userName,
+                },
+              });
+            }}
             onDelete={() => {
               const isOwn = item.userId === user.id;
               Alert.alert(
@@ -317,6 +342,12 @@ const styles = StyleSheet.create({
   listingCondition: { fontSize: 11, fontFamily: "Outfit_500Medium" },
   listingPrice: { fontSize: 14, fontFamily: "Outfit_700Bold" },
   listingUser: { fontSize: 11, fontFamily: "Outfit_400Regular" },
+  messageBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    marginTop: 6, paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 8, alignSelf: "flex-start",
+  },
+  messageBtnText: { fontSize: 11, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
   deleteBtn: {
     width: 32,
     height: 32,
