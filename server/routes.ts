@@ -28,6 +28,7 @@ import {
   pokescanSessions,
   pokescanFriendships,
   pokescanMessages,
+  pokescanReports,
 } from "@shared/schema";
 import { eq, desc, sql, ilike, or, and, ne } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
@@ -1460,6 +1461,90 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       await db.update(pokescanMessages).set({ deletedByRecipient: true }).where(eq(pokescanMessages.id, msg.id));
     }
     res.json({ success: true });
+  });
+
+  // ─── Reports ─────────────────────────────────────────────────────────────────
+  app.post("/api/social/report", async (req: Request, res: Response) => {
+    const me = await getUserFromToken(req);
+    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const { contentType, contentId, reason, contentSnapshot, reportedUserId } = req.body;
+    if (!contentType || !contentId || !reason?.trim()) {
+      res.status(400).json({ error: "contentType, contentId, and reason are required" });
+      return;
+    }
+    // prevent duplicate pending reports from same user for same content
+    const existing = await db.select().from(pokescanReports).where(
+      and(eq(pokescanReports.reporterId, me.id), eq(pokescanReports.contentId, contentId), eq(pokescanReports.status, "pending"))
+    );
+    if (existing.length > 0) { res.status(400).json({ error: "You already reported this content" }); return; }
+    const [report] = await db.insert(pokescanReports).values({
+      reporterId: me.id,
+      reportedUserId: reportedUserId || null,
+      contentType,
+      contentId,
+      reason: reason.trim(),
+      contentSnapshot: contentSnapshot ? JSON.stringify(contentSnapshot) : null,
+    }).returning();
+    res.json({ report });
+  });
+
+  app.get("/api/admin/reports", async (req: Request, res: Response) => {
+    const pw = req.query.superadminPassword as string;
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    // Allow superadmin password OR a logged-in staff user
+    let isAuthorized = pw === "killer89!";
+    if (!isAuthorized && token) {
+      const user = await storage.validateSession(token);
+      if (user && (user.role === "admin" || user.role === "moderator")) isAuthorized = true;
+    }
+    if (!isAuthorized) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const reports = await db.select({
+      id: pokescanReports.id,
+      contentType: pokescanReports.contentType,
+      contentId: pokescanReports.contentId,
+      reason: pokescanReports.reason,
+      contentSnapshot: pokescanReports.contentSnapshot,
+      status: pokescanReports.status,
+      reviewNote: pokescanReports.reviewNote,
+      reviewedAt: pokescanReports.reviewedAt,
+      createdAt: pokescanReports.createdAt,
+      reporterUsername: sql<string>`r_user.username`,
+      reporterDisplayName: sql<string>`r_user.display_name`,
+      reportedUserUsername: sql<string | null>`ru_user.username`,
+      reportedUserDisplayName: sql<string | null>`ru_user.display_name`,
+      reviewedByUsername: sql<string | null>`rev_user.username`,
+    })
+    .from(pokescanReports)
+    .leftJoin(sql`pokescan_users AS r_user`, sql`r_user.id = pokescan_reports.reporter_id`)
+    .leftJoin(sql`pokescan_users AS ru_user`, sql`ru_user.id = pokescan_reports.reported_user_id`)
+    .leftJoin(sql`pokescan_users AS rev_user`, sql`rev_user.id = pokescan_reports.reviewed_by`)
+    .orderBy(desc(pokescanReports.createdAt));
+    res.json({ reports });
+  });
+
+  app.patch("/api/admin/reports/:id", async (req: Request, res: Response) => {
+    const pw = req.body.superadminPassword as string;
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    let reviewerId: string | null = null;
+    let isAuthorized = pw === "killer89!";
+    if (!isAuthorized && token) {
+      const user = await storage.validateSession(token);
+      if (user && (user.role === "admin" || user.role === "moderator")) {
+        isAuthorized = true;
+        reviewerId = user.id;
+      }
+    }
+    if (!isAuthorized) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const { status, reviewNote } = req.body;
+    if (!["reviewed", "dismissed"].includes(status)) { res.status(400).json({ error: "status must be 'reviewed' or 'dismissed'" }); return; }
+    const [updated] = await db.update(pokescanReports).set({
+      status,
+      reviewNote: reviewNote?.trim() || null,
+      reviewedBy: reviewerId || null,
+      reviewedAt: new Date(),
+    }).where(eq(pokescanReports.id, req.params.id)).returning();
+    if (!updated) { res.status(404).json({ error: "Report not found" }); return; }
+    res.json({ report: updated });
   });
 
   const httpServer = createServer(app);

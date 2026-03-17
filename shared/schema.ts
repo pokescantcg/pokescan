@@ -133,6 +133,23 @@ export const pokescanMessages = pgTable("pokescan_messages", {
 export type PokescanFriendship = typeof pokescanFriendships.$inferSelect;
 export type PokescanMessage = typeof pokescanMessages.$inferSelect;
 
+export const pokescanReports = pgTable("pokescan_reports", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  reporterId: varchar("reporter_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  reportedUserId: varchar("reported_user_id", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
+  contentType: text("content_type").notNull(),
+  contentId: text("content_id").notNull(),
+  reason: text("reason").notNull(),
+  contentSnapshot: text("content_snapshot"),
+  status: text("status").notNull().default("pending"),
+  reviewNote: text("review_note"),
+  reviewedBy: varchar("reviewed_by", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type PokescanReport = typeof pokescanReports.$inferSelect;
+
 export const syncStatus = pgTable("sync_status", {
   id: serial("id").primaryKey(),
   totalSets: integer("total_sets").default(0),

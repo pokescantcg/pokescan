@@ -25,6 +25,7 @@ import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
 import { MarketListing, UserProfile, UserRole } from "@/lib/storage";
+import { socialApi, AdminReport } from "@/lib/social-api";
 
 function EditUserModal({
   profile,
@@ -230,7 +231,7 @@ const editStyles = StyleSheet.create({
   saveBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFF" },
 });
 
-type Tab = "listings" | "users";
+type Tab = "listings" | "users" | "reports";
 
 function ListingRow({
   listing,
@@ -643,6 +644,36 @@ export default function AdminPanelScreen() {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
+  const [reports, setReports] = useState<AdminReport[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [expandedReport, setExpandedReport] = useState<string | null>(null);
+
+  const loadReports = useCallback(async () => {
+    setReportsLoading(true);
+    try {
+      const data = await socialApi.getAdminReports();
+      setReports(data.reports);
+    } catch (e) {
+      console.error("Failed to load reports:", e);
+    } finally {
+      setReportsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (activeTab === "reports") loadReports();
+  }, [activeTab, loadReports]);
+
+  const handleUpdateReport = useCallback(async (id: string, status: "reviewed" | "dismissed") => {
+    try {
+      await socialApi.updateReport(id, status, reviewNotes[id] || undefined);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setReports(prev => prev.map(r => r.id === id ? { ...r, status, reviewNote: reviewNotes[id] || null } : r));
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Could not update report.");
+    }
+  }, [reviewNotes]);
 
   const handleRefreshUsers = useCallback(async () => {
     setIsRefreshingUsers(true);
@@ -862,6 +893,24 @@ export default function AdminPanelScreen() {
             </Text>
           </Pressable>
         )}
+        <Pressable
+          style={[styles.tab, activeTab === "reports" && styles.tabActive]}
+          onPress={() => setActiveTab("reports")}
+        >
+          <Ionicons
+            name="flag-outline"
+            size={18}
+            color={activeTab === "reports" ? "#FFF" : colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.tabText,
+              { color: activeTab === "reports" ? "#FFF" : colors.textMuted },
+            ]}
+          >
+            Reports {reports.filter(r => r.status === "pending").length > 0 ? `(${reports.filter(r => r.status === "pending").length})` : ""}
+          </Text>
+        </Pressable>
       </View>
 
       {activeTab === "listings" && (
@@ -912,6 +961,162 @@ export default function AdminPanelScreen() {
               </Text>
             </View>
           }
+        />
+      )}
+
+      {activeTab === "reports" && (
+        <FlatList
+          data={reports}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
+          showsVerticalScrollIndicator={false}
+          onRefresh={loadReports}
+          refreshing={reportsLoading}
+          ListHeaderComponent={
+            reports.length > 0 ? (
+              <View style={[styles.summaryBar, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryValue, { color: colors.pokemonRed }]}>
+                    {reports.filter(r => r.status === "pending").length}
+                  </Text>
+                  <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Pending</Text>
+                </View>
+                <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryValue, { color: colors.success }]}>
+                    {reports.filter(r => r.status === "reviewed").length}
+                  </Text>
+                  <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Reviewed</Text>
+                </View>
+                <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryValue, { color: colors.textMuted }]}>
+                    {reports.filter(r => r.status === "dismissed").length}
+                  </Text>
+                  <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Dismissed</Text>
+                </View>
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            reportsLoading ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="hourglass-outline" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>Loading reports...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="shield-checkmark-outline" size={56} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No Reports</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>No content reports to review</Text>
+              </View>
+            )
+          }
+          renderItem={({ item: report }) => {
+            const isPending = report.status === "pending";
+            const isExpanded = expandedReport === report.id;
+            let snapshot: any = null;
+            try { snapshot = report.contentSnapshot ? JSON.parse(report.contentSnapshot) : null; } catch {}
+            return (
+              <Pressable
+                style={[styles.reportCard, { backgroundColor: colors.card, borderColor: isPending ? colors.pokemonRed : colors.border }]}
+                onPress={() => setExpandedReport(isExpanded ? null : report.id)}
+              >
+                <View style={styles.reportCardHeader}>
+                  <View style={[styles.reportTypeBadge, { backgroundColor: report.contentType === "message" ? colors.pokemonBlue : colors.success }]}>
+                    <Ionicons name={report.contentType === "message" ? "mail-outline" : "pricetag-outline"} size={12} color="#FFF" />
+                    <Text style={styles.reportTypeBadgeText}>{report.contentType === "message" ? "MESSAGE" : "LISTING"}</Text>
+                  </View>
+                  <View style={[styles.reportStatusBadge, {
+                    backgroundColor: isPending ? colors.pokemonRed + "20" : report.status === "reviewed" ? colors.success + "20" : colors.textMuted + "20"
+                  }]}>
+                    <Text style={[styles.reportStatusText, { color: isPending ? colors.pokemonRed : report.status === "reviewed" ? colors.success : colors.textMuted }]}>
+                      {report.status.toUpperCase()}
+                    </Text>
+                  </View>
+                  <Text style={[styles.reportTime, { color: colors.textMuted }]}>{getTimeAgo(report.createdAt)}</Text>
+                  <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+                </View>
+
+                <View style={styles.reportMeta}>
+                  <Ionicons name="person-outline" size={13} color={colors.textMuted} />
+                  <Text style={[styles.reportMetaText, { color: colors.textMuted }]}>
+                    Reported by <Text style={{ color: colors.text }}>{report.reporterDisplayName}</Text>
+                    {report.reportedUserDisplayName ? <> · Against <Text style={{ color: colors.pokemonRed }}>{report.reportedUserDisplayName}</Text></> : null}
+                  </Text>
+                </View>
+
+                <View style={[styles.reportReasonBox, { backgroundColor: colors.background }]}>
+                  <Text style={[styles.reportReasonLabel, { color: colors.textMuted }]}>REASON</Text>
+                  <Text style={[styles.reportReasonText, { color: colors.text }]}>{report.reason}</Text>
+                </View>
+
+                {isExpanded && snapshot && (
+                  <View style={[styles.reportSnapshot, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <Text style={[styles.reportSnapshotLabel, { color: colors.textMuted }]}>CONTENT SNAPSHOT</Text>
+                    {report.contentType === "message" && (
+                      <>
+                        {snapshot.subject ? <Text style={[styles.reportSnapshotSubject, { color: colors.text }]}>{snapshot.subject}</Text> : null}
+                        <Text style={[styles.reportSnapshotBody, { color: colors.textSecondary }]}>{snapshot.body}</Text>
+                        {snapshot.senderUsername && <Text style={[styles.reportSnapshotMeta, { color: colors.textMuted }]}>From: @{snapshot.senderUsername}</Text>}
+                      </>
+                    )}
+                    {report.contentType === "listing" && (
+                      <View style={{ flexDirection: "row", gap: 10, alignItems: "flex-start" }}>
+                        {snapshot.cardImage && (
+                          <Image source={{ uri: snapshot.cardImage }} style={{ width: 50, height: 70, borderRadius: 6 }} contentFit="contain" />
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.reportSnapshotSubject, { color: colors.text }]}>{snapshot.cardName}</Text>
+                          <Text style={[styles.reportSnapshotMeta, { color: colors.textMuted }]}>{snapshot.setName}</Text>
+                          <Text style={[styles.reportSnapshotMeta, { color: colors.textMuted }]}>{snapshot.condition} · {snapshot.type === "sale" ? "For Sale" : "Trade"}</Text>
+                          {snapshot.priceGBP && <Text style={[styles.reportSnapshotMeta, { color: colors.success }]}>{formatGBP(snapshot.priceGBP)}</Text>}
+                          <Text style={[styles.reportSnapshotMeta, { color: colors.textMuted }]}>Seller: {snapshot.userName}</Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {isExpanded && report.reviewNote && (
+                  <View style={[styles.reportNote, { backgroundColor: colors.success + "15", borderColor: colors.success }]}>
+                    <Text style={[styles.reportNoteLabel, { color: colors.success }]}>REVIEW NOTE</Text>
+                    <Text style={[styles.reportNoteText, { color: colors.text }]}>{report.reviewNote}</Text>
+                    {report.reviewedByUsername && <Text style={[styles.reportNoteBy, { color: colors.textMuted }]}>— @{report.reviewedByUsername}</Text>}
+                  </View>
+                )}
+
+                {isExpanded && isPending && (
+                  <View style={styles.reportActions}>
+                    <TextInput
+                      style={[styles.reportNoteInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+                      placeholder="Add a review note (optional)..."
+                      placeholderTextColor={colors.textMuted}
+                      value={reviewNotes[report.id] || ""}
+                      onChangeText={text => setReviewNotes(prev => ({ ...prev, [report.id]: text }))}
+                      multiline
+                    />
+                    <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                      <Pressable
+                        style={[styles.reportActionBtn, { backgroundColor: colors.success, flex: 1 }]}
+                        onPress={() => handleUpdateReport(report.id, "reviewed")}
+                      >
+                        <Ionicons name="checkmark-circle-outline" size={16} color="#FFF" />
+                        <Text style={styles.reportActionBtnText}>Mark Reviewed</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.reportActionBtn, { backgroundColor: colors.textMuted, flex: 1 }]}
+                        onPress={() => handleUpdateReport(report.id, "dismissed")}
+                      >
+                        <Ionicons name="close-circle-outline" size={16} color="#FFF" />
+                        <Text style={styles.reportActionBtnText}>Dismiss</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+              </Pressable>
+            );
+          }}
         />
       )}
 
@@ -1172,4 +1377,29 @@ const styles = StyleSheet.create({
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 60, gap: 8 },
   emptyTitle: { fontSize: 18, fontFamily: "Outfit_600SemiBold" },
   emptySubtext: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 40 },
+  reportCard: { marginHorizontal: 16, marginTop: 10, padding: 14, borderRadius: 14, borderWidth: 1.5 },
+  reportCardHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  reportTypeBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  reportTypeBadgeText: { fontSize: 10, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  reportStatusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  reportStatusText: { fontSize: 10, fontFamily: "Outfit_700Bold" },
+  reportTime: { flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", textAlign: "right" },
+  reportMeta: { flexDirection: "row", alignItems: "flex-start", gap: 6, marginBottom: 8 },
+  reportMetaText: { flex: 1, fontSize: 12, fontFamily: "Outfit_400Regular" },
+  reportReasonBox: { padding: 10, borderRadius: 10, marginBottom: 6 },
+  reportReasonLabel: { fontSize: 10, fontFamily: "Outfit_700Bold", letterSpacing: 0.8, marginBottom: 3 },
+  reportReasonText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
+  reportSnapshot: { padding: 12, borderRadius: 10, borderWidth: 1, marginTop: 8 },
+  reportSnapshotLabel: { fontSize: 10, fontFamily: "Outfit_700Bold", letterSpacing: 0.8, marginBottom: 6 },
+  reportSnapshotSubject: { fontSize: 14, fontFamily: "Outfit_700Bold", marginBottom: 4 },
+  reportSnapshotBody: { fontSize: 13, fontFamily: "Outfit_400Regular", lineHeight: 18 },
+  reportSnapshotMeta: { fontSize: 11, fontFamily: "Outfit_400Regular", marginTop: 3 },
+  reportNote: { padding: 10, borderRadius: 10, borderWidth: 1, marginTop: 8 },
+  reportNoteLabel: { fontSize: 10, fontFamily: "Outfit_700Bold", letterSpacing: 0.8, marginBottom: 4 },
+  reportNoteText: { fontSize: 13, fontFamily: "Outfit_400Regular" },
+  reportNoteBy: { fontSize: 11, fontFamily: "Outfit_400Regular", marginTop: 4 },
+  reportActions: { marginTop: 10 },
+  reportNoteInput: { padding: 10, borderRadius: 10, borderWidth: 1, fontSize: 13, fontFamily: "Outfit_400Regular", minHeight: 60, textAlignVertical: "top" },
+  reportActionBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 10 },
+  reportActionBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
 });

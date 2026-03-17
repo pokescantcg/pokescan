@@ -190,6 +190,8 @@ function ComposeModal({
   );
 }
 
+const MESSAGE_REPORT_REASONS = ["Harassment or abuse", "Spam", "Threats", "Inappropriate content", "Other"];
+
 // ─── Message Detail Modal ─────────────────────────────────────────────────────
 function MessageDetailModal({
   message,
@@ -197,6 +199,7 @@ function MessageDetailModal({
   onClose,
   onDelete,
   onReply,
+  onReport,
   colors,
 }: {
   message: InboxMessage | SentMessage | null;
@@ -204,12 +207,28 @@ function MessageDetailModal({
   onClose: () => void;
   onDelete: () => void;
   onReply?: () => void;
+  onReport?: (reason: string) => void;
   colors: any;
 }) {
   if (!message) return null;
   const name = isSent ? (message as SentMessage).recipientDisplayName : (message as InboxMessage).senderDisplayName;
   const username = isSent ? (message as SentMessage).recipientUsername : (message as InboxMessage).senderUsername;
   const avatarUrl = isSent ? (message as SentMessage).recipientAvatarUrl : (message as InboxMessage).senderAvatarUrl;
+
+  const handleReport = () => {
+    if (!onReport) return;
+    Alert.alert(
+      "Report Message",
+      "Why are you reporting this message?",
+      [
+        ...MESSAGE_REPORT_REASONS.map(reason => ({
+          text: reason,
+          onPress: () => onReport(reason),
+        })),
+        { text: "Cancel", style: "cancel" as const },
+      ]
+    );
+  };
 
   return (
     <Modal visible={!!message} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -222,6 +241,11 @@ function MessageDetailModal({
             {message.subject || "(no subject)"}
           </Text>
           <View style={{ flexDirection: "row", gap: 12 }}>
+            {!isSent && onReport && (
+              <Pressable onPress={handleReport}>
+                <Ionicons name="flag-outline" size={20} color={colors.error} />
+              </Pressable>
+            )}
             {!isSent && onReply && (
               <Pressable onPress={onReply}>
                 <Ionicons name="return-up-back-outline" size={22} color={colors.pokemonBlue} />
@@ -683,6 +707,24 @@ export default function MessagesScreen() {
         onClose={() => setSelectedMessage(null)}
         onDelete={handleDeleteSelected}
         onReply={handleReply}
+        onReport={async (reason) => {
+          if (!selectedMessage) return;
+          const msg = selectedMessage as InboxMessage;
+          try {
+            await socialApi.submitReport(
+              "message",
+              msg.id,
+              reason,
+              { subject: msg.subject, body: msg.body, senderUsername: msg.senderUsername },
+              msg.senderId
+            );
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setSelectedMessage(null);
+            Alert.alert("Reported", "Thanks for the report. Our moderation team will review it.");
+          } catch (e: any) {
+            Alert.alert("Error", e.message === "You already reported this content" ? "You have already reported this message." : "Could not submit report.");
+          }
+        }}
         colors={colors}
       />
     </View>

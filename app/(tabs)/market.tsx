@@ -21,6 +21,9 @@ import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
 import { MarketListing } from "@/lib/storage";
 import PokeBackground from "@/components/PokeBackground";
+import { socialApi } from "@/lib/social-api";
+
+const REPORT_REASONS = ["Spam or advertising", "Fake or misleading listing", "Inappropriate content", "Suspicious pricing", "Other"];
 
 function ListingCard({
   listing,
@@ -29,6 +32,7 @@ function ListingCard({
   currentUserId,
   onDelete,
   onMessage,
+  onReport,
 }: {
   listing: MarketListing;
   colors: ReturnType<typeof useThemeColors>;
@@ -36,8 +40,23 @@ function ListingCard({
   currentUserId: string;
   onDelete: () => void;
   onMessage: () => void;
+  onReport: (reason: string) => void;
 }) {
   const canMessage = listing.userId !== currentUserId;
+
+  const handleReport = () => {
+    Alert.alert(
+      "Report Listing",
+      "Why are you reporting this listing?",
+      [
+        ...REPORT_REASONS.map(reason => ({
+          text: reason,
+          onPress: () => onReport(reason),
+        })),
+        { text: "Cancel", style: "cancel" as const },
+      ]
+    );
+  };
   return (
     <Pressable
       style={({ pressed }) => [
@@ -77,15 +96,26 @@ function ListingCard({
         <Text style={[styles.listingUser, { color: colors.textMuted }]}>
           by {listing.userName}
         </Text>
-        {canMessage && (
-          <Pressable
-            style={[styles.messageBtn, { backgroundColor: colors.pokemonBlue }]}
-            onPress={(e) => { e.stopPropagation(); onMessage(); }}
-          >
-            <Ionicons name="mail-outline" size={13} color="#FFF" />
-            <Text style={styles.messageBtnText}>Message</Text>
-          </Pressable>
-        )}
+        <View style={{ flexDirection: "row", gap: 6, marginTop: 6 }}>
+          {canMessage && (
+            <Pressable
+              style={[styles.messageBtn, { backgroundColor: colors.pokemonBlue }]}
+              onPress={(e) => { e.stopPropagation(); onMessage(); }}
+            >
+              <Ionicons name="mail-outline" size={13} color="#FFF" />
+              <Text style={styles.messageBtnText}>Message</Text>
+            </Pressable>
+          )}
+          {!isOwner && (
+            <Pressable
+              style={[styles.messageBtn, { backgroundColor: colors.error + "CC" }]}
+              onPress={(e) => { e.stopPropagation(); handleReport(); }}
+            >
+              <Ionicons name="flag-outline" size={13} color="#FFF" />
+              <Text style={styles.messageBtnText}>Report</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
       {isOwner && (
         <Pressable
@@ -254,6 +284,29 @@ export default function MarketScreen() {
                   recipientUsername: item.userName,
                 },
               });
+            }}
+            onReport={async (reason) => {
+              try {
+                await socialApi.submitReport(
+                  "listing",
+                  item.id,
+                  reason,
+                  {
+                    cardName: item.cardName,
+                    setName: item.setName,
+                    condition: item.condition,
+                    type: item.type,
+                    priceGBP: item.priceGBP,
+                    cardImage: item.cardImage,
+                    userName: item.userName,
+                  },
+                  item.userId
+                );
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                Alert.alert("Reported", "Thanks for the report. Our team will review it.");
+              } catch (e: any) {
+                Alert.alert("Error", e.message === "You already reported this content" ? "You have already reported this listing." : "Could not submit report.");
+              }
             }}
             onDelete={() => {
               const isOwn = item.userId === user.id;

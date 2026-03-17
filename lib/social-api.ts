@@ -77,6 +77,23 @@ export interface SentMessage {
   recipientAvatarUrl?: string | null;
 }
 
+export interface AdminReport {
+  id: string;
+  contentType: string;
+  contentId: string;
+  reason: string;
+  contentSnapshot: string | null;
+  status: string;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  reporterUsername: string;
+  reporterDisplayName: string;
+  reportedUserUsername: string | null;
+  reportedUserDisplayName: string | null;
+  reviewedByUsername: string | null;
+}
+
 export const socialApi = {
   getFriends: (): Promise<FriendsData> => get("api/social/friends"),
   sendFriendRequest: (targetUserId: string) => post("api/social/friend-request", { targetUserId }),
@@ -92,4 +109,16 @@ export const socialApi = {
     post("api/social/messages/send", { recipientId, subject, body }),
   markRead: (id: string) => patch(`api/social/messages/${id}/read`),
   deleteMessage: (id: string) => del(`api/social/messages/${id}`),
+
+  submitReport: (
+    contentType: "message" | "listing",
+    contentId: string,
+    reason: string,
+    contentSnapshot?: object | null,
+    reportedUserId?: string | null
+  ) => post("api/social/report", { contentType, contentId, reason, contentSnapshot, reportedUserId }),
+
+  getAdminReports: (): Promise<{ reports: AdminReport[] }> => get("api/admin/reports"),
+  updateReport: (id: string, status: "reviewed" | "dismissed", reviewNote?: string) =>
+    patch(`api/admin/reports/${id}`, { status, reviewNote }),
 };
