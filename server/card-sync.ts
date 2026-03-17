@@ -519,9 +519,6 @@ export async function runPriceRefresh(): Promise<void> {
 
 export async function startSyncService(): Promise<void> {
   console.log("[CardSync] Sync service starting...");
-  runFullSync(false).catch((err) =>
-    console.error("[CardSync] Background sync error:", err)
-  );
 
   if (priceRefreshTimer) clearInterval(priceRefreshTimer);
   priceRefreshTimer = setInterval(() => {
@@ -529,6 +526,22 @@ export async function startSyncService(): Promise<void> {
       console.error("[CardSync] Price refresh interval error:", err)
     );
   }, PRICE_REFRESH_INTERVAL_MS);
+
+  // Only auto-seed sets if the DB is completely empty — don't hammer the API on every restart
+  setTimeout(async () => {
+    try {
+      const existing = await db.select({ id: pokemonSets.id }).from(pokemonSets).limit(1);
+      if (existing.length === 0) {
+        console.log("[CardSync] DB empty — seeding sets list only...");
+        await syncAllSets();
+        console.log("[CardSync] Sets seeded. Use /api/sync/trigger to sync card data.");
+      } else {
+        console.log("[CardSync] DB already populated — skipping auto-sync.");
+      }
+    } catch (err) {
+      console.error("[CardSync] Auto-seed check failed:", err);
+    }
+  }, 5000);
 }
 
 export async function getSyncStatus() {

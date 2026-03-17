@@ -156,7 +156,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({ data: dbSets.map(dbSetToApiFormat), count: dbSets.length, source: "db" });
         return;
       }
-      const response = await fetch(`${POKEMON_API}/sets?orderBy=-releaseDate&pageSize=250`);
+    } catch (dbError) {
+      console.error("DB sets query failed, falling back to API:", dbError);
+    }
+    // Fallback: live Pokemon TCG API with 10s timeout
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const response = await fetch(`${POKEMON_API}/sets?orderBy=-releaseDate&pageSize=250`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!response.ok) throw new Error(`TCG API returned ${response.status}`);
       const data = await response.json();
       res.json(data);
     } catch (error) {
@@ -220,9 +229,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
       const response = await fetch(
-        `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`
+        `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`,
+        { signal: controller.signal, headers: { "User-Agent": "PokeScanTCG/1.0" } }
       );
+      clearTimeout(timeout);
+      if (!response.ok) throw new Error(`TCG API ${response.status}`);
       const data = await response.json();
       res.json(data);
     } catch (error) {
