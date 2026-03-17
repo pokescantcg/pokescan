@@ -578,10 +578,10 @@ async function runFastCardSeed(): Promise<void> {
       let page = 1;
       while (true) {
         let pageData: { data?: PokemonTcgCard[]; totalCount?: number } | null = null;
-        // Up to 3 attempts per page with back-off
-        for (let attempt = 0; attempt < 3; attempt++) {
+        // Up to 2 attempts per page (1 retry) with fast back-off
+        for (let attempt = 0; attempt < 2; attempt++) {
           const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), 30000); // 30s timeout
+          const timer = setTimeout(() => ctrl.abort(), 12000); // 12s timeout — fail fast
           try {
             const res = await fetch(
               `${POKEMON_API}/cards?q=set.id:${set.id}&orderBy=number&page=${page}&pageSize=250`,
@@ -589,8 +589,8 @@ async function runFastCardSeed(): Promise<void> {
             );
             clearTimeout(timer);
             if (res.status === 429) {
-              // Rate limited — wait and retry
-              const waitSec = 30 + attempt * 30;
+              // Rate limited — back off and let user requests through
+              const waitSec = 15 + attempt * 15;
               console.log(`[CardSync] Rate limited for ${set.id}, waiting ${waitSec}s...`);
               await sleep(waitSec * 1000);
               continue;
@@ -603,13 +603,15 @@ async function runFastCardSeed(): Promise<void> {
               }
               throw new Error(`HTTP ${res.status}`);
             }
+            const ct = res.headers.get("content-type") || "";
+            if (!ct.includes("application/json")) { pageData = null; break; }
             pageData = await res.json();
             break; // success
           } catch (fetchErr: any) {
             clearTimeout(timer);
-            if (fetchErr.name === "AbortError" && attempt < 2) {
+            if (fetchErr.name === "AbortError" && attempt < 1) {
               console.log(`[CardSync] Timeout for ${set.id} page ${page}, retrying...`);
-              await sleep(5000);
+              await sleep(2000);
               continue;
             }
             // Network error — break this page loop and skip set
@@ -621,7 +623,7 @@ async function runFastCardSeed(): Promise<void> {
         allCards = allCards.concat(cards);
         if (allCards.length >= (pageData.totalCount ?? 0) || cards.length < 250) break;
         page++;
-        await sleep(800);
+        await sleep(1500); // pause between pages to avoid rate limiting
       }
 
       for (const card of allCards) {

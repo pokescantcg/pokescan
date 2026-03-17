@@ -53,6 +53,25 @@ function setMemCache(key: string, data: any) {
   setCardsMemCache.set(key, { data, ts: Date.now() });
 }
 
+// Individual card cache — populated when set cards are loaded so tapping a card
+// from a freshly-loaded set never needs a second API call.
+const cardMemCache = new Map<string, { data: any; ts: number }>();
+function getCardCache(id: string) {
+  const e = cardMemCache.get(id);
+  return e && Date.now() - e.ts < MEM_CACHE_TTL_MS ? e.data : null;
+}
+function setCardCache(id: string, data: any) {
+  cardMemCache.set(id, { data, ts: Date.now() });
+}
+// Bulk-populate card cache from a set response (call after any set load)
+function warmCardCache(cards: any[]) {
+  for (const card of cards) {
+    if (card?.id && !cardMemCache.has(card.id)) {
+      setCardCache(card.id, { data: card });
+    }
+  }
+}
+
 function dbSetToApiFormat(set: typeof pokemonSets.$inferSelect) {
   return {
     id: set.id,
@@ -228,6 +247,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const formattedCards = dbCards.map((card) => dbCardToApiFormat(card, null));
           const payload = { data: formattedCards, count: formattedCards.length, totalCount, page, source: "db" };
           setMemCache(cacheKey, payload);
+          warmCardCache(formattedCards);
           res.json(payload);
           return;
         }
@@ -246,8 +266,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!response.ok) throw new Error(`TCG API ${response.status}`);
       const data = await response.json();
 
-      // Cache the result
+      // Cache the result and warm the individual card cache
       setMemCache(cacheKey, data);
+      warmCardCache(data.data || []);
       res.json(data);
 
       // 4. Background: seed all pages of this set's cards into DB for future fast loads
@@ -490,6 +511,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { cardId } = req.params;
 
+      // 0. Check in-memory card cache first (populated when the set was browsed)
+      const cached = getCardCache(cardId);
+      if (cached) {
+        res.json(cached);
+        return;
+      }
+
       const dbCard = await db
         .select()
         .from(pokemonCards)
@@ -542,6 +570,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const data = await response.json();
+      // Cache the fetched card so retries and subsequent views are instant
+      if (data?.data?.id) {
+        setCardCache(data.data.id, data);
+        // Also seed into DB in the background for persistence across restarts
+        const c = data.data;
+        db.insert(pokemonCards).values({
+          id: c.id, setId: c.set?.id ?? "", name: c.name, number: c.number,
+          rarity: c.rarity ?? null, supertype: c.supertype ?? null,
+          subtypes: Array.isArray(c.subtypes) ? c.subtypes.join(",") : null,
+          hp: c.hp ?? null, artist: c.artist ?? null,
+          imageSmall: c.images?.small ?? null, imageLarge: c.images?.large ?? null,
+          syncedAt: new Date(),
+        }).onConflictDoNothing().catch(() => {});
+      }
       res.json(data);
     } catch (error: any) {
       if (error?.name === "AbortError") {

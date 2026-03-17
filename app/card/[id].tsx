@@ -171,13 +171,19 @@ export default function CardDetailScreen() {
           </Pressable>
         </View>
         <View style={styles.loadingContainer}>
-          <MaterialCommunityIcons name="pokeball" size={48} color={colors.textMuted} />
+          <MaterialCommunityIcons name="wifi-off" size={48} color={colors.textMuted} />
           <Text style={[styles.errorTitle, { color: colors.text }]}>Card unavailable</Text>
           <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
-            This card couldn't be loaded right now.
+            This card is from an older set that hasn't loaded yet. Go back and open the set first, then try tapping the card again.
           </Text>
           <Pressable onPress={() => refetch()} style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}>
             <Text style={styles.retryBtnText}>Try again</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/(tabs)/scanner")}
+            style={[styles.retryBtn, { backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.pokemonRed }]}
+          >
+            <Text style={[styles.retryBtnText, { color: colors.pokemonRed }]}>Search by name instead</Text>
           </Pressable>
         </View>
       </View>
