@@ -321,10 +321,11 @@ export default function ProfileScreen() {
 }
 
 // Language rows shown in the database card
-const DOWNLOADABLE_LANGS: LangFilter[] = ["english", "chinese"];
+const DOWNLOADABLE_LANGS: LangFilter[] = ["english"];
 const SCANNER_ONLY_LANGS = [
   { id: "japanese", label: "Japanese", flag: "🇯🇵" },
-  { id: "korean",  label: "Korean",   flag: "🇰🇷" },
+  { id: "korean",   label: "Korean",   flag: "🇰🇷" },
+  { id: "chinese",  label: "Chinese",  flag: "🇨🇳" },
 ];
 
 function DatabaseSyncCard({

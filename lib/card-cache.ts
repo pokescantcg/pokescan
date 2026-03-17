@@ -16,10 +16,7 @@ export const LANG_INFO: Record<LangFilter, { label: string; flag: string; native
   chinese: { label: "Chinese", flag: "🇨🇳", native: "中文" },
 };
 
-export function detectSetLanguage(setId: string): LangFilter {
-  if (setId.startsWith("me")) return "chinese";
-  if (/^z[a-z]{2}/.test(setId)) return "chinese";
-  if (/^r[a-z]{2}/.test(setId)) return "chinese";
+export function detectSetLanguage(_setId: string): LangFilter {
   return "english";
 }
 

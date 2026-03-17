@@ -25,9 +25,6 @@ import { fetchSets, PokemonSet } from "@/lib/pokemon-api";
 type LangId = "english" | "japanese" | "korean" | "chinese";
 
 function detectLanguage(setId: string): LangId {
-  if (setId.startsWith("me")) return "chinese";           // Mandarin Edition (Traditional)
-  if (/^z[a-z]{2}/.test(setId)) return "chinese";        // zsv*, zxy*, etc. (Simplified)
-  if (/^r[a-z]{2}/.test(setId)) return "chinese";        // rsv* etc. (regional Chinese)
   return "english";
 }
 
@@ -75,8 +72,8 @@ const LANGUAGES: Language[] = [
     native: "中文",
     flag: "🇨🇳",
     gradient: ["#DE2910", "#9A1C0A"],
-    hasData: true,
-    noDataMsg: "",
+    hasData: false,
+    noDataMsg: "Chinese card sets are not yet available in the database.\n\nUse the Scanner tab to identify any Chinese card — the AI will recognise it and show you its details and UK pricing.",
   },
 ];
 
