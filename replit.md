@@ -103,7 +103,9 @@ Preferred communication style: Simple, everyday language.
 - **Pokémon TCG API** (`https://api.pokemontcg.io/v2`): Primary data source for all card and set information including images and pricing. The Express server proxies requests to this API
 
 ### Database
-- **PostgreSQL**: Configured via Drizzle ORM with `DATABASE_URL` environment variable. Schema in `shared/schema.ts`. Currently only has a users table; most data lives in client-side AsyncStorage
+- **PostgreSQL**: Configured via Drizzle ORM with `DATABASE_URL` environment variable. Schema in `shared/schema.ts`
+- **Card seeding**: `runFastCardSeed()` in `server/card-sync.ts` populates `pokemon_cards` table on startup if fewer than 80% of sets are seeded. Resumes mid-seed across restarts. Skips regional sets (e.g. `me*` Mandarin) that aren't in the TCG API. Optional `POKEMON_TCG_API_KEY` env var for higher rate limits
+- **Admin - Delete User**: `DELETE /api/admin/delete-user` endpoint; `deleteUserFromRegistry()` in `lib/storage.ts`; `deleteUserAccount()` in user context; red trash button in admin panel Users tab (superadmin only, with confirmation alert)
 
 ### Key npm packages
 - **expo** (~54.0.27): Core framework

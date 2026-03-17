@@ -271,6 +271,7 @@ function UserRow({
   onTogglePremium,
   onChangeRole,
   onEdit,
+  onDelete,
 }: {
   profile: UserProfile;
   colors: ReturnType<typeof useThemeColors>;
@@ -279,6 +280,7 @@ function UserRow({
   onTogglePremium: () => void;
   onChangeRole: (role: UserRole) => void;
   onEdit: () => void;
+  onDelete: () => void;
 }) {
   const roleColor = profile.role === "admin" ? "#E74C3C" : profile.role === "moderator" ? "#E67E22" : colors.textMuted;
   const isSuperadminAccount = profile.username === "superadmin";
@@ -372,6 +374,21 @@ function UserRow({
               />
             </Pressable>
           )}
+          <Pressable
+            style={[styles.actionBtn, { backgroundColor: "rgba(231,76,60,0.15)" }]}
+            onPress={() =>
+              Alert.alert(
+                "Delete User",
+                `Permanently delete ${profile.displayName} (@${profile.username})? This cannot be undone.`,
+                [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Delete", style: "destructive", onPress: onDelete },
+                ]
+              )
+            }
+          >
+            <Ionicons name="trash-outline" size={15} color="#E74C3C" />
+          </Pressable>
         </View>
       )}
     </View>
@@ -402,6 +419,7 @@ export default function AdminPanelScreen() {
     revokePremium,
     changeUserRole,
     editUserAccount,
+    deleteUserAccount,
     isStaff,
     isAdminUser,
     isSuperadminUser,
@@ -466,6 +484,14 @@ export default function AdminPanelScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
     [editingUser, editUserAccount]
+  );
+
+  const handleDeleteUser = useCallback(
+    async (profile: UserProfile) => {
+      await deleteUserAccount(profile.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    },
+    [deleteUserAccount]
   );
 
   const handleChangeRole = useCallback(
@@ -676,6 +702,7 @@ export default function AdminPanelScreen() {
                   onTogglePremium={() => handleTogglePremium(u)}
                   onChangeRole={(role) => handleChangeRole(u, role)}
                   onEdit={() => setEditingUser(u)}
+                  onDelete={() => handleDeleteUser(u)}
                 />
               ))}
             </>
@@ -695,6 +722,7 @@ export default function AdminPanelScreen() {
                 onTogglePremium={() => handleTogglePremium(u)}
                 onChangeRole={(role) => handleChangeRole(u, role)}
                 onEdit={() => setEditingUser(u)}
+                onDelete={() => handleDeleteUser(u)}
               />
             ))
           ) : (

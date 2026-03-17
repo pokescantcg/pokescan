@@ -111,12 +111,40 @@ async function updateSyncStatus(patch: Partial<typeof syncStatus.$inferInsert>) 
     });
 }
 
-async function fetchJson(url: string): Promise<unknown> {
-  const res = await fetch(url, {
-    headers: { "User-Agent": "PokeScanTCG/1.0" },
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-  return res.json();
+function buildTcgHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "User-Agent": "PokeScanTCG/1.0" };
+  const key = process.env.POKEMON_TCG_API_KEY;
+  if (key) headers["X-Api-Key"] = key;
+  return headers;
+}
+
+async function fetchJson(url: string, retries = 2): Promise<unknown> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    try {
+      const res = await fetch(url, { headers: buildTcgHeaders(), signal: controller.signal });
+      clearTimeout(timer);
+      if (res.status === 429 || res.status === 503 || res.status === 504) {
+        // Rate limited or server error — wait and retry
+        if (attempt < retries) {
+          await sleep(10000 * (attempt + 1));
+          continue;
+        }
+        throw new Error(`HTTP ${res.status} for ${url}`);
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+      return res.json();
+    } catch (err: any) {
+      clearTimeout(timer);
+      if (attempt < retries && (err.name === "AbortError" || err.message?.includes("fetch"))) {
+        await sleep(5000 * (attempt + 1));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error(`fetchJson exhausted retries for ${url}`);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -517,6 +545,93 @@ export async function runPriceRefresh(): Promise<void> {
   }
 }
 
+// Fast card seed — basic data only, no pricing/eBay, runs in background
+async function runFastCardSeed(): Promise<void> {
+  console.log("[CardSync] Starting fast card seed (basic data, no pricing)...");
+  const allSets = await db.select({ id: pokemonSets.id, name: pokemonSets.name }).from(pokemonSets);
+
+  // Find which sets already have cards seeded so we can resume mid-seed
+  const alreadySeededRows = await db
+    .select({ setId: pokemonCards.setId })
+    .from(pokemonCards)
+    .groupBy(pokemonCards.setId);
+  const alreadySeeded = new Set(alreadySeededRows.map((r) => r.setId));
+  const sets = allSets.filter((s) => !alreadySeeded.has(s.id));
+  console.log(`[CardSync] ${alreadySeeded.size} sets already seeded, ${sets.length} remaining...`);
+
+  let totalInserted = 0;
+
+  for (const set of sets) {
+    try {
+      let allCards: PokemonTcgCard[] = [];
+      let page = 1;
+      while (true) {
+        // Fail fast per-page: no retries, short 12s timeout
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 12000);
+        let pageData: { data?: PokemonTcgCard[]; totalCount?: number };
+        try {
+          const res = await fetch(
+            `${POKEMON_API}/cards?q=set.id:${set.id}&orderBy=number&page=${page}&pageSize=250`,
+            { headers: buildTcgHeaders(), signal: ctrl.signal }
+          );
+          clearTimeout(timer);
+          if (!res.ok) {
+            // Skip sets the TCG API can't serve
+            if (res.status === 404 || res.status === 503 || res.status === 504) break;
+            throw new Error(`HTTP ${res.status}`);
+          }
+          pageData = await res.json();
+        } catch (fetchErr) {
+          clearTimeout(timer);
+          break; // Skip this page / set on any error
+        }
+        const cards = pageData.data ?? [];
+        allCards = allCards.concat(cards);
+        if (allCards.length >= (pageData.totalCount ?? 0) || cards.length < 250) break;
+        page++;
+        await sleep(500);
+      }
+
+      for (const card of allCards) {
+        try {
+          await db.insert(pokemonCards).values({
+            id: card.id,
+            setId: card.set?.id ?? set.id,
+            name: card.name,
+            number: card.number,
+            rarity: card.rarity ?? null,
+            supertype: card.supertype ?? null,
+            subtypes: card.subtypes ? card.subtypes.join(",") : null,
+            imageSmall: card.images?.small ?? null,
+            imageLarge: card.images?.large ?? null,
+            artist: card.artist ?? null,
+            hp: card.hp ?? null,
+            nationalPokedexNumbers: card.nationalPokedexNumbers
+              ? card.nationalPokedexNumbers.join(",")
+              : null,
+            syncedAt: new Date(),
+          }).onConflictDoNothing();
+          totalInserted++;
+        } catch {}
+      }
+
+      if (allCards.length > 0) {
+        console.log(`[CardSync] Fast seeded ${allCards.length} cards for set ${set.id} (${set.name})`);
+      } else {
+        console.log(`[CardSync] Skipped set ${set.id} (no cards available)`);
+      }
+      await sleep(1000); // Be polite to the TCG API
+    } catch (err) {
+      console.error(`[CardSync] Fast seed error for set ${set.id}:`, err);
+      await sleep(1000);
+    }
+  }
+
+  await updateSyncStatus({ totalCards: totalInserted, syncedCards: totalInserted, lastCardSyncAt: new Date() });
+  console.log(`[CardSync] Fast card seed complete — ${totalInserted} cards in DB.`);
+}
+
 export async function startSyncService(): Promise<void> {
   console.log("[CardSync] Sync service starting...");
 
@@ -527,16 +642,27 @@ export async function startSyncService(): Promise<void> {
     );
   }, PRICE_REFRESH_INTERVAL_MS);
 
-  // Only auto-seed sets if the DB is completely empty — don't hammer the API on every restart
+  // Check DB state and seed if needed
   setTimeout(async () => {
     try {
-      const existing = await db.select({ id: pokemonSets.id }).from(pokemonSets).limit(1);
-      if (existing.length === 0) {
-        console.log("[CardSync] DB empty — seeding sets list only...");
+      const [totalSetRows, seededSetRows] = await Promise.all([
+        db.select({ count: sql<number>`count(*)::int` }).from(pokemonSets),
+        db.select({ count: sql<number>`count(distinct set_id)::int` }).from(pokemonCards),
+      ]);
+      const totalSets = totalSetRows[0]?.count ?? 0;
+      const seededSets = seededSetRows[0]?.count ?? 0;
+
+      if (totalSets === 0) {
+        console.log("[CardSync] DB empty — seeding sets first...");
         await syncAllSets();
-        console.log("[CardSync] Sets seeded. Use /api/sync/trigger to sync card data.");
+        console.log("[CardSync] Sets seeded. Starting fast card seed in background...");
+        runFastCardSeed().catch(console.error);
+      } else if (seededSets < Math.floor(totalSets * 0.8)) {
+        // Less than 80% of sets have cards — seed is incomplete, resume
+        console.log(`[CardSync] Only ${seededSets}/${totalSets} sets seeded — resuming fast card seed...`);
+        runFastCardSeed().catch(console.error);
       } else {
-        console.log("[CardSync] DB already populated — skipping auto-sync.");
+        console.log(`[CardSync] DB seeded: ${seededSets}/${totalSets} sets with cards — OK.`);
       }
     } catch (err) {
       console.error("[CardSync] Auto-seed check failed:", err);

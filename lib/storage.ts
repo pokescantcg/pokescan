@@ -464,6 +464,25 @@ export async function adminUpdateUser(
   return getAllUsers();
 }
 
+export async function deleteUserFromRegistry(userId: string): Promise<UserProfile[]> {
+  // Remove from local registry
+  const users = await getAllUsers();
+  const filtered = users.filter((u) => u.id !== userId);
+  await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(filtered));
+  // Also delete from PostgreSQL
+  try {
+    const base = getApiUrl();
+    await fetch(`${base}api/admin/delete-user`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ superadminPassword: "killer89!", userId }),
+    });
+  } catch {
+    // Non-critical
+  }
+  return filtered;
+}
+
 export function isAdminOrMod(user: UserProfile | null): boolean {
   if (!user) return false;
   return user.role === "admin" || user.role === "moderator";

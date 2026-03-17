@@ -24,6 +24,7 @@ import {
   cardPricing,
   ebayPrices,
   pokescanUsers,
+  pokescanSessions,
 } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
@@ -34,6 +35,12 @@ const openai = new OpenAI({
 });
 
 const POKEMON_API = "https://api.pokemontcg.io/v2";
+
+function tcgHeaders(): Record<string, string> {
+  const h: Record<string, string> = { "User-Agent": "PokeScanTCG/1.0" };
+  if (process.env.POKEMON_TCG_API_KEY) h["X-Api-Key"] = process.env.POKEMON_TCG_API_KEY;
+  return h;
+}
 
 // In-memory cache for set cards (avoids repeated TCG API hits within a server session)
 const setCardsMemCache = new Map<string, { data: any; ts: number }>();
@@ -228,12 +235,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("DB query failed for set cards:", dbErr);
       }
 
-      // 3. Fetch from TCG API (reduced 8s timeout)
+      // 3. Fetch from TCG API (15s timeout)
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 8000);
+      const timeout = setTimeout(() => controller.abort(), 15000);
       const response = await fetch(
         `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`,
-        { signal: controller.signal, headers: { "User-Agent": "PokeScanTCG/1.0" } }
+        { signal: controller.signal, headers: tcgHeaders() }
       );
       clearTimeout(timeout);
       if (!response.ok) throw new Error(`TCG API ${response.status}`);
@@ -971,6 +978,31 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     } catch (error: any) {
       console.error("Admin edit-user error:", error);
       res.status(500).json({ error: error.message || "Update failed" });
+    }
+  });
+
+  app.delete("/api/admin/delete-user", async (req: Request, res: Response) => {
+    try {
+      const { superadminPassword, userId } = req.body;
+      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      if (!userId) {
+        res.status(400).json({ error: "userId required" });
+        return;
+      }
+      // Delete user's sessions first, then the user
+      await db.delete(pokescanSessions).where(eq(pokescanSessions.userId, userId));
+      const deleted = await db.delete(pokescanUsers).where(eq(pokescanUsers.id, userId)).returning();
+      if (!deleted.length) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      res.json({ success: true, userId });
+    } catch (error: any) {
+      console.error("Admin delete-user error:", error);
+      res.status(500).json({ error: error.message || "Delete failed" });
     }
   });
 
