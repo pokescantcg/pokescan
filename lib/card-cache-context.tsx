@@ -12,6 +12,7 @@ import {
   syncDatabase,
   clearCache,
   CacheMeta,
+  LangFilter,
   SyncProgress,
 } from "./card-cache";
 
@@ -20,7 +21,9 @@ interface CardCacheState {
   isDownloading: boolean;
   progress: SyncProgress | null;
   downloadPercent: number;
-  startDownload: () => Promise<void>;
+  selectedLanguages: LangFilter[];
+  setSelectedLanguages: (langs: LangFilter[]) => void;
+  startDownload: (langs?: LangFilter[]) => Promise<void>;
   clearCardCache: () => Promise<void>;
   refreshStatus: () => Promise<void>;
 }
@@ -30,6 +33,8 @@ const CardCacheContext = createContext<CardCacheState>({
   isDownloading: false,
   progress: null,
   downloadPercent: 0,
+  selectedLanguages: ["english"],
+  setSelectedLanguages: () => {},
   startDownload: async () => {},
   clearCardCache: async () => {},
   refreshStatus: async () => {},
@@ -43,6 +48,7 @@ export function CardCacheProvider({ children }: { children: React.ReactNode }) {
   const [cacheStatus, setCacheStatus] = useState<CacheMeta | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const [selectedLanguages, setSelectedLanguagesState] = useState<LangFilter[]>(["english"]);
   const isDownloadingRef = useRef(false);
 
   const downloadPercent = (() => {
@@ -54,27 +60,40 @@ export function CardCacheProvider({ children }: { children: React.ReactNode }) {
   const refreshStatus = useCallback(async () => {
     const status = await getCacheStatus();
     setCacheStatus(status);
+    // Restore selected languages from last download if any
+    if (status.selectedLanguages && status.selectedLanguages.length > 0) {
+      setSelectedLanguagesState(status.selectedLanguages);
+    }
   }, []);
 
-  const startDownload = useCallback(async () => {
+  const setSelectedLanguages = useCallback((langs: LangFilter[]) => {
+    setSelectedLanguagesState(langs);
+  }, []);
+
+  const startDownload = useCallback(async (langs?: LangFilter[]) => {
     if (isDownloadingRef.current) return;
+    const activeLangs = langs ?? selectedLanguages;
     isDownloadingRef.current = true;
     setIsDownloading(true);
     setProgress(null);
     try {
-      const meta = await syncDatabase((p) => setProgress(p), 3);
+      const meta = await syncDatabase(
+        (p) => setProgress(p),
+        3,
+        activeLangs.length > 0 ? activeLangs : undefined
+      );
       setCacheStatus(meta);
     } catch (e) {
       console.error("[CardCache] Download failed:", e);
+      throw e;
     } finally {
       isDownloadingRef.current = false;
       setIsDownloading(false);
       setProgress(null);
-      // Refresh status after download (success or fail)
       const updated = await getCacheStatus();
       setCacheStatus(updated);
     }
-  }, []);
+  }, [selectedLanguages]);
 
   const clearCardCache = useCallback(async () => {
     await clearCache();
@@ -82,12 +101,11 @@ export function CardCacheProvider({ children }: { children: React.ReactNode }) {
   }, [refreshStatus]);
 
   useEffect(() => {
-    // Load cache status, then auto-start if empty (native only — web localStorage is too limited for full card DB)
+    // Load cache status on mount — no auto-download, user chooses languages first
     getCacheStatus().then((status) => {
       setCacheStatus(status);
-      if (Platform.OS !== "web" && status.totalCards === 0 && !isDownloadingRef.current) {
-        // Delay slightly so the app can fully render first
-        setTimeout(() => startDownload(), 3000);
+      if (status.selectedLanguages && status.selectedLanguages.length > 0) {
+        setSelectedLanguagesState(status.selectedLanguages);
       }
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -99,6 +117,8 @@ export function CardCacheProvider({ children }: { children: React.ReactNode }) {
         isDownloading,
         progress,
         downloadPercent,
+        selectedLanguages,
+        setSelectedLanguages,
         startDownload,
         clearCardCache,
         refreshStatus,

@@ -7,6 +7,24 @@ const KEYS = {
   CARDS_PREFIX: "pokescan_cache_cards_",
 };
 
+// ── Language classification ───────────────────────────────────────────────────
+
+export type LangFilter = "english" | "chinese";
+
+export const LANG_INFO: Record<LangFilter, { label: string; flag: string; native: string }> = {
+  english: { label: "English", flag: "🇬🇧", native: "English" },
+  chinese: { label: "Chinese", flag: "🇨🇳", native: "中文" },
+};
+
+export function detectSetLanguage(setId: string): LangFilter {
+  if (setId.startsWith("me")) return "chinese";
+  if (/^z[a-z]{2}/.test(setId)) return "chinese";
+  if (/^r[a-z]{2}/.test(setId)) return "chinese";
+  return "english";
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 export interface CachedCard {
   id: string;
   name: string;
@@ -28,11 +46,14 @@ export interface CacheMeta {
   totalCards: number;
   lastSync: string | null;
   syncedSetIds: string[];
+  selectedLanguages: LangFilter[];
 }
 
 export interface CacheStatus extends CacheMeta {
   isSyncing: boolean;
 }
+
+// ── Persistence ───────────────────────────────────────────────────────────────
 
 export async function getCacheStatus(): Promise<CacheMeta> {
   const raw = await AsyncStorage.getItem(KEYS.META);
@@ -43,14 +64,21 @@ export async function getCacheStatus(): Promise<CacheMeta> {
       totalCards: 0,
       lastSync: null,
       syncedSetIds: [],
+      selectedLanguages: [],
     };
   }
-  return JSON.parse(raw);
+  const parsed = JSON.parse(raw);
+  return {
+    ...parsed,
+    selectedLanguages: parsed.selectedLanguages ?? [],
+  };
 }
 
 async function saveMeta(meta: CacheMeta): Promise<void> {
   await AsyncStorage.setItem(KEYS.META, JSON.stringify(meta));
 }
+
+// ── Search ────────────────────────────────────────────────────────────────────
 
 export async function searchLocalCards(
   name: string,
@@ -103,6 +131,8 @@ export async function searchLocalCards(
   return namePrefixResults[0] || null;
 }
 
+// ── Sync ──────────────────────────────────────────────────────────────────────
+
 export type SyncProgress = {
   stage: "sets" | "cards";
   current: number;
@@ -112,7 +142,8 @@ export type SyncProgress = {
 
 export async function syncDatabase(
   onProgress?: (progress: SyncProgress) => void,
-  concurrency = 3
+  concurrency = 3,
+  languageFilter?: LangFilter[]
 ): Promise<CacheMeta> {
   const base = getApiUrl();
 
@@ -121,15 +152,20 @@ export async function syncDatabase(
   const setsRes = await fetch(`${base}api/pokemon/sets`);
   if (!setsRes.ok) throw new Error("Failed to fetch sets");
   const setsData = await setsRes.json();
-  const sets: Array<{ id: string; name: string; total: number }> = setsData.data || [];
+  const allSets: Array<{ id: string; name: string; total: number }> = setsData.data || [];
 
-  await AsyncStorage.setItem(KEYS.SETS, JSON.stringify(sets));
+  await AsyncStorage.setItem(KEYS.SETS, JSON.stringify(allSets));
+
+  // Filter to selected languages (or all if no filter specified)
+  const sets =
+    languageFilter && languageFilter.length > 0
+      ? allSets.filter((s) => languageFilter.includes(detectSetLanguage(s.id)))
+      : allSets;
 
   const meta = await getCacheStatus();
   const alreadySynced = new Set(meta.syncedSetIds);
   const setsToSync = sets.filter((s) => !alreadySynced.has(s.id));
 
-  // Shared mutable state protected by sequential saves
   let totalCards = meta.totalCards;
   const syncedSetIds = [...meta.syncedSetIds];
   let completed = 0;
@@ -170,33 +206,36 @@ export async function syncDatabase(
       });
 
       await saveMeta({
-        totalSets: sets.length,
+        totalSets: allSets.length,
         cachedSets: syncedSetIds.length,
         totalCards,
         lastSync: new Date().toISOString(),
         syncedSetIds: [...syncedSetIds],
+        selectedLanguages: languageFilter ?? meta.selectedLanguages,
       });
     } catch (e) {
       console.warn(`Failed to cache set ${set.id}:`, e);
     }
   }
 
-  // Process in concurrent batches
   for (let i = 0; i < setsToSync.length; i += concurrency) {
     const batch = setsToSync.slice(i, i + concurrency);
     await Promise.allSettled(batch.map(downloadSet));
   }
 
   const finalMeta: CacheMeta = {
-    totalSets: sets.length,
+    totalSets: allSets.length,
     cachedSets: syncedSetIds.length,
     totalCards,
     lastSync: new Date().toISOString(),
     syncedSetIds,
+    selectedLanguages: languageFilter ?? meta.selectedLanguages,
   };
   await saveMeta(finalMeta);
   return finalMeta;
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 export async function getSetCardsFromCache(setId: string): Promise<CachedCard[]> {
   try {
@@ -216,4 +255,18 @@ export async function clearCache(): Promise<void> {
     ...meta.syncedSetIds.map((id) => KEYS.CARDS_PREFIX + id),
   ];
   await AsyncStorage.multiRemove(keysToDelete);
+}
+
+/**
+ * Returns approximate set counts per language from a set list.
+ */
+export function countSetsByLanguage(
+  sets: Array<{ id: string }>
+): Record<LangFilter, number> {
+  const counts: Record<LangFilter, number> = { english: 0, chinese: 0 };
+  for (const s of sets) {
+    const lang = detectSetLanguage(s.id);
+    counts[lang] = (counts[lang] ?? 0) + 1;
+  }
+  return counts;
 }
