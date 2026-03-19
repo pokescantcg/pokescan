@@ -26,6 +26,13 @@ import PokeBackground from "@/components/PokeBackground";
 type LangId = "english" | "japanese" | "korean" | "chinese";
 
 function detectLanguage(setId: string): LangId {
+  const id = setId.toLowerCase();
+  // Suffix-based detection (most reliable)
+  if (id.includes("_ja")) return "japanese";
+  if (id.includes("_ko")) return "korean";
+  if (id.includes("_zh") || id.includes("_cn")) return "chinese";
+  // Chinese TCG prefixes (Simplified Chinese official sets)
+  if (/^(me|zsv|rsv)\d/.test(id)) return "chinese";
   return "english";
 }
 
@@ -35,7 +42,6 @@ interface Language {
   native: string;
   flag: string;
   gradient: [string, string];
-  hasData: boolean;
   noDataMsg: string;
 }
 
@@ -46,7 +52,6 @@ const LANGUAGES: Language[] = [
     native: "English",
     flag: "🇬🇧",
     gradient: ["#CC0000", "#8B0000"],
-    hasData: true,
     noDataMsg: "",
   },
   {
@@ -55,7 +60,6 @@ const LANGUAGES: Language[] = [
     native: "日本語",
     flag: "🇯🇵",
     gradient: ["#BC002D", "#7A0019"],
-    hasData: false,
     noDataMsg: "Japanese card sets are not yet available in the database.\n\nUse the Scanner tab to identify any Japanese card — the AI will recognise it and show you its details and UK pricing.",
   },
   {
@@ -64,7 +68,6 @@ const LANGUAGES: Language[] = [
     native: "한국어",
     flag: "🇰🇷",
     gradient: ["#003478", "#002055"],
-    hasData: false,
     noDataMsg: "Korean card sets are not yet available in the database.\n\nUse the Scanner tab to identify any Korean card — the AI will recognise it and show you its details and UK pricing.",
   },
   {
@@ -73,7 +76,6 @@ const LANGUAGES: Language[] = [
     native: "中文",
     flag: "🇨🇳",
     gradient: ["#DE2910", "#9A1C0A"],
-    hasData: false,
     noDataMsg: "Chinese card sets are not yet available in the database.\n\nUse the Scanner tab to identify any Chinese card — the AI will recognise it and show you its details and UK pricing.",
   },
 ];
@@ -157,7 +159,7 @@ function LanguageCard({
         <Text style={styles.langLabel}>{lang.label}</Text>
         <Text style={styles.langNative}>{lang.native}</Text>
         <View style={styles.langBadge}>
-          {lang.hasData ? (
+          {count > 0 ? (
             <>
               <MaterialCommunityIcons name="cards-outline" size={11} color="rgba(255,255,255,0.9)" />
               <Text style={styles.langBadgeText}>{count} sets</Text>
@@ -306,8 +308,8 @@ export default function BrowseScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.title, { color: colors.text }]}>{currentLangDef?.label}</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              {currentLangDef?.hasData
-                ? `${setsByLang[selectedLang]?.length || 0} sets`
+              {(setsByLang[selectedLang!]?.length ?? 0) > 0
+                ? `${setsByLang[selectedLang!]?.length || 0} sets`
                 : "No sets in database"}
             </Text>
           </View>
@@ -316,7 +318,7 @@ export default function BrowseScreen() {
           </Pressable>
         </View>
 
-        {currentLangDef?.hasData && (
+        {(setsByLang[selectedLang!]?.length ?? 0) > 0 && (
           <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.pokemonRed + "40" }]}>
             <Ionicons name="search" size={17} color={colors.pokemonRed} />
             <TextInput
@@ -340,8 +342,8 @@ export default function BrowseScreen() {
           <MaterialCommunityIcons name="pokeball" size={48} color={colors.pokemonRed} />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading sets...</Text>
         </View>
-      ) : !currentLangDef?.hasData ? (
-        // No data state for Japanese / Korean
+      ) : (setsByLang[selectedLang!]?.length ?? 0) === 0 ? (
+        // No data state for Japanese / Korean / Chinese
         <View style={styles.noDataContainer}>
           <Text style={styles.noDataFlag}>{currentLangDef?.flag}</Text>
           <Text style={[styles.noDataTitle, { color: colors.text }]}>
