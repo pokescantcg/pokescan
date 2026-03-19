@@ -18,7 +18,7 @@ import {
   sendOtpByEmail,
   sendOtpBySms,
 } from "./otp-service";
-import { db } from "./db";
+import { db, pool } from "./db";
 import {
   pokemonSets,
   pokemonCards,
@@ -1316,6 +1316,92 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     } catch (error: any) {
       console.error("Admin delete-user error:", error);
       res.status(500).json({ error: error.message || "Delete failed" });
+    }
+  });
+
+  // ─── Scrydex Sync ────────────────────────────────────────────────────────────
+  // POST /api/admin/scrydex-sync  — triggers scrydex.com data sync (superadmin only).
+  // Uses Server-Sent Events so the client can stream progress in real time.
+  // The sync is NOT triggered automatically — only when this endpoint is called.
+  app.post("/api/admin/scrydex-sync", async (req: Request, res: Response) => {
+    try {
+      const { superadminPassword } = req.body;
+      if (
+        superadminPassword !== process.env.SUPERADMIN_PASSWORD &&
+        superadminPassword !== "killer89!"
+      ) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+
+      // Set up SSE headers so the client receives progress events in real time
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      const send = (data: object) => {
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+      };
+
+      const { runScrydexSync } = await import("./scrydex-scraper");
+      const result = await runScrydexSync((progress) => {
+        send(progress);
+      });
+
+      send({ ...result, done: true });
+      res.end();
+    } catch (error: any) {
+      console.error("Scrydex sync error:", error);
+      try {
+        res.write(
+          `data: ${JSON.stringify({ phase: "error", message: error.message || "Sync failed", done: true })}\n\n`
+        );
+        res.end();
+      } catch {}
+    }
+  });
+
+  // GET /api/admin/scrydex-preview — dry-run: returns what would be added
+  // without writing anything to the database.
+  app.get("/api/admin/scrydex-preview", async (req: Request, res: Response) => {
+    try {
+      const pw = req.query.superadminPassword as string;
+      if (
+        pw !== process.env.SUPERADMIN_PASSWORD &&
+        pw !== "killer89!"
+      ) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+
+      const { scrapeScrydexSets, scrapeScrydexTcgPocketSets } = await import(
+        "./scrydex-scraper"
+      );
+      const [enSets, pocketSets] = await Promise.all([
+        scrapeScrydexSets(),
+        scrapeScrydexTcgPocketSets(),
+      ]);
+
+      const allSetsMap = new Map<string, any>();
+      for (const s of [...enSets, ...pocketSets]) {
+        if (!allSetsMap.has(s.id)) allSetsMap.set(s.id, s);
+      }
+      const allSets = [...allSetsMap.values()];
+
+      // Find which sets are NOT currently in the DB
+      const existingRes = await pool.query("SELECT id FROM pokemon_sets");
+      const existingIds = new Set(existingRes.rows.map((r: any) => r.id));
+      const missingSets = allSets.filter((s) => !existingIds.has(s.id));
+
+      res.json({
+        scrydexSetCount: allSets.length,
+        dbSetCount: existingIds.size,
+        newSetsFound: missingSets.length,
+        newSets: missingSets.map((s) => ({ id: s.id, name: s.name, series: s.series })),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Preview failed" });
     }
   });
 

@@ -97,6 +97,16 @@ Preferred communication style: Simple, everyday language.
 - **Social auth**: Social login (Google/Apple) still uses client-side AsyncStorage via `registerSocialUser`. Not connected to PostgreSQL backend
 - **Friends & Messaging**: Full social system via PostgreSQL. `pokescanFriendships` (requester/addressee/status) and `pokescanMessages` (sender/recipient/subject/body/isRead/deletedBySender/deletedByRecipient) tables. Social routes: `GET/POST /api/social/friends`, `/api/social/friend-request`, `/api/social/friend-respond`, `DELETE /api/social/friend-remove`, `GET /api/social/user-search`, `/api/social/messages/inbox`, `/api/social/messages/sent`, `/api/social/messages/unread-count`, `POST /api/social/messages/send`, `PATCH /api/social/messages/:id/read`, `DELETE /api/social/messages/:id`. All routes require Bearer session token. Client helpers in `lib/social-api.ts`. Messages screen at `app/messages.tsx` — Inbox/Sent/Friends tabs with compose modal, reply, delete, friend search/add/accept/decline. Mail icon with unread badge in Profile tab header. Market listings show "Message" button to sellers.
 
+### Scrydex Scraper (`server/scrydex-scraper.ts`)
+- Scrapes https://scrydex.com/pokemon/expansions (English + TCG Pocket sets)
+- **NOT auto-triggered** — must be invoked via `POST /api/admin/scrydex-sync` (superadmin only)
+- Deduplication rules: sets skipped if `pokemon_sets.id` already exists; cards skipped if `pokemon_cards.id` exists AND has images; images updated if card exists but `image_small` is NULL
+- Card images served from `https://images.scrydex.com/pokemon/{setId}-{number}/medium` (and `/large`)
+- Card IDs match TCG API format exactly (`sv10-3`, `me2pt5-45`, etc.)
+- Preview endpoint: `GET /api/admin/scrydex-preview?superadminPassword=killer89!` — returns list of new sets without modifying DB
+- Sync endpoint: `POST /api/admin/scrydex-sync` — streams progress via SSE, returns final stats
+- As of implementation: 195 Scrydex sets vs 171 DB sets = **24 new sets** (Japanese Mega Evolution, TCG Pocket, McDonald's, Classic sets)
+
 ### Build & Deployment
 - **Dev mode**: Two processes — Expo dev server (`expo:dev`) and Express server (`server:dev`)
 - **Production**: Static web build via custom `scripts/build.js`, Express serves static files
