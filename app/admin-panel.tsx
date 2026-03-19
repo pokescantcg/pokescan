@@ -26,6 +26,7 @@ import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
 import { MarketListing, UserProfile, UserRole } from "@/lib/storage";
 import { socialApi, AdminReport } from "@/lib/social-api";
+import { getApiUrl } from "@/lib/query-client";
 
 function EditUserModal({
   profile,
@@ -711,7 +712,6 @@ export default function AdminPanelScreen() {
     setDbPreviewLoading(true);
     setDbPreview(null);
     try {
-      const { getApiUrl } = await import("@/lib/query-client");
       const url = new URL("/api/admin/scrydex-preview", getApiUrl());
       url.searchParams.set("superadminPassword", "killer89!");
       const res = await fetch(url.toString());
@@ -741,7 +741,6 @@ export default function AdminPanelScreen() {
             const ctrl = new AbortController();
             syncAbortRef.current = ctrl;
             try {
-              const { getApiUrl } = await import("@/lib/query-client");
               const url = new URL("/api/admin/scrydex-sync", getApiUrl());
               const res = await fetch(url.toString(), {
                 method: "POST",
