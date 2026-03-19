@@ -8,6 +8,7 @@ export interface PokemonSet {
   total: number;
   releaseDate: string;
   updatedAt: string;
+  language?: "english" | "japanese" | "korean" | "chinese";
   images: {
     symbol: string;
     logo: string;

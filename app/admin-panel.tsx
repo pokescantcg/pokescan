@@ -705,7 +705,6 @@ export default function AdminPanelScreen() {
   const [syncRunning, setSyncRunning] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [syncLog, setSyncLog] = useState<string[]>([]);
-  const syncAbortRef = React.useRef<AbortController | null>(null);
   const syncLogRef = React.useRef<ScrollView | null>(null);
 
   const handleDbPreview = useCallback(async () => {
@@ -725,7 +724,9 @@ export default function AdminPanelScreen() {
     }
   }, []);
 
-  const handleSyncStart = useCallback(async () => {
+  const syncXhrRef = React.useRef<XMLHttpRequest | null>(null);
+
+  const handleSyncStart = useCallback(() => {
     Alert.alert(
       "Run Scrydex Sync",
       `This will add up to ${dbPreview?.newSetsFound ?? "?"} new set(s) and their cards to the database. This may take several minutes. Continue?`,
@@ -734,56 +735,71 @@ export default function AdminPanelScreen() {
         {
           text: "Start Sync",
           style: "default",
-          onPress: async () => {
+          onPress: () => {
             setSyncRunning(true);
             setSyncProgress(null);
             setSyncLog(["Starting sync…"]);
-            const ctrl = new AbortController();
-            syncAbortRef.current = ctrl;
-            try {
-              const url = new URL("/api/admin/scrydex-sync", getApiUrl());
-              const res = await fetch(url.toString(), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ superadminPassword: "killer89!" }),
-                signal: ctrl.signal,
-              });
-              if (!res.ok) throw new Error(`Server error ${res.status}`);
-              if (!res.body) throw new Error("No response body");
-              const reader = res.body.getReader();
-              const decoder = new TextDecoder();
-              let buffer = "";
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const parts = buffer.split("\n\n");
-                buffer = parts.pop() ?? "";
-                for (const part of parts) {
-                  const line = part.trim();
-                  if (!line.startsWith("data: ")) continue;
-                  try {
-                    const evt: SyncProgress = JSON.parse(line.slice(6));
-                    setSyncProgress(evt);
-                    const msg = evt.currentSet
-                      ? `[${evt.setsProcessed}/${evt.setsTotal}] ${evt.currentSet}`
-                      : evt.phase;
-                    setSyncLog(prev => [...prev.slice(-200), msg]);
-                    if (evt.done || evt.error) break;
-                  } catch {}
-                }
+
+            const url = new URL("/api/admin/scrydex-sync", getApiUrl());
+            const xhr = new XMLHttpRequest();
+            syncXhrRef.current = xhr;
+            let lastIndex = 0;
+            let buffer = "";
+
+            const processBuffer = () => {
+              const parts = buffer.split("\n\n");
+              buffer = parts.pop() ?? "";
+              for (const part of parts) {
+                const line = part.trim();
+                if (!line.startsWith("data: ")) continue;
+                try {
+                  const evt: SyncProgress = JSON.parse(line.slice(6));
+                  setSyncProgress(evt);
+                  const msg = evt.currentSet
+                    ? `[${evt.setsProcessed}/${evt.setsTotal}] ${evt.currentSet}`
+                    : evt.phase ?? "";
+                  if (msg) setSyncLog(prev => [...prev.slice(-200), msg]);
+                } catch {}
+              }
+            };
+
+            xhr.onprogress = () => {
+              const newText = xhr.responseText.slice(lastIndex);
+              lastIndex = xhr.responseText.length;
+              buffer += newText;
+              processBuffer();
+            };
+
+            xhr.onload = () => {
+              // Process any remaining text
+              const remaining = xhr.responseText.slice(lastIndex);
+              if (remaining) {
+                buffer += remaining;
+                processBuffer();
               }
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               setDbPreview(null);
-            } catch (e: any) {
-              if (e.name !== "AbortError") {
-                setSyncLog(prev => [...prev, `Error: ${e.message}`]);
-                Alert.alert("Sync Error", e.message || "An error occurred.");
-              }
-            } finally {
               setSyncRunning(false);
-              syncAbortRef.current = null;
-            }
+              syncXhrRef.current = null;
+            };
+
+            xhr.onerror = () => {
+              setSyncLog(prev => [...prev, "Network error — sync failed."]);
+              Alert.alert("Sync Error", "A network error occurred. Please try again.");
+              setSyncRunning(false);
+              syncXhrRef.current = null;
+            };
+
+            xhr.ontimeout = () => {
+              setSyncLog(prev => [...prev, "Request timed out."]);
+              setSyncRunning(false);
+              syncXhrRef.current = null;
+            };
+
+            xhr.timeout = 600_000; // 10 min max
+            xhr.open("POST", url.toString());
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.send(JSON.stringify({ superadminPassword: "killer89!" }));
           },
         },
       ]
@@ -791,7 +807,8 @@ export default function AdminPanelScreen() {
   }, [dbPreview]);
 
   const handleSyncCancel = useCallback(() => {
-    syncAbortRef.current?.abort();
+    syncXhrRef.current?.abort();
+    syncXhrRef.current = null;
     setSyncLog(prev => [...prev, "Sync cancelled."]);
     setSyncRunning(false);
   }, []);

@@ -76,6 +76,15 @@ function warmCardCache(cards: any[]) {
   }
 }
 
+function detectSetLanguage(setId: string): "english" | "japanese" | "korean" | "chinese" {
+  const id = setId.toLowerCase();
+  if (id.includes("_ja")) return "japanese";
+  if (id.includes("_ko")) return "korean";
+  if (id.includes("_zh") || id.includes("_cn")) return "chinese";
+  if (/^(me|zsv|rsv)\d/.test(id)) return "chinese";
+  return "english";
+}
+
 function dbSetToApiFormat(set: typeof pokemonSets.$inferSelect) {
   return {
     id: set.id,
@@ -84,6 +93,7 @@ function dbSetToApiFormat(set: typeof pokemonSets.$inferSelect) {
     printedTotal: set.printedTotal,
     total: set.total,
     releaseDate: set.releaseDate,
+    language: detectSetLanguage(set.id),
     images: {
       symbol: set.symbolUrl,
       logo: set.logoUrl,

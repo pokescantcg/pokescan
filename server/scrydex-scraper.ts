@@ -276,27 +276,33 @@ function parseCardsFromSetHtml(html: string, setId: string): ScrydexCard[] {
 // ─── Series inference (mirrors PCV scraper logic) ─────────────────────────────
 
 function inferSeries(id: string): string {
-  if (id.startsWith("tcgp")) return "TCG Pocket";
-  if (id.startsWith("sv")) return "Scarlet & Violet";
-  if (id.startsWith("swsh")) return "Sword & Shield";
-  if (id.startsWith("sm")) return "Sun & Moon";
-  if (id.startsWith("xy")) return "XY";
-  if (id.startsWith("bw")) return "Black & White";
-  if (id.startsWith("me")) return "Mega Evolution";
-  if (id.startsWith("rsv") || id.startsWith("zsv")) return "Scarlet & Violet";
-  if (id.startsWith("neo")) return "Neo";
-  if (id.startsWith("ecard")) return "E-Card";
-  if (id.startsWith("ex")) return "EX";
-  if (id.startsWith("dp")) return "Diamond & Pearl";
-  if (id.startsWith("pl")) return "Platinum";
-  if (id.startsWith("hgss")) return "HeartGold & SoulSilver";
-  if (id.startsWith("col")) return "Call of Legends";
-  if (id.startsWith("gym")) return "Gym";
-  if (id.startsWith("base")) return "Base";
-  if (id.startsWith("pop")) return "POP Series";
-  if (id.startsWith("wc")) return "World Championships";
-  if (id.startsWith("np")) return "Neo";
-  if (id.startsWith("cel")) return "Sword & Shield";
+  const lower = id.toLowerCase();
+  // Language-specific suffixes take priority
+  if (lower.includes("_ja")) return "Japanese";
+  if (lower.includes("_ko")) return "Korean";
+  if (lower.includes("_zh") || lower.includes("_cn")) return "Chinese";
+  if (lower.startsWith("tcgp")) return "TCG Pocket";
+  if (lower.startsWith("sv")) return "Scarlet & Violet";
+  if (lower.startsWith("swsh")) return "Sword & Shield";
+  if (lower.startsWith("sm")) return "Sun & Moon";
+  if (lower.startsWith("xy")) return "XY";
+  if (lower.startsWith("bw")) return "Black & White";
+  if (/^me\d/.test(lower)) return "Chinese Mega Evolution";
+  if (lower.startsWith("rsv") || lower.startsWith("zsv")) return "Chinese Scarlet & Violet";
+  if (lower.startsWith("me")) return "Mega Evolution";
+  if (lower.startsWith("neo")) return "Neo";
+  if (lower.startsWith("ecard")) return "E-Card";
+  if (lower.startsWith("ex")) return "EX";
+  if (lower.startsWith("dp")) return "Diamond & Pearl";
+  if (lower.startsWith("pl")) return "Platinum";
+  if (lower.startsWith("hgss")) return "HeartGold & SoulSilver";
+  if (lower.startsWith("col")) return "Call of Legends";
+  if (lower.startsWith("gym")) return "Gym";
+  if (lower.startsWith("base")) return "Base";
+  if (lower.startsWith("pop")) return "POP Series";
+  if (lower.startsWith("wc")) return "World Championships";
+  if (lower.startsWith("np")) return "Neo";
+  if (lower.startsWith("cel")) return "Sword & Shield";
   return "Other";
 }
 

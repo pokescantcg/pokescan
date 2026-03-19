@@ -193,11 +193,12 @@ export default function BrowseScreen() {
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
-  // Group sets by language
+  // Group sets by language — prefer API-provided language field, fall back to ID detection
   const setsByLang = useMemo(() => {
     const groups: Record<LangId, PokemonSet[]> = { english: [], japanese: [], korean: [], chinese: [] };
     (sets || []).forEach((s) => {
-      groups[detectLanguage(s.id)].push(s);
+      const lang: LangId = (s.language as LangId) || detectLanguage(s.id);
+      groups[lang].push(s);
     });
     return groups;
   }, [sets]);
