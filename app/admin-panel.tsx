@@ -231,7 +231,7 @@ const editStyles = StyleSheet.create({
   saveBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFF" },
 });
 
-type Tab = "listings" | "users" | "reports";
+type Tab = "listings" | "users" | "reports" | "database";
 
 function ListingRow({
   listing,
@@ -681,6 +681,122 @@ export default function AdminPanelScreen() {
     setIsRefreshingUsers(false);
   }, [refreshUsers]);
 
+  type DbPreview = {
+    scrydexSetCount: number;
+    dbSetCount: number;
+    newSetsFound: number;
+    newSets: { id: string; name: string; series: string }[];
+  };
+  type SyncProgress = {
+    phase: string;
+    setsProcessed: number;
+    setsTotal: number;
+    setsAdded: number;
+    cardsAdded: number;
+    cardsUpdated: number;
+    currentSet?: string;
+    done?: boolean;
+    error?: string;
+  };
+
+  const [dbPreview, setDbPreview] = useState<DbPreview | null>(null);
+  const [dbPreviewLoading, setDbPreviewLoading] = useState(false);
+  const [syncRunning, setSyncRunning] = useState(false);
+  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  const [syncLog, setSyncLog] = useState<string[]>([]);
+  const syncAbortRef = React.useRef<AbortController | null>(null);
+  const syncLogRef = React.useRef<ScrollView | null>(null);
+
+  const handleDbPreview = useCallback(async () => {
+    setDbPreviewLoading(true);
+    setDbPreview(null);
+    try {
+      const { getApiUrl } = await import("@/lib/query-client");
+      const url = new URL("/api/admin/scrydex-preview", getApiUrl());
+      url.searchParams.set("superadminPassword", "killer89!");
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json();
+      setDbPreview(data);
+    } catch (e: any) {
+      Alert.alert("Preview Failed", e.message || "Could not reach server.");
+    } finally {
+      setDbPreviewLoading(false);
+    }
+  }, []);
+
+  const handleSyncStart = useCallback(async () => {
+    Alert.alert(
+      "Run Scrydex Sync",
+      `This will add up to ${dbPreview?.newSetsFound ?? "?"} new set(s) and their cards to the database. This may take several minutes. Continue?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Start Sync",
+          style: "default",
+          onPress: async () => {
+            setSyncRunning(true);
+            setSyncProgress(null);
+            setSyncLog(["Starting sync…"]);
+            const ctrl = new AbortController();
+            syncAbortRef.current = ctrl;
+            try {
+              const { getApiUrl } = await import("@/lib/query-client");
+              const url = new URL("/api/admin/scrydex-sync", getApiUrl());
+              const res = await fetch(url.toString(), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ superadminPassword: "killer89!" }),
+                signal: ctrl.signal,
+              });
+              if (!res.ok) throw new Error(`Server error ${res.status}`);
+              if (!res.body) throw new Error("No response body");
+              const reader = res.body.getReader();
+              const decoder = new TextDecoder();
+              let buffer = "";
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const parts = buffer.split("\n\n");
+                buffer = parts.pop() ?? "";
+                for (const part of parts) {
+                  const line = part.trim();
+                  if (!line.startsWith("data: ")) continue;
+                  try {
+                    const evt: SyncProgress = JSON.parse(line.slice(6));
+                    setSyncProgress(evt);
+                    const msg = evt.currentSet
+                      ? `[${evt.setsProcessed}/${evt.setsTotal}] ${evt.currentSet}`
+                      : evt.phase;
+                    setSyncLog(prev => [...prev.slice(-200), msg]);
+                    if (evt.done || evt.error) break;
+                  } catch {}
+                }
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setDbPreview(null);
+            } catch (e: any) {
+              if (e.name !== "AbortError") {
+                setSyncLog(prev => [...prev, `Error: ${e.message}`]);
+                Alert.alert("Sync Error", e.message || "An error occurred.");
+              }
+            } finally {
+              setSyncRunning(false);
+              syncAbortRef.current = null;
+            }
+          },
+        },
+      ]
+    );
+  }, [dbPreview]);
+
+  const handleSyncCancel = useCallback(() => {
+    syncAbortRef.current?.abort();
+    setSyncLog(prev => [...prev, "Sync cancelled."]);
+    setSyncRunning(false);
+  }, []);
+
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   const handleRemoveListing = useCallback(
@@ -911,6 +1027,26 @@ export default function AdminPanelScreen() {
             Reports {reports.filter(r => r.status === "pending").length > 0 ? `(${reports.filter(r => r.status === "pending").length})` : ""}
           </Text>
         </Pressable>
+        {isSuperadminUser && (
+          <Pressable
+            style={[styles.tab, activeTab === "database" && styles.tabActive]}
+            onPress={() => setActiveTab("database")}
+          >
+            <Ionicons
+              name="server-outline"
+              size={18}
+              color={activeTab === "database" ? "#FFF" : colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                { color: activeTab === "database" ? "#FFF" : colors.textMuted },
+              ]}
+            >
+              Database
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       {activeTab === "listings" && (
@@ -1118,6 +1254,159 @@ export default function AdminPanelScreen() {
             );
           }}
         />
+      )}
+
+      {activeTab === "database" && isSuperadminUser && (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ padding: 16, paddingBottom: 120, gap: 14 }}
+        >
+          <View style={[{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.borderLight }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#CC0000" + "22", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="search-outline" size={20} color="#CC0000" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[{ fontSize: 16, fontFamily: "Outfit_700Bold", color: colors.text }]}>Scrydex Preview</Text>
+                <Text style={[{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted }]}>Check what new sets are available</Text>
+              </View>
+            </View>
+            {dbPreview && (
+              <View style={{ gap: 10, marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <View style={[{ flex: 1, backgroundColor: colors.background, borderRadius: 12, padding: 12, alignItems: "center", gap: 4, borderWidth: 1, borderColor: colors.borderLight }]}>
+                    <Text style={{ fontSize: 22, fontFamily: "Outfit_700Bold", color: "#CC0000" }}>{dbPreview.newSetsFound}</Text>
+                    <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>New Sets</Text>
+                  </View>
+                  <View style={[{ flex: 1, backgroundColor: colors.background, borderRadius: 12, padding: 12, alignItems: "center", gap: 4, borderWidth: 1, borderColor: colors.borderLight }]}>
+                    <Text style={{ fontSize: 22, fontFamily: "Outfit_700Bold", color: colors.text }}>{dbPreview.dbSetCount}</Text>
+                    <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>In Database</Text>
+                  </View>
+                  <View style={[{ flex: 1, backgroundColor: colors.background, borderRadius: 12, padding: 12, alignItems: "center", gap: 4, borderWidth: 1, borderColor: colors.borderLight }]}>
+                    <Text style={{ fontSize: 22, fontFamily: "Outfit_700Bold", color: colors.text }}>{dbPreview.scrydexSetCount}</Text>
+                    <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>On Scrydex</Text>
+                  </View>
+                </View>
+                {dbPreview.newSets.length > 0 && (
+                  <View style={{ gap: 6 }}>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textMuted, letterSpacing: 0.8 }}>NEW SETS TO ADD</Text>
+                    {dbPreview.newSets.map(s => (
+                      <View key={s.id} style={[{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.borderLight }]}>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#CC0000" }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text }}>{s.name}</Text>
+                          <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>{s.id} · {s.series}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+            <Pressable
+              style={[{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.background, borderRadius: 12, paddingVertical: 12, borderWidth: 1, borderColor: colors.border }, dbPreviewLoading && { opacity: 0.6 }]}
+              onPress={handleDbPreview}
+              disabled={dbPreviewLoading || syncRunning}
+            >
+              {dbPreviewLoading
+                ? <Ionicons name="hourglass-outline" size={18} color={colors.text} />
+                : <Ionicons name="refresh-outline" size={18} color={colors.text} />}
+              <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.text }}>
+                {dbPreviewLoading ? "Checking…" : dbPreview ? "Refresh Preview" : "Run Preview"}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={[{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.borderLight }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#27AE60" + "22", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="cloud-download-outline" size={20} color="#27AE60" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[{ fontSize: 16, fontFamily: "Outfit_700Bold", color: colors.text }]}>Sync Database</Text>
+                <Text style={[{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted }]}>Download new sets & cards from Scrydex</Text>
+              </View>
+            </View>
+
+            {syncProgress && (
+              <View style={{ gap: 10, marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <View style={[{ flex: 1, backgroundColor: colors.background, borderRadius: 10, padding: 10, alignItems: "center", gap: 3, borderWidth: 1, borderColor: colors.borderLight }]}>
+                    <Text style={{ fontSize: 18, fontFamily: "Outfit_700Bold", color: "#27AE60" }}>{syncProgress.setsAdded}</Text>
+                    <Text style={{ fontSize: 10, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>Sets Added</Text>
+                  </View>
+                  <View style={[{ flex: 1, backgroundColor: colors.background, borderRadius: 10, padding: 10, alignItems: "center", gap: 3, borderWidth: 1, borderColor: colors.borderLight }]}>
+                    <Text style={{ fontSize: 18, fontFamily: "Outfit_700Bold", color: "#3498DB" }}>{syncProgress.cardsAdded}</Text>
+                    <Text style={{ fontSize: 10, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>Cards Added</Text>
+                  </View>
+                  <View style={[{ flex: 1, backgroundColor: colors.background, borderRadius: 10, padding: 10, alignItems: "center", gap: 3, borderWidth: 1, borderColor: colors.borderLight }]}>
+                    <Text style={{ fontSize: 18, fontFamily: "Outfit_700Bold", color: colors.textMuted }}>{syncProgress.cardsUpdated}</Text>
+                    <Text style={{ fontSize: 10, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>Updated</Text>
+                  </View>
+                </View>
+                <View style={{ height: 8, backgroundColor: colors.background, borderRadius: 8, overflow: "hidden" }}>
+                  <View style={{ height: "100%", width: `${syncProgress.setsTotal > 0 ? Math.round((syncProgress.setsProcessed / syncProgress.setsTotal) * 100) : 0}%`, backgroundColor: "#27AE60", borderRadius: 8 }} />
+                </View>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted, textAlign: "center" }}>
+                  {syncProgress.setsTotal > 0
+                    ? `${syncProgress.setsProcessed} / ${syncProgress.setsTotal} sets — ${Math.round((syncProgress.setsProcessed / syncProgress.setsTotal) * 100)}%`
+                    : syncProgress.phase}
+                </Text>
+                {syncProgress.currentSet && (
+                  <Text style={{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.text, textAlign: "center" }} numberOfLines={1}>
+                    {syncProgress.currentSet}
+                  </Text>
+                )}
+                {syncProgress.done && (
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#27AE60" + "22", borderRadius: 10, padding: 10 }}>
+                    <Ionicons name="checkmark-circle" size={18} color="#27AE60" />
+                    <Text style={{ fontSize: 13, fontFamily: "Outfit_700Bold", color: "#27AE60" }}>Sync Complete!</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {syncLog.length > 0 && (
+              <View style={[{ backgroundColor: "#000", borderRadius: 10, padding: 10, marginBottom: 12, maxHeight: 180 }]}>
+                <ScrollView
+                  ref={syncLogRef}
+                  showsVerticalScrollIndicator={false}
+                  onContentSizeChange={() => syncLogRef.current?.scrollToEnd({ animated: true })}
+                >
+                  {syncLog.map((line, i) => (
+                    <Text key={i} style={{ fontSize: 10, fontFamily: "Outfit_400Regular", color: "#00FF88", lineHeight: 16 }}>{line}</Text>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {syncRunning ? (
+              <Pressable
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#CC0000", borderRadius: 12, paddingVertical: 12 }}
+                onPress={handleSyncCancel}
+              >
+                <Ionicons name="stop-circle-outline" size={18} color="#FFF" />
+                <Text style={{ fontSize: 14, fontFamily: "Outfit_700Bold", color: "#FFF" }}>Cancel Sync</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={[{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#27AE60", borderRadius: 12, paddingVertical: 12 }, (!dbPreview || dbPreview.newSetsFound === 0) && { opacity: 0.5 }]}
+                onPress={handleSyncStart}
+                disabled={!dbPreview || dbPreview.newSetsFound === 0 || syncRunning}
+              >
+                <Ionicons name="cloud-download-outline" size={18} color="#FFF" />
+                <Text style={{ fontSize: 14, fontFamily: "Outfit_700Bold", color: "#FFF" }}>
+                  {dbPreview?.newSetsFound === 0 ? "Database Up To Date" : `Sync ${dbPreview?.newSetsFound ?? "?"} New Set${(dbPreview?.newSetsFound ?? 0) !== 1 ? "s" : ""}`}
+                </Text>
+              </Pressable>
+            )}
+            {!dbPreview && !syncRunning && (
+              <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted, textAlign: "center", marginTop: 8 }}>
+                Run a preview first to see what will be synced
+              </Text>
+            )}
+          </View>
+        </ScrollView>
       )}
 
       {editingUser && (
