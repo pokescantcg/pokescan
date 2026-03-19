@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "h2QoR-SinGght-uUsxxR_"
+uri = "file://pokescan-tcg.tar.gz"
+type = "unspecified"
+title = "PokeScan TCG — Source Code"
