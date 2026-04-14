@@ -6,6 +6,7 @@ import {
   TextInput,
   Pressable,
   FlatList,
+  ScrollView,
   useColorScheme,
   Platform,
   ActivityIndicator,
@@ -22,6 +23,8 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import PokeBackground from "@/components/PokeBackground";
+import { useUser } from "@/lib/user-context";
+import { getApiUrl } from "@/lib/query-client";
 import {
   searchCards,
   PokemonCard,
@@ -337,10 +340,262 @@ function SearchResultCard({ card, colors }: { card: PokemonCard; colors: ReturnT
   );
 }
 
+// ─── Grading Tool ────────────────────────────────────────────────────────────
+
+interface GradingResult {
+  grade: number;
+  label: string;
+  breakdown: { centering: number; corners: number; edges: number; surface: number };
+}
+
+const CONDITION_LEVELS = [
+  { value: 0, label: "Perfect", color: "#27AE60" },
+  { value: 1, label: "Minimal", color: "#52BE80" },
+  { value: 2, label: "Slight",  color: "#F39C12" },
+  { value: 3, label: "Moderate", color: "#E67E22" },
+  { value: 4, label: "Heavy",   color: "#E74C3C" },
+  { value: 5, label: "Severe",  color: "#922B21" },
+];
+
+function gradeColor(grade: number): string {
+  if (grade >= 9.5) return "#27AE60";
+  if (grade >= 8.0) return "#52BE80";
+  if (grade >= 6.0) return "#F39C12";
+  if (grade >= 4.0) return "#E67E22";
+  return "#E74C3C";
+}
+
+function ConditionRow({
+  label,
+  icon,
+  value,
+  onChange,
+  colors,
+}: {
+  label: string;
+  icon: string;
+  value: number;
+  onChange: (v: number) => void;
+  colors: ReturnType<typeof useThemeColors>;
+}) {
+  return (
+    <View style={gradingStyles.condRow}>
+      <View style={gradingStyles.condLabelRow}>
+        <Ionicons name={icon as any} size={14} color={colors.pokemonRed} />
+        <Text style={[gradingStyles.condLabel, { color: colors.textSecondary }]}>{label}</Text>
+        <Text style={[gradingStyles.condValue, { color: CONDITION_LEVELS[value].color }]}>
+          {CONDITION_LEVELS[value].label}
+        </Text>
+      </View>
+      <View style={gradingStyles.condButtons}>
+        {CONDITION_LEVELS.map((lvl) => (
+          <Pressable
+            key={lvl.value}
+            onPress={() => onChange(lvl.value)}
+            style={[
+              gradingStyles.condBtn,
+              {
+                backgroundColor: value === lvl.value ? lvl.color : colors.surface,
+                borderColor: value === lvl.value ? lvl.color : colors.borderLight,
+              },
+            ]}
+          >
+            <Text style={[gradingStyles.condBtnText, { color: value === lvl.value ? "#FFF" : colors.textMuted }]}>
+              {lvl.value}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useThemeColors>; isPremium: boolean }) {
+  const [centering, setCentering] = useState(0);
+  const [cornerDamage, setCornerDamage] = useState(0);
+  const [edgeDamage, setEdgeDamage] = useState(0);
+  const [surfaceDamage, setSurfaceDamage] = useState(0);
+  const [result, setResult] = useState<GradingResult | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const resetAll = () => {
+    setCentering(0);
+    setCornerDamage(0);
+    setEdgeDamage(0);
+    setSurfaceDamage(0);
+    setResult(null);
+  };
+
+  const handleGrade = async () => {
+    setLoading(true);
+    try {
+      const url = new URL("/api/grade", getApiUrl());
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ centering, cornerDamage, edgeDamage, surfaceDamage }),
+      });
+      const data: GradingResult = await res.json();
+      setResult(data);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert("Error", "Failed to calculate grade. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isPremium) {
+    return (
+      <View style={[gradingStyles.lockWrap, { backgroundColor: colors.card, borderColor: colors.pokemonYellow + "60" }]}>
+        <LinearGradient colors={[colors.pokemonYellow + "15", "transparent"]} style={gradingStyles.lockGradient} />
+        <View style={[gradingStyles.lockIconBg, { backgroundColor: colors.pokemonYellow + "25" }]}>
+          <Ionicons name="lock-closed" size={28} color={colors.pokemonYellow} />
+        </View>
+        <Text style={[gradingStyles.lockTitle, { color: colors.text }]}>Premium Feature</Text>
+        <Text style={[gradingStyles.lockDesc, { color: colors.textSecondary }]}>
+          Card grading is available to Premium members. Upgrade to get accurate PSA-style grades for your cards.
+        </Text>
+        <Pressable
+          style={({ pressed }) => [gradingStyles.lockBtn, { backgroundColor: colors.pokemonYellow, opacity: pressed ? 0.85 : 1 }]}
+          onPress={() => router.push("/profile" as any)}
+        >
+          <Ionicons name="star" size={16} color="#1A1A2E" />
+          <Text style={gradingStyles.lockBtnText}>Upgrade to Premium</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={gradingStyles.scrollContent}>
+      <View style={[gradingStyles.card, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "50" }]}>
+        <LinearGradient colors={[colors.pokemonRed + "12", "transparent"]} style={gradingStyles.cardGrad} />
+
+        <View style={gradingStyles.cardHeader}>
+          <View style={[gradingStyles.headerBadge, { backgroundColor: colors.pokemonRed + "20" }]}>
+            <MaterialCommunityIcons name="certificate" size={16} color={colors.pokemonRed} />
+            <Text style={[gradingStyles.headerBadgeText, { color: colors.pokemonRed }]}>Card Grader</Text>
+          </View>
+          <Pressable onPress={resetAll}>
+            <Text style={[gradingStyles.resetText, { color: colors.textMuted }]}>Reset</Text>
+          </Pressable>
+        </View>
+
+        <Text style={[gradingStyles.cardHint, { color: colors.textMuted }]}>
+          Rate each condition from 0 (perfect) to 5 (severe damage)
+        </Text>
+
+        <ConditionRow label="Centering" icon="resize" value={centering} onChange={setCentering} colors={colors} />
+        <ConditionRow label="Corners" icon="triangle" value={cornerDamage} onChange={setCornerDamage} colors={colors} />
+        <ConditionRow label="Edges" icon="remove" value={edgeDamage} onChange={setEdgeDamage} colors={colors} />
+        <ConditionRow label="Surface" icon="eye" value={surfaceDamage} onChange={setSurfaceDamage} colors={colors} />
+
+        <Pressable
+          style={({ pressed }) => [gradingStyles.gradeBtn, { opacity: pressed ? 0.85 : 1 }]}
+          onPress={handleGrade}
+          disabled={loading}
+        >
+          <LinearGradient colors={["#CC0000", "#8B0000"]} style={gradingStyles.gradeBtnInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+            {loading ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <>
+                <MaterialCommunityIcons name="certificate-outline" size={20} color="#FFF" />
+                <Text style={gradingStyles.gradeBtnText}>Calculate Grade</Text>
+              </>
+            )}
+          </LinearGradient>
+        </Pressable>
+      </View>
+
+      {result && (
+        <View style={[gradingStyles.resultCard, { backgroundColor: colors.card, borderColor: gradeColor(result.grade) + "80" }]}>
+          <LinearGradient colors={[gradeColor(result.grade) + "18", "transparent"]} style={gradingStyles.cardGrad} />
+
+          <View style={gradingStyles.gradeDisplay}>
+            <Text style={[gradingStyles.gradeNumber, { color: gradeColor(result.grade) }]}>
+              {result.grade.toFixed(1)}
+            </Text>
+            <View style={gradingStyles.gradeInfo}>
+              <Text style={[gradingStyles.gradeLabel, { color: colors.text }]}>{result.label}</Text>
+              <Text style={[gradingStyles.gradeSubtext, { color: colors.textMuted }]}>Estimated Grade</Text>
+            </View>
+          </View>
+
+          <View style={[gradingStyles.breakdownRow, { borderTopColor: colors.borderLight }]}>
+            {[
+              { label: "Centering", score: result.breakdown.centering },
+              { label: "Corners",   score: result.breakdown.corners },
+              { label: "Edges",     score: result.breakdown.edges },
+              { label: "Surface",   score: result.breakdown.surface },
+            ].map((b) => (
+              <View key={b.label} style={gradingStyles.breakdownItem}>
+                <Text style={[gradingStyles.breakdownScore, { color: gradeColor(b.score) }]}>{b.score.toFixed(1)}</Text>
+                <Text style={[gradingStyles.breakdownLabel, { color: colors.textMuted }]}>{b.label}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View style={[gradingStyles.disclaimer, { backgroundColor: colors.surface }]}>
+            <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
+            <Text style={[gradingStyles.disclaimerText, { color: colors.textMuted }]}>
+              This is an estimated grade only. Professional grading (PSA, BGS) may differ.
+            </Text>
+          </View>
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
+const gradingStyles = StyleSheet.create({
+  scrollContent: { paddingHorizontal: 16, paddingBottom: 100, gap: 12 },
+  card: { borderRadius: 16, borderWidth: 1.5, padding: 16, gap: 14, overflow: "hidden" },
+  cardGrad: { position: "absolute", top: 0, left: 0, right: 0, height: 80 },
+  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  headerBadgeText: { fontSize: 13, fontFamily: "Outfit_700Bold" },
+  resetText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
+  cardHint: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  condRow: { gap: 8 },
+  condLabelRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  condLabel: { fontSize: 13, fontFamily: "Outfit_600SemiBold", flex: 1 },
+  condValue: { fontSize: 12, fontFamily: "Outfit_700Bold" },
+  condButtons: { flexDirection: "row", gap: 6 },
+  condBtn: { flex: 1, aspectRatio: 1, borderRadius: 8, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
+  condBtnText: { fontSize: 12, fontFamily: "Outfit_700Bold" },
+  gradeBtn: { marginTop: 4, borderRadius: 14, overflow: "hidden" },
+  gradeBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, gap: 8 },
+  gradeBtnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  resultCard: { borderRadius: 16, borderWidth: 1.5, padding: 16, gap: 0, overflow: "hidden" },
+  gradeDisplay: { flexDirection: "row", alignItems: "center", gap: 16, paddingBottom: 14 },
+  gradeNumber: { fontSize: 64, fontFamily: "Outfit_700Bold", lineHeight: 70 },
+  gradeInfo: { flex: 1, gap: 4 },
+  gradeLabel: { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  gradeSubtext: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  breakdownRow: { flexDirection: "row", borderTopWidth: 1, paddingTop: 12, paddingBottom: 12, gap: 4 },
+  breakdownItem: { flex: 1, alignItems: "center", gap: 2 },
+  breakdownScore: { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  breakdownLabel: { fontSize: 10, fontFamily: "Outfit_500Medium" },
+  disclaimer: { flexDirection: "row", alignItems: "flex-start", gap: 6, borderRadius: 8, padding: 10 },
+  disclaimerText: { flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", lineHeight: 16 },
+  lockWrap: { borderRadius: 16, borderWidth: 1.5, padding: 24, gap: 14, alignItems: "center", overflow: "hidden", marginHorizontal: 16 },
+  lockGradient: { position: "absolute", top: 0, left: 0, right: 0, height: 100 },
+  lockIconBg: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center" },
+  lockTitle: { fontSize: 20, fontFamily: "Outfit_700Bold" },
+  lockDesc: { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", lineHeight: 20 },
+  lockBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  lockBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#1A1A2E" },
+});
+
 export default function ScannerScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
+  const { user } = useUser();
+  const isPremium = user?.isPremium ?? false;
+  const [mode, setMode] = useState<"identify" | "grade">("identify");
   const [searchText, setSearchText] = useState("");
   const [results, setResults] = useState<PokemonCard[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -611,65 +866,82 @@ export default function ScannerScreen() {
         </View>
       </LinearGradient>
 
-      <View style={styles.scanSection}>
-        <View style={styles.scanButtons}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.scanButton,
-              { opacity: pressed ? 0.85 : 1 },
-            ]}
-            onPress={handleCameraCapture}
-          >
-            <LinearGradient
-              colors={["#CC0000", "#8B0000"]}
-              style={styles.scanButtonGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Ionicons name="camera" size={24} color="#FFF" />
-              <Text style={styles.scanButtonText}>Scan Card</Text>
-            </LinearGradient>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.scanButton,
-              { opacity: pressed ? 0.85 : 1 },
-            ]}
-            onPress={handleGallery}
-          >
-            <View style={[styles.scanButtonGradient, { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.borderLight }]}>
-              <Ionicons name="images" size={24} color={colors.text} />
-              <Text style={[styles.scanButtonText, { color: colors.text }]}>Gallery</Text>
-            </View>
-          </Pressable>
-        </View>
-
-        <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.pokemonRed + "40" }]}>
-          <Ionicons name="search" size={18} color={colors.pokemonRed} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Or type card name..."
-            placeholderTextColor={colors.textMuted}
-            value={searchText}
-            onChangeText={setSearchText}
-            onSubmitEditing={handleSearch}
-            returnKeyType="search"
-          />
-          {searchText.length > 0 && (
-            <Pressable onPress={clearAll}>
-              <Ionicons name="close-circle" size={18} color={colors.textMuted} />
-            </Pressable>
-          )}
-          <Pressable
-            style={[styles.searchSubmit, { backgroundColor: colors.pokemonRed }]}
-            onPress={handleSearch}
-          >
-            <Ionicons name="arrow-forward" size={16} color="#FFF" />
-          </Pressable>
-        </View>
+      {/* Mode toggle: Identify / Grade */}
+      <View style={[styles.modeToggle, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
+        <Pressable
+          style={[styles.modeBtn, mode === "identify" && { backgroundColor: colors.pokemonRed }]}
+          onPress={() => setMode("identify")}
+        >
+          <Ionicons name="scan" size={16} color={mode === "identify" ? "#FFF" : colors.textMuted} />
+          <Text style={[styles.modeBtnText, { color: mode === "identify" ? "#FFF" : colors.textMuted }]}>Identify</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.modeBtn, mode === "grade" && { backgroundColor: colors.pokemonRed }]}
+          onPress={() => setMode("grade")}
+        >
+          <MaterialCommunityIcons name="certificate-outline" size={16} color={mode === "grade" ? "#FFF" : colors.textMuted} />
+          <Text style={[styles.modeBtnText, { color: mode === "grade" ? "#FFF" : colors.textMuted }]}>Grade</Text>
+          {!isPremium && <Ionicons name="lock-closed" size={11} color={mode === "grade" ? "#FFF" : colors.pokemonYellow} />}
+        </Pressable>
       </View>
 
-      {isSearching ? (
+      {mode === "identify" && (
+        <View style={styles.scanSection}>
+          <View style={styles.scanButtons}>
+            <Pressable
+              style={({ pressed }) => [styles.scanButton, { opacity: pressed ? 0.85 : 1 }]}
+              onPress={handleCameraCapture}
+            >
+              <LinearGradient
+                colors={["#CC0000", "#8B0000"]}
+                style={styles.scanButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Ionicons name="camera" size={24} color="#FFF" />
+                <Text style={styles.scanButtonText}>Scan Card</Text>
+              </LinearGradient>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.scanButton, { opacity: pressed ? 0.85 : 1 }]}
+              onPress={handleGallery}
+            >
+              <View style={[styles.scanButtonGradient, { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.borderLight }]}>
+                <Ionicons name="images" size={24} color={colors.text} />
+                <Text style={[styles.scanButtonText, { color: colors.text }]}>Gallery</Text>
+              </View>
+            </Pressable>
+          </View>
+
+          <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.pokemonRed + "40" }]}>
+            <Ionicons name="search" size={18} color={colors.pokemonRed} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.text }]}
+              placeholder="Or type card name..."
+              placeholderTextColor={colors.textMuted}
+              value={searchText}
+              onChangeText={setSearchText}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+            />
+            {searchText.length > 0 && (
+              <Pressable onPress={clearAll}>
+                <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+              </Pressable>
+            )}
+            <Pressable
+              style={[styles.searchSubmit, { backgroundColor: colors.pokemonRed }]}
+              onPress={handleSearch}
+            >
+              <Ionicons name="arrow-forward" size={16} color="#FFF" />
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {mode === "grade" ? (
+        <GradingTool colors={colors} isPremium={isPremium} />
+      ) : isSearching ? (
         <View style={styles.loadingContainer}>
           <MaterialCommunityIcons name="pokeball" size={40} color={colors.pokemonRed} />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Searching...</Text>
@@ -930,4 +1202,23 @@ const styles = StyleSheet.create({
   languageRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 8, marginTop: 8 },
   langBadge: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 10 },
   langText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
+  modeToggle: {
+    flexDirection: "row",
+    marginHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 3,
+    gap: 3,
+  },
+  modeBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 10,
+  },
+  modeBtnText: { fontSize: 14, fontFamily: "Outfit_700Bold" },
 });
