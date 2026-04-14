@@ -87,6 +87,7 @@ var init_schema = __esm({
       logoUrl: text("logo_url"),
       symbolUrl: text("symbol_url"),
       imageUrl: text("image_url"),
+      hidden: boolean("hidden").default(false),
       syncedAt: timestamp("synced_at").default(sql`CURRENT_TIMESTAMP`)
     });
     pokemonCards = pgTable("pokemon_cards", {
@@ -3087,8 +3088,11 @@ async function registerRoutes(app2) {
   app2.get("/api/pokemon/sets", async (_req, res) => {
     try {
       const dbSets = await db.select().from(pokemonSets).where(
-        exists(
-          db.select({ id: pokemonCards.id }).from(pokemonCards).where(eq3(pokemonCards.setId, pokemonSets.id))
+        and3(
+          exists(
+            db.select({ id: pokemonCards.id }).from(pokemonCards).where(eq3(pokemonCards.setId, pokemonSets.id))
+          ),
+          or2(eq3(pokemonSets.hidden, false), sql3`${pokemonSets.hidden} IS NULL`)
         )
       ).orderBy(desc(pokemonSets.releaseDate));
       if (dbSets.length > 0) {
@@ -4480,7 +4484,13 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       const result = await seedAsianSets2((msg) => {
         send({ phase: "progress", message: msg });
       });
-      send({ phase: "done", ...result, done: true });
+      send({ phase: "seeding-cards", message: "Seeding KO/ZH cards from JP sources\u2026" });
+      const { seedKoZhCards: seedKoZhCards2 } = await Promise.resolve().then(() => (init_ko_zh_seed(), ko_zh_seed_exports));
+      const koZhResult = await seedKoZhCards2((msg) => {
+        send({ phase: "progress", message: msg });
+      });
+      send({ phase: "progress", message: `KO/ZH cards: ${koZhResult.inserted} inserted, ${koZhResult.skipped} skipped` });
+      send({ phase: "done", ...result, koZhInserted: koZhResult.inserted, koZhSkipped: koZhResult.skipped, done: true });
       res.end();
     } catch (error) {
       console.error("Asian set sync error:", error);
@@ -4491,6 +4501,51 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         res.end();
       } catch {
       }
+    }
+  });
+  app2.get("/api/admin/sets", async (req, res) => {
+    try {
+      const pw = req.query.superadminPassword;
+      if (pw !== process.env.SUPERADMIN_PASSWORD && pw !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const allSets = await db.select({
+        id: pokemonSets.id,
+        name: pokemonSets.name,
+        series: pokemonSets.series,
+        hidden: pokemonSets.hidden,
+        releaseDate: pokemonSets.releaseDate,
+        cardCount: sql3`count(${pokemonCards.id})::int`
+      }).from(pokemonSets).leftJoin(pokemonCards, eq3(pokemonCards.setId, pokemonSets.id)).groupBy(pokemonSets.id, pokemonSets.name, pokemonSets.series, pokemonSets.hidden, pokemonSets.releaseDate).orderBy(desc(pokemonSets.releaseDate));
+      res.json({
+        sets: allSets.map((s) => ({
+          ...s,
+          hidden: s.hidden ?? false,
+          language: detectSetLanguage(s.id)
+        }))
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message || "Failed to list sets" });
+    }
+  });
+  app2.patch("/api/admin/sets/visibility", async (req, res) => {
+    try {
+      const { superadminPassword, setIds, hidden } = req.body;
+      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      if (!Array.isArray(setIds) || setIds.length === 0) {
+        res.status(400).json({ error: "setIds is required" });
+        return;
+      }
+      for (const id of setIds) {
+        await db.update(pokemonSets).set({ hidden: !!hidden }).where(eq3(pokemonSets.id, id));
+      }
+      res.json({ updated: setIds.length, hidden: !!hidden });
+    } catch (error) {
+      res.status(500).json({ error: error.message || "Failed to update visibility" });
     }
   });
   app2.get("/api/admin/scrydex-preview", async (req, res) => {

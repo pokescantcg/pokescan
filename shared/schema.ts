@@ -72,6 +72,7 @@ export const pokemonSets = pgTable("pokemon_sets", {
   logoUrl: text("logo_url"),
   symbolUrl: text("symbol_url"),
   imageUrl: text("image_url"),
+  hidden: boolean("hidden").default(false),
   syncedAt: timestamp("synced_at").default(sql`CURRENT_TIMESTAMP`),
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -887,6 +887,60 @@ export default function AdminPanelScreen() {
     );
   }, []);
 
+  interface AdminSet {
+    id: string;
+    name: string;
+    series: string;
+    hidden: boolean;
+    releaseDate: string | null;
+    cardCount: number;
+    language: string;
+  }
+  const [adminSets, setAdminSets] = useState<AdminSet[]>([]);
+  const [adminSetsLoading, setAdminSetsLoading] = useState(false);
+  const [setFilter, setSetFilter] = useState<"all" | "hidden" | "visible">("all");
+  const [setLangFilter, setSetLangFilter] = useState<string>("all");
+
+  const loadAdminSets = useCallback(async () => {
+    setAdminSetsLoading(true);
+    try {
+      const url = new URL("/api/admin/sets", getApiUrl());
+      url.searchParams.set("superadminPassword", "killer89!");
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json();
+      setAdminSets(data.sets || []);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to load sets");
+    } finally {
+      setAdminSetsLoading(false);
+    }
+  }, []);
+
+  const toggleSetVisibility = useCallback(async (setIds: string[], hidden: boolean) => {
+    try {
+      const url = new URL("/api/admin/sets/visibility", getApiUrl());
+      const res = await fetch(url.toString(), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ superadminPassword: "killer89!", setIds, hidden }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      setAdminSets(prev => prev.map(s => setIds.includes(s.id) ? { ...s, hidden } : s));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to update visibility");
+    }
+  }, []);
+
+  const filteredAdminSets = useMemo(() => {
+    let list = adminSets;
+    if (setFilter === "hidden") list = list.filter(s => s.hidden);
+    if (setFilter === "visible") list = list.filter(s => !s.hidden);
+    if (setLangFilter !== "all") list = list.filter(s => s.language === setLangFilter);
+    return list;
+  }, [adminSets, setFilter, setLangFilter]);
+
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   const handleRemoveListing = useCallback(
@@ -1540,6 +1594,124 @@ export default function AdminPanelScreen() {
                 </Text>
               </Pressable>
             </View>
+          </View>
+
+          {/* ─── Set Visibility Management ─── */}
+          <View style={[{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.borderLight }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#8E24AA22", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="eye-outline" size={20} color="#8E24AA" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontFamily: "Outfit_700Bold", color: colors.text }}>Set Visibility</Text>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>Hide or release sets for users</Text>
+              </View>
+            </View>
+
+            <Pressable
+              style={[{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: colors.background, borderRadius: 12, paddingVertical: 12, borderWidth: 1, borderColor: colors.border, marginBottom: 12 }, adminSetsLoading && { opacity: 0.6 }]}
+              onPress={loadAdminSets}
+              disabled={adminSetsLoading}
+            >
+              {adminSetsLoading
+                ? <Ionicons name="hourglass-outline" size={18} color={colors.text} />
+                : <Ionicons name="refresh-outline" size={18} color={colors.text} />}
+              <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.text }}>
+                {adminSetsLoading ? "Loading…" : adminSets.length > 0 ? "Refresh Sets" : "Load All Sets"}
+              </Text>
+            </Pressable>
+
+            {adminSets.length > 0 && (
+              <>
+                <View style={{ flexDirection: "row", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                  {(["all", "visible", "hidden"] as const).map(f => (
+                    <Pressable
+                      key={f}
+                      style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: setFilter === f ? "#8E24AA" : colors.background, borderWidth: 1, borderColor: setFilter === f ? "#8E24AA" : colors.border }}
+                      onPress={() => setSetFilter(f)}
+                    >
+                      <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: setFilter === f ? "#FFF" : colors.textMuted }}>
+                        {f === "all" ? `All (${adminSets.length})` : f === "hidden" ? `Hidden (${adminSets.filter(s => s.hidden).length})` : `Visible (${adminSets.filter(s => !s.hidden).length})`}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={{ flexDirection: "row", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+                  {["all", "english", "japanese", "korean", "chinese"].map(lang => (
+                    <Pressable
+                      key={lang}
+                      style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: setLangFilter === lang ? "#1565C0" : colors.background, borderWidth: 1, borderColor: setLangFilter === lang ? "#1565C0" : colors.border }}
+                      onPress={() => setSetLangFilter(lang)}
+                    >
+                      <Text style={{ fontSize: 11, fontFamily: "Outfit_500Medium", color: setLangFilter === lang ? "#FFF" : colors.textMuted }}>
+                        {lang === "all" ? "All Langs" : lang.charAt(0).toUpperCase() + lang.slice(1)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {filteredAdminSets.length > 0 && (
+                  <View style={{ flexDirection: "row", gap: 6, marginBottom: 10 }}>
+                    <Pressable
+                      style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#27AE60", borderRadius: 10, paddingVertical: 10 }}
+                      onPress={() => {
+                        const hiddenIds = filteredAdminSets.filter(s => s.hidden).map(s => s.id);
+                        if (hiddenIds.length === 0) { Alert.alert("Info", "No hidden sets in current filter"); return; }
+                        Alert.alert("Release Sets", `Release ${hiddenIds.length} hidden set(s) to users?`, [
+                          { text: "Cancel", style: "cancel" },
+                          { text: "Release", onPress: () => toggleSetVisibility(hiddenIds, false) },
+                        ]);
+                      }}
+                    >
+                      <Ionicons name="eye-outline" size={16} color="#FFF" />
+                      <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#FFF" }}>Release Filtered</Text>
+                    </Pressable>
+                    <Pressable
+                      style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, backgroundColor: "#E65100", borderRadius: 10, paddingVertical: 10 }}
+                      onPress={() => {
+                        const visibleIds = filteredAdminSets.filter(s => !s.hidden).map(s => s.id);
+                        if (visibleIds.length === 0) { Alert.alert("Info", "No visible sets in current filter"); return; }
+                        Alert.alert("Hide Sets", `Hide ${visibleIds.length} visible set(s) from users?`, [
+                          { text: "Cancel", style: "cancel" },
+                          { text: "Hide", style: "destructive", onPress: () => toggleSetVisibility(visibleIds, true) },
+                        ]);
+                      }}
+                    >
+                      <Ionicons name="eye-off-outline" size={16} color="#FFF" />
+                      <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#FFF" }}>Hide Filtered</Text>
+                    </Pressable>
+                  </View>
+                )}
+
+                <View style={{ maxHeight: 400 }}>
+                  <ScrollView showsVerticalScrollIndicator={false} nestedScrollEnabled>
+                    {filteredAdminSets.map(s => (
+                      <View key={s.id} style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.background, borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: s.hidden ? "#E6510044" : colors.borderLight }}>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: s.hidden ? "#E65100" : "#27AE60" }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text }} numberOfLines={1}>{s.name}</Text>
+                          <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }} numberOfLines={1}>
+                            {s.id} · {s.language} · {s.cardCount} cards{s.hidden ? " · HIDDEN" : ""}
+                          </Text>
+                        </View>
+                        <Pressable
+                          style={{ paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: s.hidden ? "#27AE60" : "#E65100" }}
+                          onPress={() => toggleSetVisibility([s.id], !s.hidden)}
+                        >
+                          <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#FFF" }}>
+                            {s.hidden ? "Release" : "Hide"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted, textAlign: "center", marginTop: 8 }}>
+                  Showing {filteredAdminSets.length} of {adminSets.length} sets
+                </Text>
+              </>
+            )}
           </View>
         </ScrollView>
       )}

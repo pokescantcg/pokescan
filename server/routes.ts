@@ -209,11 +209,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .select()
         .from(pokemonSets)
         .where(
-          exists(
-            db
-              .select({ id: pokemonCards.id })
-              .from(pokemonCards)
-              .where(eq(pokemonCards.setId, pokemonSets.id))
+          and(
+            exists(
+              db
+                .select({ id: pokemonCards.id })
+                .from(pokemonCards)
+                .where(eq(pokemonCards.setId, pokemonSets.id))
+            ),
+            or(eq(pokemonSets.hidden, false), sql`${pokemonSets.hidden} IS NULL`)
           )
         )
         .orderBy(desc(pokemonSets.releaseDate));
@@ -1786,7 +1789,14 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         send({ phase: "progress", message: msg });
       });
 
-      send({ phase: "done", ...result, done: true });
+      send({ phase: "seeding-cards", message: "Seeding KO/ZH cards from JP sources…" });
+      const { seedKoZhCards } = await import("./ko-zh-seed");
+      const koZhResult = await seedKoZhCards((msg: string) => {
+        send({ phase: "progress", message: msg });
+      });
+      send({ phase: "progress", message: `KO/ZH cards: ${koZhResult.inserted} inserted, ${koZhResult.skipped} skipped` });
+
+      send({ phase: "done", ...result, koZhInserted: koZhResult.inserted, koZhSkipped: koZhResult.skipped, done: true });
       res.end();
     } catch (error: any) {
       console.error("Asian set sync error:", error);
@@ -1794,6 +1804,59 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         res.write(`data: ${JSON.stringify({ phase: "error", message: error.message || "Sync failed", done: true })}\n\n`);
         res.end();
       } catch {}
+    }
+  });
+
+  app.get("/api/admin/sets", async (req: Request, res: Response) => {
+    try {
+      const pw = req.query.superadminPassword as string;
+      if (pw !== process.env.SUPERADMIN_PASSWORD && pw !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const allSets = await db
+        .select({
+          id: pokemonSets.id,
+          name: pokemonSets.name,
+          series: pokemonSets.series,
+          hidden: pokemonSets.hidden,
+          releaseDate: pokemonSets.releaseDate,
+          cardCount: sql<number>`count(${pokemonCards.id})::int`,
+        })
+        .from(pokemonSets)
+        .leftJoin(pokemonCards, eq(pokemonCards.setId, pokemonSets.id))
+        .groupBy(pokemonSets.id, pokemonSets.name, pokemonSets.series, pokemonSets.hidden, pokemonSets.releaseDate)
+        .orderBy(desc(pokemonSets.releaseDate));
+
+      res.json({
+        sets: allSets.map((s) => ({
+          ...s,
+          hidden: s.hidden ?? false,
+          language: detectSetLanguage(s.id),
+        })),
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to list sets" });
+    }
+  });
+
+  app.patch("/api/admin/sets/visibility", async (req: Request, res: Response) => {
+    try {
+      const { superadminPassword, setIds, hidden } = req.body;
+      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      if (!Array.isArray(setIds) || setIds.length === 0) {
+        res.status(400).json({ error: "setIds is required" });
+        return;
+      }
+      for (const id of setIds) {
+        await db.update(pokemonSets).set({ hidden: !!hidden }).where(eq(pokemonSets.id, id));
+      }
+      res.json({ updated: setIds.length, hidden: !!hidden });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to update visibility" });
     }
   });
 

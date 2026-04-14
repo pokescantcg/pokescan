@@ -27,7 +27,7 @@ The system supports user registration and login with OTP verification (email/SMS
 - **Collection Management**: Users can track their card collections with up-to-date GBP pricing.
 - **Marketplace**: A platform for users to list, trade, and sell cards.
 - **User Profiles**: Personalized profiles with premium features like profile picture uploads.
-- **Admin Panel**: Tools for moderation of listings and user management, including role assignment and premium status.
+- **Admin Panel**: Tools for moderation of listings and user management, including role assignment and premium status. Superadmins have a Database tab with Scrydex sync, Asian set sync (JP/KO/ZH with auto card seeding), and set visibility management (hide/release sets).
 - **Social System**: Friend management, private messaging, and user search features.
 - **Stripe Subscriptions**: Premium membership at £4.99/month or £49.99/year via Stripe Checkout. Webhook-based status sync. Price IDs: monthly=`price_1TM7D8K7N6BNdayAPnuINUuU`, annual=`price_1TM7D8K7N6BNdayAB1PFakyH`.
 - **External Data Integration**: Seamless integration of data from the Pokémon TCG API and scraped UK pricing data.
