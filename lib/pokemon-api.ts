@@ -1,4 +1,5 @@
 import { getApiUrl } from "./query-client";
+import { getSessionToken } from "./storage";
 
 export interface PokemonSet {
   id: string;
@@ -322,23 +323,29 @@ export async function identifyCard(imageBase64: string): Promise<IdentifyCardRes
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45000);
   try {
+    const token = await getSessionToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
     const res = await fetch(`${base}api/identify-card`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ imageBase64 }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
     if (!res.ok) {
       let errMsg = "Failed to identify card";
+      let errBody: any = {};
       try {
-        const errJson = await res.json();
-        errMsg = errJson.error || errMsg;
+        errBody = await res.json();
+        errMsg = errBody.error || errMsg;
       } catch {
         const errText = await res.text().catch(() => "");
         errMsg = errText || errMsg;
       }
-      throw new Error(errMsg);
+      const err: any = new Error(errMsg);
+      if (res.status === 429) err.isQuotaExceeded = true;
+      throw err;
     }
     return res.json();
   } catch (e: any) {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Modal,
 } from "react-native";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -25,6 +26,7 @@ import { useThemeColors } from "@/constants/colors";
 import PokeBackground from "@/components/PokeBackground";
 import { useUser } from "@/lib/user-context";
 import { getApiUrl } from "@/lib/query-client";
+import { getSessionToken } from "@/lib/storage";
 import {
   searchCards,
   PokemonCard,
@@ -929,6 +931,16 @@ const gradingStyles = StyleSheet.create({
   manualToggleText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
 });
 
+interface ScanQuota {
+  freeScansRemaining: number;
+  bonusScansAvailable: number;
+  totalRemaining: number;
+  consecutiveLoginDays: number;
+  alreadyCheckedInToday: boolean;
+  bonusEarnedToday: number;
+  streakReset: boolean;
+}
+
 export default function ScannerScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
@@ -937,6 +949,52 @@ export default function ScannerScreen() {
   const isPremium = user?.isPremium ?? false;
   const [mode, setMode] = useState<"identify" | "grade">("identify");
   const gradeDisclaimerShown = useRef(false);
+  const [scanQuota, setScanQuota] = useState<ScanQuota | null>(null);
+  const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
+  const [streakModal, setStreakModal] = useState<{ day: number; bonus: number; reset: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!user || isPremium) return;
+    (async () => {
+      try {
+        const token = await getSessionToken();
+        if (!token) return;
+        const base = getApiUrl();
+        const res = await fetch(new URL("/api/user/daily-checkin", base).toString(), {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data: ScanQuota & { streakReset?: boolean } = await res.json();
+        if ((data as any).unlimited) return;
+        setScanQuota(data);
+        if (!data.alreadyCheckedInToday && data.bonusEarnedToday > 0) {
+          setStreakModal({
+            day: data.consecutiveLoginDays === 0 ? 7 : data.consecutiveLoginDays,
+            bonus: data.bonusEarnedToday,
+            reset: !!data.streakReset,
+          });
+        }
+      } catch { /* ignore — quota display is non-critical */ }
+    })();
+  }, [user?.id, isPremium]);
+
+  const refreshQuota = useCallback(async () => {
+    if (!user || isPremium) return;
+    try {
+      const token = await getSessionToken();
+      if (!token) return;
+      const base = getApiUrl();
+      const res = await fetch(new URL("/api/user/scan-quota", base).toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if ((data as any).unlimited) return;
+      setScanQuota(data);
+      if (data.totalRemaining <= 0) setIsQuotaExceeded(true);
+    } catch { /* ignore */ }
+  }, [user?.id, isPremium]);
 
   const handleSwitchToGrade = useCallback(() => {
     if (!gradeDisclaimerShown.current) {
@@ -1036,14 +1094,21 @@ export default function ScannerScreen() {
       setTcgApiResults(result.tcgApiResults || []);
       setSearchText(result.identification.englishName);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      refreshQuota();
     } catch (e: any) {
       console.error("Identification failed:", e);
-      setIdentifyError(e.message || "Failed to identify card");
+      if (e.isQuotaExceeded) {
+        setIsQuotaExceeded(true);
+        setCapturedImage(null);
+        refreshQuota();
+      } else {
+        setIdentifyError(e.message || "Failed to identify card");
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsIdentifying(false);
     }
-  }, []);
+  }, [refreshQuota]);
 
   const handleCameraCapture = useCallback(async () => {
     try {
@@ -1098,6 +1163,7 @@ export default function ScannerScreen() {
     setPcvResults([]);
     setTcgApiResults([]);
     setIdentifyError(null);
+    setIsQuotaExceeded(false);
     setResults([]);
     setHasSearched(false);
     setSearchText("");
@@ -1107,7 +1173,33 @@ export default function ScannerScreen() {
 
   const renderHeader = () => (
     <>
-      {capturedImage && (
+      {/* ── Quota exceeded card ── */}
+      {isQuotaExceeded && !isIdentifying && (
+        <View style={[styles.quotaCard, { backgroundColor: colors.card, borderColor: colors.pokemonYellow + "80" }]}>
+          <LinearGradient colors={[colors.pokemonYellow + "18", "transparent"]} style={styles.quotaCardGrad} />
+          <View style={[styles.quotaIconBg, { backgroundColor: colors.pokemonYellow + "25" }]}>
+            <MaterialCommunityIcons name="pokeball" size={28} color={colors.pokemonYellow} />
+          </View>
+          <Text style={[styles.quotaTitle, { color: colors.text }]}>Daily Scans Used Up</Text>
+          <Text style={[styles.quotaDesc, { color: colors.textSecondary }]}>
+            You've used all your scans for today. Come back tomorrow for 25 more, or go Premium for unlimited scanning.
+          </Text>
+          <View style={styles.quotaBtns}>
+            <Pressable
+              style={[styles.quotaPremBtn, { backgroundColor: colors.pokemonYellow }]}
+              onPress={() => router.push("/premium")}
+            >
+              <Ionicons name="star" size={15} color="#1A1A2E" />
+              <Text style={[styles.quotaPremBtnText, { color: "#1A1A2E" }]}>Go Premium</Text>
+            </Pressable>
+            <Pressable style={[styles.quotaDismissBtn, { borderColor: colors.borderLight }]} onPress={clearAll}>
+              <Text style={[styles.quotaDismissText, { color: colors.textMuted }]}>Dismiss</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+
+      {capturedImage && !isQuotaExceeded && (
         <View style={[styles.capturedPreview, { borderColor: colors.pokemonRed + "60" }]}>
           <Image source={{ uri: capturedImage }} style={styles.capturedImage} contentFit="contain" />
           <Pressable
@@ -1131,7 +1223,7 @@ export default function ScannerScreen() {
         </View>
       )}
 
-      {identifyError && !isIdentifying && (
+      {identifyError && !isIdentifying && !isQuotaExceeded && (
         <View style={[styles.errorCard, { backgroundColor: colors.card, borderColor: colors.error }]}>
           <Ionicons name="alert-circle" size={20} color={colors.error} />
           <Text style={[styles.errorText, { color: colors.error }]}>{identifyError}</Text>
@@ -1189,6 +1281,43 @@ export default function ScannerScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <PokeBackground opacity={colorScheme === "dark" ? 0.18 : 0.12} />
+      {/* ── Streak notification modal ── */}
+      <Modal
+        visible={!!streakModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStreakModal(null)}
+      >
+        <Pressable style={streakStyles.overlay} onPress={() => setStreakModal(null)}>
+          <Pressable style={[streakStyles.card, { backgroundColor: colors.card }]} onPress={() => {}}>
+            <LinearGradient colors={["#FFDE0030", "transparent"]} style={streakStyles.grad} />
+            <Text style={streakStyles.fireEmoji}>{streakModal?.day === 7 ? "🏆" : "🔥"}</Text>
+            <Text style={[streakStyles.title, { color: colors.text }]}>
+              {streakModal?.day === 7 ? "7-Day Streak Complete!" : `Day ${streakModal?.day} Streak!`}
+            </Text>
+            <Text style={[streakStyles.bonus, { color: colors.pokemonYellow }]}>
+              +{streakModal?.bonus} bonus scans earned
+            </Text>
+            <Text style={[streakStyles.desc, { color: colors.textSecondary }]}>
+              {streakModal?.day === 7
+                ? "You completed a full 7-day streak! Your bonus scans are valid for 7 days. Keep it up!"
+                : `Come back tomorrow to continue your streak. Bonus scans expire in 7 days.`}
+            </Text>
+            {streakModal?.reset && (
+              <Text style={[streakStyles.resetNote, { color: colors.textMuted }]}>
+                Your previous streak was reset — missed a day. Starting fresh!
+              </Text>
+            )}
+            <Pressable
+              style={[streakStyles.btn, { backgroundColor: colors.pokemonYellow }]}
+              onPress={() => setStreakModal(null)}
+            >
+              <Text style={streakStyles.btnText}>Let's Scan!</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <LinearGradient
         colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
         style={[styles.header, { paddingTop: (insets.top || webTopInset) + 8 }]}
@@ -1201,6 +1330,39 @@ export default function ScannerScreen() {
               AI-powered card identification
             </Text>
           </View>
+          {!isPremium && scanQuota && (
+            <Pressable
+              style={[styles.scanQuotaPill, {
+                backgroundColor: scanQuota.totalRemaining <= 5
+                  ? colors.error + "20"
+                  : colors.surface,
+                borderColor: scanQuota.totalRemaining <= 5
+                  ? colors.error
+                  : colors.borderLight,
+              }]}
+              onPress={() => router.push("/premium")}
+            >
+              <MaterialCommunityIcons
+                name="camera-outline"
+                size={13}
+                color={scanQuota.totalRemaining <= 5 ? colors.error : colors.textMuted}
+              />
+              <Text style={[styles.scanQuotaText, {
+                color: scanQuota.totalRemaining <= 5 ? colors.error : colors.textMuted,
+              }]}>
+                {scanQuota.totalRemaining} left
+              </Text>
+              {scanQuota.bonusScansAvailable > 0 && (
+                <View style={[styles.bonusDot, { backgroundColor: colors.pokemonYellow }]} />
+              )}
+            </Pressable>
+          )}
+          {isPremium && (
+            <View style={[styles.scanQuotaPill, { backgroundColor: colors.pokemonYellow + "20", borderColor: colors.pokemonYellow }]}>
+              <Ionicons name="star" size={13} color={colors.pokemonYellow} />
+              <Text style={[styles.scanQuotaText, { color: colors.pokemonYellow }]}>Unlimited</Text>
+            </View>
+          )}
           <Image
             source={{ uri: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/479.png" }}
             style={styles.rotomMascot}
@@ -1564,4 +1726,48 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   modeBtnText: { fontSize: 14, fontFamily: "Outfit_700Bold" },
+  scanQuotaPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginRight: 6,
+  },
+  scanQuotaText: { fontSize: 12, fontFamily: "Outfit_700Bold" },
+  bonusDot: { width: 6, height: 6, borderRadius: 3 },
+  quotaCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 20,
+    gap: 10,
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  quotaCardGrad: { position: "absolute", top: 0, left: 0, right: 0, height: 80 },
+  quotaIconBg: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
+  quotaTitle: { fontSize: 18, fontFamily: "Outfit_700Bold", textAlign: "center" },
+  quotaDesc: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", lineHeight: 19 },
+  quotaBtns: { flexDirection: "row", gap: 10, marginTop: 4 },
+  quotaPremBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 18, paddingVertical: 11, borderRadius: 12 },
+  quotaPremBtnText: { fontSize: 14, fontFamily: "Outfit_700Bold" },
+  quotaDismissBtn: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 12, borderWidth: 1 },
+  quotaDismissText: { fontSize: 14, fontFamily: "Outfit_500Medium" },
+});
+
+const streakStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 24 },
+  card: { width: "100%", borderRadius: 24, padding: 28, alignItems: "center", gap: 10, overflow: "hidden" },
+  grad: { position: "absolute", top: 0, left: 0, right: 0, height: 100 },
+  fireEmoji: { fontSize: 48 },
+  title: { fontSize: 22, fontFamily: "Outfit_700Bold", textAlign: "center" },
+  bonus: { fontSize: 20, fontFamily: "Outfit_700Bold" },
+  desc: { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", lineHeight: 20 },
+  resetNote: { fontSize: 12, fontFamily: "Outfit_400Regular", textAlign: "center", fontStyle: "italic" },
+  btn: { marginTop: 8, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14 },
+  btnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#1A1A2E" },
 });

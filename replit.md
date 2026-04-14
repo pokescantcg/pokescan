@@ -22,12 +22,14 @@ The system supports user registration and login with OTP verification (email/SMS
 
 ### Core Features
 - **Card Browsing & Search**: Users can browse Pokémon card sets by language and search for specific cards.
-- **Card Scanning & Identification**: AI-powered identification for cards, including a premium grading tool.
+- **Card Scanning & Identification**: AI-powered identification for cards, including a premium grading tool. Free users get 25 scans/day plus bonus scans from the daily login streak system.
+- **Scan Quota & Daily Login Streak**: Free users get 25 scans/day. Each consecutive day earns +5 bonus scans (valid 7 days). Day 7 earns +10 and resets the streak. Missing a day loses all accumulated bonus scans. Premium users have unlimited scans.
 - **Collection Management**: Users can track their card collections with up-to-date GBP pricing.
 - **Marketplace**: A platform for users to list, trade, and sell cards.
 - **User Profiles**: Personalized profiles with premium features like profile picture uploads.
 - **Admin Panel**: Tools for moderation of listings and user management, including role assignment and premium status.
 - **Social System**: Friend management, private messaging, and user search features.
+- **Stripe Subscriptions**: Premium membership at £4.99/month or £49.99/year via Stripe Checkout. Webhook-based status sync. Price IDs: monthly=`price_1TM7D8K7N6BNdayAPnuINUuU`, annual=`price_1TM7D8K7N6BNdayAB1PFakyH`.
 - **External Data Integration**: Seamless integration of data from the Pokémon TCG API and scraped UK pricing data.
 
 ## External Dependencies

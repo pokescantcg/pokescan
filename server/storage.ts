@@ -23,6 +23,12 @@ export interface DbUser {
   stripePriceId?: string | null;
   subscriptionStatus?: string | null;
   subscriptionPeriodEnd?: Date | string | null;
+  // Scan quota & streak fields
+  scansUsedToday?: number;
+  scanDate?: string | null;
+  consecutiveLoginDays?: number;
+  lastLoginDate?: string | null;
+  bonusScanPools?: string | null;
 }
 
 export interface IStorage {
@@ -233,6 +239,11 @@ function mapRow(row: any): DbUser {
     stripePriceId: row.stripe_price_id ?? null,
     subscriptionStatus: row.subscription_status ?? null,
     subscriptionPeriodEnd: row.subscription_period_end ?? null,
+    scansUsedToday: row.scans_used_today ?? 0,
+    scanDate: row.scan_date ?? null,
+    consecutiveLoginDays: row.consecutive_login_days ?? 0,
+    lastLoginDate: row.last_login_date ?? null,
+    bonusScanPools: row.bonus_scan_pools ?? null,
   };
 }
 

@@ -1,4 +1,5 @@
 import { calculateGrade } from "./services/grading";
+import { getUserQuota, dailyCheckin, consumeScan } from "./scan-quota";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import express from "express";
@@ -723,6 +724,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
+      // ── Scan quota enforcement (free users only) ──────────────────────────
+      const authToken = req.headers.authorization?.replace("Bearer ", "");
+      if (authToken) {
+        const scanUser = await storage.validateSession(authToken);
+        if (scanUser && !scanUser.isPremium) {
+          const result = await consumeScan(scanUser.id);
+          if (!result.allowed) {
+            res.status(429).json({
+              error: "Daily scan limit reached",
+              freeRemaining: 0,
+              bonusRemaining: 0,
+              message: "You've used all your scans for today. Come back tomorrow or upgrade to Premium for unlimited scans.",
+            });
+            return;
+          }
+        }
+      }
+
       let response: Awaited<ReturnType<typeof openai.chat.completions.create>>;
       try {
         const aiPromise = openai.chat.completions.create({
@@ -1434,6 +1453,44 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     } catch (error: any) {
       console.error("Cancel premium error:", error);
       res.status(500).json({ error: error.message || "Cancellation failed" });
+    }
+  });
+
+  // ─── Daily checkin (login streak + bonus scans) ───────────────────────────────
+  app.post("/api/user/daily-checkin", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (user.isPremium) {
+        res.json({ isPremium: true, unlimited: true });
+        return;
+      }
+      const result = await dailyCheckin(user.id);
+      res.json(result);
+    } catch (error: any) {
+      console.error("Daily checkin error:", error);
+      res.status(500).json({ error: error.message || "Checkin failed" });
+    }
+  });
+
+  // GET /api/user/scan-quota — returns current scan quota for the authed user
+  app.get("/api/user/scan-quota", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (user.isPremium) {
+        res.json({ isPremium: true, unlimited: true });
+        return;
+      }
+      const quota = await getUserQuota(user.id);
+      res.json(quota);
+    } catch (error: any) {
+      console.error("Scan quota error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch quota" });
     }
   });
 

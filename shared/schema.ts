@@ -22,6 +22,12 @@ export const pokescanUsers = pgTable("pokescan_users", {
   stripePriceId: text("stripe_price_id"),
   subscriptionStatus: text("subscription_status"),   // active | canceled | past_due | trialing
   subscriptionPeriodEnd: timestamp("subscription_period_end", { withTimezone: true }),
+  // Scan quota & daily login streak fields
+  scansUsedToday: integer("scans_used_today").notNull().default(0),
+  scanDate: text("scan_date"),                        // YYYY-MM-DD of last scan
+  consecutiveLoginDays: integer("consecutive_login_days").notNull().default(0),
+  lastLoginDate: text("last_login_date"),             // YYYY-MM-DD of last checkin
+  bonusScanPools: text("bonus_scan_pools"),           // JSON: [{amount, expiresAt}]
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
 });
 
