@@ -1144,6 +1144,33 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  // ─── Cancel premium (user-initiated) ─────────────────────────────────────────
+  // POST /api/user/cancel-premium — allows a premium user to cancel their own
+  // premium subscription. Staff roles (admin / moderator) cannot self-cancel.
+  app.post("/api/user/cancel-premium", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (user.role === "admin" || user.role === "moderator") {
+        res.status(403).json({ error: "Staff premium cannot be self-cancelled. Contact a superadmin." });
+        return;
+      }
+      if (!user.isPremium) {
+        res.status(400).json({ error: "Account does not have an active premium subscription." });
+        return;
+      }
+      const updated = await storage.updateUser(user.id, { isPremium: false });
+      if (!updated) { res.status(404).json({ error: "User not found" }); return; }
+      console.log(`[Premium] User ${user.id} (${user.email || user.username}) cancelled premium.`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Cancel premium error:", error);
+      res.status(500).json({ error: error.message || "Cancellation failed" });
+    }
+  });
+
   // ─── Avatar upload ────────────────────────────────────────────────────────────
   app.post("/api/user/avatar", async (req: Request, res: Response) => {
     try {

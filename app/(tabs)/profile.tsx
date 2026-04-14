@@ -9,6 +9,9 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -41,10 +44,16 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user, collection, collectionValue, listings, logout, isStaff, isSuperadminUser, updateAvatar } = useUser();
+  const { user, collection, collectionValue, listings, logout, isStaff, isSuperadminUser, updateAvatar, revokePremium } = useUser();
   const { cacheStatus, isDownloading, downloadPercent, progress, startDownload, clearCardCache, refreshStatus, selectedLanguages, setSelectedLanguages } = useCardCache();
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+
+  // ── Cancel premium state ────────────────────────────────────────────────────
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelCode, setCancelCode] = useState("");
+  const [codeInput, setCodeInput] = useState("");
+  const [cancelLoading, setCancelLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -159,6 +168,45 @@ export default function ProfileScreen() {
       : [...selectedLanguages, lang];
     setSelectedLanguages(next);
   }, [selectedLanguages, setSelectedLanguages]);
+
+  // ── Cancel premium handlers ─────────────────────────────────────────────────
+  const handleOpenCancelModal = useCallback(() => {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setCancelCode(code);
+    setCodeInput("");
+    setShowCancelModal(true);
+  }, []);
+
+  const handleConfirmCancel = useCallback(async () => {
+    if (codeInput.trim() !== cancelCode) {
+      Alert.alert("Incorrect Code", "The code you entered does not match. Please try again.");
+      return;
+    }
+    setCancelLoading(true);
+    try {
+      const token = await getSessionToken();
+      const apiBase = getApiUrl();
+      const url = new URL("/api/user/cancel-premium", apiBase).toString();
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        Alert.alert("Error", json.error || "Could not cancel premium. Please try again.");
+        return;
+      }
+      setShowCancelModal(false);
+      // Update local context immediately so UI reflects the change
+      if (user) await revokePremium(user.id);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Premium Cancelled", "Your premium membership has been cancelled. You can ask an admin to reinstate it at any time.");
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Network error. Please try again.");
+    } finally {
+      setCancelLoading(false);
+    }
+  }, [codeInput, cancelCode]);
 
   if (!user) {
     return (
@@ -338,7 +386,23 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {!user.isPremium && (
+        {user.isPremium && !isStaff ? (
+          <View style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: colors.pokemonYellow + "50" }]}>
+            <MaterialCommunityIcons name="star-circle" size={24} color={colors.pokemonYellow} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.premiumBannerTitle, { color: colors.pokemonYellow }]}>Premium Member</Text>
+              <Text style={[styles.premiumBannerDesc, { color: colors.textMuted }]}>
+                You have access to all premium features
+              </Text>
+            </View>
+            <Pressable
+              onPress={handleOpenCancelModal}
+              style={[styles.cancelPremiumBtn, { borderColor: colors.pokemonRed + "60" }]}
+            >
+              <Text style={[styles.cancelPremiumBtnText, { color: colors.pokemonRed }]}>Cancel</Text>
+            </Pressable>
+          </View>
+        ) : !user.isPremium ? (
           <View style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <MaterialCommunityIcons name="pokeball" size={24} color={colors.textMuted} />
             <View style={{ flex: 1 }}>
@@ -348,7 +412,7 @@ export default function ProfileScreen() {
               </Text>
             </View>
           </View>
-        )}
+        ) : null}
 
         <View style={styles.dbSection}>
           <DatabaseSyncCard
@@ -405,6 +469,70 @@ export default function ProfileScreen() {
           PokeScan TCG v1.0.0
         </Text>
       </ScrollView>
+
+      {/* ── Cancel Premium Modal ─────────────────────────────────────────── */}
+      <Modal
+        visible={showCancelModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCancelModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.cancelModalBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <MaterialCommunityIcons name="star-off" size={36} color={colors.pokemonRed} style={{ marginBottom: 12 }} />
+            <Text style={[styles.cancelModalTitle, { color: colors.text }]}>Cancel Premium</Text>
+            <Text style={[styles.cancelModalDesc, { color: colors.textSecondary }]}>
+              To confirm cancellation, please enter the code below:
+            </Text>
+            <View style={[styles.cancelCodeBox, { backgroundColor: colors.surface, borderColor: colors.pokemonRed + "60" }]}>
+              <Text style={[styles.cancelCodeText, { color: colors.pokemonRed }]}>{cancelCode}</Text>
+            </View>
+            <TextInput
+              style={[
+                styles.cancelCodeInput,
+                { backgroundColor: colors.surface, color: colors.text, borderColor: colors.border },
+              ]}
+              placeholder="Enter code"
+              placeholderTextColor={colors.textMuted}
+              value={codeInput}
+              onChangeText={setCodeInput}
+              keyboardType="number-pad"
+              maxLength={6}
+              autoFocus
+            />
+            <View style={styles.cancelModalBtns}>
+              <Pressable
+                style={[styles.cancelModalDismiss, { borderColor: colors.border }]}
+                onPress={() => setShowCancelModal(false)}
+              >
+                <Text style={[styles.cancelModalDismissText, { color: colors.textSecondary }]}>Keep Premium</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.cancelModalConfirm,
+                  {
+                    backgroundColor: codeInput.length === 6 ? colors.pokemonRed : colors.surface,
+                    opacity: cancelLoading ? 0.6 : 1,
+                  },
+                ]}
+                onPress={handleConfirmCancel}
+                disabled={cancelLoading || codeInput.length < 6}
+              >
+                {cancelLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[styles.cancelModalConfirmText, { color: codeInput.length === 6 ? "#fff" : colors.textMuted }]}>
+                    Confirm Cancel
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -793,6 +921,66 @@ const styles = StyleSheet.create({
   },
   premiumBannerTitle: { fontSize: 16, fontFamily: "Outfit_700Bold" },
   premiumBannerDesc: { fontSize: 12, fontFamily: "Outfit_400Regular", opacity: 0.7 },
+  cancelPremiumBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  cancelPremiumBtnText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  cancelModalBox: {
+    width: "100%",
+    maxWidth: 360,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    padding: 28,
+    alignItems: "center",
+  },
+  cancelModalTitle: { fontSize: 20, fontFamily: "Outfit_700Bold", marginBottom: 8, textAlign: "center" },
+  cancelModalDesc: { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", marginBottom: 20, lineHeight: 20 },
+  cancelCodeBox: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    marginBottom: 16,
+  },
+  cancelCodeText: { fontSize: 28, fontFamily: "Outfit_700Bold", letterSpacing: 6 },
+  cancelCodeInput: {
+    width: "100%",
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 20,
+    fontFamily: "Outfit_700Bold",
+    textAlign: "center",
+    letterSpacing: 4,
+    marginBottom: 24,
+  },
+  cancelModalBtns: { flexDirection: "row", gap: 12, width: "100%" },
+  cancelModalDismiss: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    alignItems: "center",
+  },
+  cancelModalDismissText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
+  cancelModalConfirm: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  cancelModalConfirmText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
   dbSection: { paddingHorizontal: 20, marginBottom: 20 },
   menuSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
   menuItem: {

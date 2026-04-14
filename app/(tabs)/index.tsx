@@ -23,16 +23,27 @@ import PokeBackground from "@/components/PokeBackground";
 
 // ── Language detection ────────────────────────────────────────────────────────
 
-type LangId = "english" | "japanese" | "korean" | "chinese";
+type LangId = "english" | "japanese" | "korean" | "chinese" | "other";
+
+// Non-TCG set ID fragments — these are card games / collectibles that aren't
+// part of the standard Pokémon TCG (e.g. Old Maid, Mengka, TopSun candy cards)
+const NON_TCG_PATTERNS = ["topsun", "oldmaid", "babanuki", "mengka", "hanafuda"];
 
 function detectLanguage(setId: string): LangId {
   const id = setId.toLowerCase();
+  // Non-TCG check first (takes priority over language detection)
+  if (NON_TCG_PATTERNS.some((p) => id.includes(p))) return "other";
   // Suffix-based detection (most reliable)
   if (id.includes("_ja")) return "japanese";
   if (id.includes("_ko")) return "korean";
   if (id.includes("_zh") || id.includes("_cn")) return "chinese";
   // me*, rsv*, zsv* sets have English names — keep them in English
   return "english";
+}
+
+function isNonTcgSeries(series: string): boolean {
+  const s = (series || "").toLowerCase();
+  return s === "non-tcg" || s === "other" || s === "card game" || s === "non tcg";
 }
 
 interface Language {
@@ -76,6 +87,14 @@ const LANGUAGES: Language[] = [
     flag: "🇨🇳",
     gradient: ["#DE2910", "#9A1C0A"],
     noDataMsg: "Chinese card sets are not yet available in the database.\n\nUse the Scanner tab to identify any Chinese card — the AI will recognise it and show you its details and UK pricing.",
+  },
+  {
+    id: "other",
+    label: "Non-TCG",
+    native: "Other Games",
+    flag: "🎴",
+    gradient: ["#4A235A", "#2C1040"],
+    noDataMsg: "No non-TCG card sets are currently in the database.\n\nThis section includes products like Old Maid, TopSun candy cards, Mengka, and other Pokémon-branded card games that are not part of the official TCG.",
   },
 ];
 
@@ -194,9 +213,11 @@ export default function BrowseScreen() {
 
   // Group sets by language — prefer API-provided language field, fall back to ID detection
   const setsByLang = useMemo(() => {
-    const groups: Record<LangId, PokemonSet[]> = { english: [], japanese: [], korean: [], chinese: [] };
+    const groups: Record<LangId, PokemonSet[]> = { english: [], japanese: [], korean: [], chinese: [], other: [] };
     (sets || []).forEach((s) => {
-      const lang: LangId = (s.language as LangId) || detectLanguage(s.id);
+      let lang: LangId = (s.language as LangId) || detectLanguage(s.id);
+      // Also catch non-TCG via the series field
+      if (lang !== "other" && isNonTcgSeries(s.series || "")) lang = "other";
       groups[lang].push(s);
     });
     return groups;
