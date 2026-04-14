@@ -143,9 +143,9 @@ export default function PremiumScreen() {
   }
 
   const monthlyPrice = "£4.99";
-  const annualPrice  = "£39.99";
-  const annualMonthly = "£3.33";
-  const annualSaving  = "Save 33%";
+  const annualPrice  = "£49.99";
+  const annualMonthly = "£4.17";
+  const annualSaving  = "Save 17%";
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
