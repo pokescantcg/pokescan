@@ -198,76 +198,75 @@ function parseCardsFromSetHtml(html: string, setId: string): ScrydexCard[] {
   const seen = new Set<string>();
 
   /**
-   * Each card on the listing page looks like:
-   *   <a href="/pokemon/cards/yanmega-ex/sv10-3?variant=holofoil">
-   *     <div data-id="sv10-3">
-   *       <img src="https://images.scrydex.com/pokemon/sv10-3/medium" />
-   *       <span>Yanmega ex #3</span>
-   *       <span>$1.23</span>
+   * Real Scrydex HTML structure (verified against live site):
+   *
+   *   <a href="/pokemon/cards/venusaur-ex/sv7-1?variant=holofoil">
+   *     <div class="flex flex-col..." data-id="sv7-1">
+   *       ...sparkle divs...
+   *       <img ... src="https://images.scrydex.com/pokemon/sv7-1/medium" />
+   *       <div class="w-full...">
+   *         <span class="text-body-12 text-white text-center">Venusaur ex #1</span>
+   *         <span class="text-center"></span>
+   *         <div class="flex flex-row...">
+   *           <span class="text-body-12 font-bold text-center">$0.96</span>
+   *         </div>
+   *       </div>
    *     </div>
    *   </a>
+   *
+   * Strategy: find each card href, then extract data from the next ~1500 chars.
+   * No longer relying on a single chained regex — each field extracted independently.
    */
-  const cardRe =
-    /href="\/pokemon\/cards\/([^/]+)\/([^?"\s]+)\?variant=([^"]+)"[\s\S]*?data-id="([^"]+)"[\s\S]*?src="(https:\/\/images\.scrydex\.com\/pokemon\/[^"]+\/medium)"[\s\S]*?<span[^>]*>([^<]+)<\/span>[\s\S]*?<span[^>]*>([^<]*)<\/span>[\s\S]*?<span[^>]*>\$([\d.]+)<\/span>/g;
-
+  const linkRe = /href="\/pokemon\/cards\/([^/]+)\/([^?"]+)\?variant=[^"]+"/g;
   let m: RegExpExecArray | null;
-  while ((m = cardRe.exec(html)) !== null) {
-    const cardSlug = m[1];
-    const scrydexId = m[2]; // e.g. "sv10-3"
-    const imgMedium = m[5];
-    const nameWithNum = m[6].trim(); // e.g. "Yanmega ex #3"
-    const priceStr = m[8];
 
-    if (seen.has(scrydexId)) continue;
-    seen.add(scrydexId);
+  while ((m = linkRe.exec(html)) !== null) {
+    const cardSlug = m[1]; // e.g. "venusaur-ex"
+    const cardId   = m[2]; // e.g. "sv7-1"
 
-    // Parse name and number from "Yanmega ex #3"
-    const nameNumM = nameWithNum.match(/^(.+?)\s*#(\S+)$/);
-    const name = nameNumM
-      ? htmlDecode(nameNumM[1].trim())
-      : htmlDecode(slugToName(cardSlug));
-    const number = nameNumM ? nameNumM[2] : scrydexId.replace(`${setId}-`, "");
+    if (seen.has(cardId)) continue;
+    seen.add(cardId);
 
-    const imageLarge = imgMedium.replace("/medium", "/large");
-    const priceUsd = priceStr ? parseFloat(priceStr) : null;
+    // Skip cards that don't belong to this set (guards against cross-set links)
+    if (!cardId.startsWith(`${setId}-`)) continue;
 
-    cards.push({
-      id: scrydexId,
-      setId,
-      name,
-      number,
-      imageSmall: imgMedium,
-      imageLarge,
-      priceUsd,
-    });
-  }
+    // Extract the local block for this card (1500 chars covers the full card tile)
+    const block = html.substring(m.index, m.index + 1500);
 
-  // Fallback: simpler pattern when the rich block doesn't match
-  if (cards.length === 0) {
-    const linkRe =
-      /href="\/pokemon\/cards\/([^/]+)\/([^?"\s]+)\?variant=[^"]+"/g;
-    while ((m = linkRe.exec(html)) !== null) {
-      const cardSlug = m[1];
-      const scrydexId = m[2];
-      if (seen.has(scrydexId)) continue;
-      seen.add(scrydexId);
+    // ── Image URL ──────────────────────────────────────────────────────────
+    const imgM = block.match(
+      /src="(https:\/\/images\.scrydex\.com\/pokemon\/[^"]+\/medium)"/
+    );
+    const imageSmall = imgM
+      ? imgM[1]
+      : `${IMAGE_BASE}/${cardId}/medium`;
+    const imageLarge = imageSmall.replace("/medium", "/large");
 
-      const numberM = scrydexId.match(new RegExp(`^${setId}-(.+)$`));
-      const number = numberM ? numberM[1] : scrydexId;
-      const imgSmall = `${IMAGE_BASE}/${scrydexId}/medium`;
-      const imgLarge = `${IMAGE_BASE}/${scrydexId}/large`;
-      const name = htmlDecode(slugToName(cardSlug));
+    // ── Name + number ──────────────────────────────────────────────────────
+    // The name span has classes "text-body-12 text-white text-center"
+    // Content: "Venusaur ex #1"  or  "Pikachu #25"  etc.
+    let name   = htmlDecode(slugToName(cardSlug));
+    let number = cardId.replace(`${setId}-`, "");
 
-      cards.push({
-        id: scrydexId,
-        setId,
-        name,
-        number,
-        imageSmall: imgSmall,
-        imageLarge: imgLarge,
-        priceUsd: null,
-      });
+    const nameM = block.match(
+      /class="[^"]*text-body-12[^"]*text-white[^"]*"[^>]*>([^<]+)<\/span>/
+    );
+    if (nameM) {
+      const raw     = htmlDecode(nameM[1].trim());
+      const numMatch = raw.match(/^(.+?)\s*#(\S+)$/);
+      if (numMatch) {
+        name   = numMatch[1].trim();
+        number = numMatch[2];
+      } else {
+        name = raw;
+      }
     }
+
+    // ── Price ──────────────────────────────────────────────────────────────
+    const priceM  = block.match(/\$(\d+\.\d+)/);
+    const priceUsd = priceM ? parseFloat(priceM[1]) : null;
+
+    cards.push({ id: cardId, setId, name, number, imageSmall, imageLarge, priceUsd });
   }
 
   return cards;
@@ -354,26 +353,43 @@ export async function runScrydexSync(
     const allSets = [...allSetsMap.values()];
     report({ setsTotal: allSets.length, message: `Found ${allSets.length} sets on scrydex.com` });
 
-    // ── Phase 2: Get existing set IDs from DB ─────────────────────────────
+    // ── Phase 2: Get existing sets and their card counts from DB ─────────
     const existingSetRows = await pool.query(
-      "SELECT id FROM pokemon_sets"
+      `SELECT s.id,
+              COUNT(c.id) AS card_count
+       FROM pokemon_sets s
+       LEFT JOIN pokemon_cards c ON c.set_id = s.id
+       GROUP BY s.id`
     );
-    const existingSetIds = new Set<string>(
-      existingSetRows.rows.map((r: any) => r.id)
+    const existingSetIds    = new Set<string>();
+    const setsWithCards     = new Set<string>(); // sets that already have cards
+    for (const row of existingSetRows.rows as any[]) {
+      existingSetIds.add(row.id);
+      if (parseInt(row.card_count, 10) > 0) setsWithCards.add(row.id);
+    }
+
+    // Only process sets that are either new OR have no cards yet.
+    // Skip sets that already have cards — the TCG API seeder already covered those.
+    const setsToProcess = allSets.filter(
+      (s) => !existingSetIds.has(s.id) || !setsWithCards.has(s.id)
     );
+
+    report({
+      setsTotal: setsToProcess.length,
+      message: `Found ${allSets.length} sets on Scrydex — ${setsToProcess.length} need processing (new or empty).`,
+    });
 
     // ── Phase 3: Process each set ─────────────────────────────────────────
     report({ phase: "cards" });
 
-    for (const set of allSets) {
+    for (const set of setsToProcess) {
       report({ currentSet: set.name, setsProcessed: progress.setsProcessed });
 
-      let setId = set.id;
+      const setId = set.id;
 
       // Insert the set if it's missing from our DB
       if (!existingSetIds.has(setId)) {
         try {
-          // Fetch detailed info for the set (accurate name, series, release date)
           await delay(DELAY_MS);
           const detail = await scrapeScrydexSetDetail(set.slug, set.id);
 
@@ -390,7 +406,7 @@ export async function runScrydexSync(
               detail.releaseDate || null,
               detail.logoUrl,
               detail.symbolUrl,
-              detail.logoUrl, // image_url falls back to logo
+              detail.logoUrl,
             ]
           );
           existingSetIds.add(setId);
@@ -400,7 +416,7 @@ export async function runScrydexSync(
         }
       }
 
-      // Fetch cards for this set
+      // Fetch cards for this set from Scrydex
       try {
         await delay(DELAY_MS);
         const cards = await scrapeScrydexSetCards(set.slug, setId);
@@ -424,28 +440,21 @@ export async function runScrydexSync(
           progress.cardsProcessed++;
 
           if (!existingCards.has(card.id)) {
-            // Card doesn't exist — insert it if its set is in the DB
-            if (!existingSetIds.has(setId)) continue; // set failed to insert
+            // New card — insert if its set is in the DB
+            if (!existingSetIds.has(setId)) continue;
             try {
               await pool.query(
                 `INSERT INTO pokemon_cards (id, set_id, name, number, image_small, image_large)
                  VALUES ($1, $2, $3, $4, $5, $6)
                  ON CONFLICT (id) DO NOTHING`,
-                [
-                  card.id,
-                  card.setId,
-                  card.name,
-                  card.number,
-                  card.imageSmall,
-                  card.imageLarge,
-                ]
+                [card.id, card.setId, card.name, card.number, card.imageSmall, card.imageLarge]
               );
               progress.cardsAdded++;
             } catch (err: any) {
-              // ignore individual card errors (e.g. FK violation)
+              // ignore FK violations etc.
             }
           } else {
-            // Card exists — update images if they're missing
+            // Card exists — fill in missing images only
             const existingImg = existingCards.get(card.id);
             if (!existingImg || existingImg === "") {
               try {
@@ -465,10 +474,7 @@ export async function runScrydexSync(
 
         report({ setsProcessed: progress.setsProcessed + 1 });
       } catch (err: any) {
-        console.error(
-          `[Scrydex] Failed to process cards for ${setId}:`,
-          err.message
-        );
+        console.error(`[Scrydex] Failed to process cards for ${setId}:`, err.message);
         report({ setsProcessed: progress.setsProcessed + 1 });
       }
     }

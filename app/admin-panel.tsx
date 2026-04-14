@@ -686,7 +686,10 @@ export default function AdminPanelScreen() {
     scrydexSetCount: number;
     dbSetCount: number;
     newSetsFound: number;
+    emptySetsFound: number;
+    setsToProcess: number;
     newSets: { id: string; name: string; series: string }[];
+    emptySets: { id: string; name: string; series: string }[];
   };
   type SyncProgress = {
     phase: string;
@@ -729,7 +732,7 @@ export default function AdminPanelScreen() {
   const handleSyncStart = useCallback(() => {
     Alert.alert(
       "Run Scrydex Sync",
-      `This will add up to ${dbPreview?.newSetsFound ?? "?"} new set(s) and their cards to the database. This may take several minutes. Continue?`,
+      `This will process ${dbPreview?.setsToProcess ?? "?"} set(s) — ${dbPreview?.newSetsFound ?? 0} new and ${dbPreview?.emptySetsFound ?? 0} existing but empty. Cards will be added to each. This may take several minutes. Continue?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -1291,8 +1294,8 @@ export default function AdminPanelScreen() {
               <View style={{ gap: 10, marginBottom: 14 }}>
                 <View style={{ flexDirection: "row", gap: 10 }}>
                   <View style={[{ flex: 1, backgroundColor: colors.background, borderRadius: 12, padding: 12, alignItems: "center", gap: 4, borderWidth: 1, borderColor: colors.borderLight }]}>
-                    <Text style={{ fontSize: 22, fontFamily: "Outfit_700Bold", color: "#CC0000" }}>{dbPreview.newSetsFound}</Text>
-                    <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>New Sets</Text>
+                    <Text style={{ fontSize: 22, fontFamily: "Outfit_700Bold", color: "#CC0000" }}>{dbPreview.setsToProcess}</Text>
+                    <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>Need Sync</Text>
                   </View>
                   <View style={[{ flex: 1, backgroundColor: colors.background, borderRadius: 12, padding: 12, alignItems: "center", gap: 4, borderWidth: 1, borderColor: colors.borderLight }]}>
                     <Text style={{ fontSize: 22, fontFamily: "Outfit_700Bold", color: colors.text }}>{dbPreview.dbSetCount}</Text>
@@ -1309,6 +1312,20 @@ export default function AdminPanelScreen() {
                     {dbPreview.newSets.map(s => (
                       <View key={s.id} style={[{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.borderLight }]}>
                         <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#CC0000" }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text }}>{s.name}</Text>
+                          <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>{s.id} · {s.series}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {dbPreview.emptySets.length > 0 && (
+                  <View style={{ gap: 6 }}>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textMuted, letterSpacing: 0.8 }}>EXISTING SETS MISSING CARDS</Text>
+                    {dbPreview.emptySets.map(s => (
+                      <View key={s.id} style={[{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.background, borderRadius: 10, padding: 10, borderWidth: 1, borderColor: colors.borderLight }]}>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.pokemonYellow }} />
                         <View style={{ flex: 1 }}>
                           <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text }}>{s.name}</Text>
                           <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>{s.id} · {s.series}</Text>

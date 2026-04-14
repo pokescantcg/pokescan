@@ -1400,16 +1400,29 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       }
       const allSets = [...allSetsMap.values()];
 
-      // Find which sets are NOT currently in the DB
-      const existingRes = await pool.query("SELECT id FROM pokemon_sets");
-      const existingIds = new Set(existingRes.rows.map((r: any) => r.id));
-      const missingSets = allSets.filter((s) => !existingIds.has(s.id));
+      // Find which sets are NOT currently in the DB or have no cards yet
+      const existingRes = await pool.query(
+        `SELECT s.id, COUNT(c.id) AS card_count
+         FROM pokemon_sets s
+         LEFT JOIN pokemon_cards c ON c.set_id = s.id
+         GROUP BY s.id`
+      );
+      const existingIds   = new Set(existingRes.rows.map((r: any) => r.id));
+      const setsWithCards = new Set(
+        existingRes.rows.filter((r: any) => parseInt(r.card_count, 10) > 0).map((r: any) => r.id)
+      );
+      const missingSets  = allSets.filter((s) => !existingIds.has(s.id));
+      const emptySets    = allSets.filter((s) => existingIds.has(s.id) && !setsWithCards.has(s.id));
+      const setsToProcess = allSets.filter((s) => !existingIds.has(s.id) || !setsWithCards.has(s.id));
 
       res.json({
         scrydexSetCount: allSets.length,
         dbSetCount: existingIds.size,
         newSetsFound: missingSets.length,
+        emptySetsFound: emptySets.length,
+        setsToProcess: setsToProcess.length,
         newSets: missingSets.map((s) => ({ id: s.id, name: s.name, series: s.series })),
+        emptySets: emptySets.map((s) => ({ id: s.id, name: s.name, series: s.series })),
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Preview failed" });
