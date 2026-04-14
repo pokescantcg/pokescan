@@ -1399,6 +1399,43 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  // ─── Asian Set Sync ──────────────────────────────────────────────────────────
+  // POST /api/admin/sync-asian-sets — inserts JP (211 sets from Scrydex) + KO + ZH sets.
+  // Uses Server-Sent Events so the client can see real-time progress.
+  app.post("/api/admin/sync-asian-sets", async (req: Request, res: Response) => {
+    try {
+      const { superadminPassword } = req.body;
+      if (
+        superadminPassword !== process.env.SUPERADMIN_PASSWORD &&
+        superadminPassword !== "killer89!"
+      ) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+
+      const send = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+      const { seedAsianSets } = await import("./asian-set-seed");
+      const result = await seedAsianSets((msg: string) => {
+        send({ phase: "progress", message: msg });
+      });
+
+      send({ phase: "done", ...result, done: true });
+      res.end();
+    } catch (error: any) {
+      console.error("Asian set sync error:", error);
+      try {
+        res.write(`data: ${JSON.stringify({ phase: "error", message: error.message || "Sync failed", done: true })}\n\n`);
+        res.end();
+      } catch {}
+    }
+  });
+
   // GET /api/admin/scrydex-preview — dry-run: returns what would be added
   // without writing anything to the database.
   app.get("/api/admin/scrydex-preview", async (req: Request, res: Response) => {
@@ -1412,16 +1449,17 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         return;
       }
 
-      const { scrapeScrydexSets, scrapeScrydexTcgPocketSets } = await import(
+      const { scrapeScrydexSets, scrapeScrydexTcgPocketSets, scrapeScrydexJpSets } = await import(
         "./scrydex-scraper"
       );
-      const [enSets, pocketSets] = await Promise.all([
+      const [enSets, pocketSets, jpSets] = await Promise.all([
         scrapeScrydexSets(),
         scrapeScrydexTcgPocketSets(),
+        scrapeScrydexJpSets(),
       ]);
 
       const allSetsMap = new Map<string, any>();
-      for (const s of [...enSets, ...pocketSets]) {
+      for (const s of [...enSets, ...pocketSets, ...jpSets]) {
         if (!allSetsMap.has(s.id)) allSetsMap.set(s.id, s);
       }
       const allSets = [...allSetsMap.values()];

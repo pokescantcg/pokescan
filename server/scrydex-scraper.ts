@@ -107,6 +107,12 @@ export async function scrapeScrydexTcgPocketSets(): Promise<ScrydexSet[]> {
   return parseSetsFromHtml(html);
 }
 
+/** Fetches all Japanese expansion sets from the Scrydex JP page */
+export async function scrapeScrydexJpSets(): Promise<ScrydexSet[]> {
+  const html = await fetchPage("/pokemon/jp/expansions");
+  return parseSetsFromHtml(html);
+}
+
 function parseSetsFromHtml(html: string): ScrydexSet[] {
   const sets: ScrydexSet[] = [];
   const seen = new Set<string>();
@@ -340,18 +346,19 @@ export async function runScrydexSync(
     // ── Phase 1: Fetch all sets from Scrydex ──────────────────────────────
     report({ phase: "sets", message: "Fetching set list from scrydex.com..." });
 
-    const [enSets, pocketSets] = await Promise.all([
+    const [enSets, pocketSets, jpSets] = await Promise.all([
       scrapeScrydexSets(),
       scrapeScrydexTcgPocketSets(),
+      scrapeScrydexJpSets(),
     ]);
 
-    // Merge and deduplicate by ID
+    // Merge and deduplicate by ID (JP sets are added last so EN names win for shared IDs)
     const allSetsMap = new Map<string, ScrydexSet>();
-    for (const s of [...enSets, ...pocketSets]) {
+    for (const s of [...enSets, ...pocketSets, ...jpSets]) {
       if (!allSetsMap.has(s.id)) allSetsMap.set(s.id, s);
     }
     const allSets = [...allSetsMap.values()];
-    report({ setsTotal: allSets.length, message: `Found ${allSets.length} sets on scrydex.com` });
+    report({ setsTotal: allSets.length, message: `Found ${allSets.length} sets on scrydex.com (EN + TCG Pocket + JP)` });
 
     // ── Phase 2: Get existing sets and their card counts from DB ─────────
     const existingSetRows = await pool.query(

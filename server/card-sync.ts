@@ -699,6 +699,13 @@ export async function startSyncService(): Promise<void> {
       const totalSets = totalSetRows[0]?.count ?? 0;
       const seededSets = seededSetRows[0]?.count ?? 0;
 
+      // Always seed Asian sets (JP/KO/ZH) in background — fast insert, skips existing
+      import("./asian-set-seed").then(({ seedAsianSets }) => {
+        seedAsianSets().then(r =>
+          console.log(`[AsianSeed] Done — inserted ${r.inserted}, skipped ${r.skipped}, errors ${r.errors}`)
+        ).catch(console.error);
+      }).catch(console.error);
+
       if (totalSets === 0) {
         console.log("[CardSync] DB empty — seeding sets first...");
         await syncAllSets();

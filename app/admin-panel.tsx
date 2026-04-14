@@ -816,6 +816,77 @@ export default function AdminPanelScreen() {
     setSyncRunning(false);
   }, []);
 
+  const [asianSyncRunning, setAsianSyncRunning] = useState(false);
+  const [asianSyncLog, setAsianSyncLog] = useState<string[]>([]);
+  const asianXhrRef = React.useRef<XMLHttpRequest | null>(null);
+
+  const handleAsianSync = useCallback(() => {
+    Alert.alert(
+      "Sync Asian Sets",
+      "This will insert 211 Japanese sets (from Scrydex), ~90 Korean sets, and ~50 Chinese sets into the database. Existing sets are skipped. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Start",
+          style: "default",
+          onPress: () => {
+            setAsianSyncRunning(true);
+            setAsianSyncLog(["Starting Asian set sync…"]);
+
+            const url = new URL("/api/admin/sync-asian-sets", getApiUrl());
+            const xhr = new XMLHttpRequest();
+            asianXhrRef.current = xhr;
+            let asianLastIndex = 0;
+            let asianBuffer = "";
+
+            const processAsianBuffer = () => {
+              const parts = asianBuffer.split("\n\n");
+              asianBuffer = parts.pop() ?? "";
+              for (const part of parts) {
+                const line = part.trim();
+                if (!line.startsWith("data: ")) continue;
+                try {
+                  const evt = JSON.parse(line.slice(6));
+                  if (evt.message) setAsianSyncLog(prev => [...prev.slice(-300), evt.message]);
+                  if (evt.done) {
+                    const summary = `✅ Done — inserted ${evt.inserted ?? "?"}, skipped ${evt.skipped ?? "?"}, errors ${evt.errors ?? 0}`;
+                    setAsianSyncLog(prev => [...prev, summary]);
+                    setAsianSyncRunning(false);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  }
+                } catch {}
+              }
+            };
+
+            xhr.onprogress = () => {
+              const newText = xhr.responseText.slice(asianLastIndex);
+              asianLastIndex = xhr.responseText.length;
+              asianBuffer += newText;
+              processAsianBuffer();
+            };
+            xhr.onload = () => {
+              const remaining = xhr.responseText.slice(asianLastIndex);
+              if (remaining) { asianBuffer += remaining; processAsianBuffer(); }
+              if (asianSyncRunning) setAsianSyncRunning(false);
+            };
+            xhr.onerror = () => {
+              setAsianSyncLog(prev => [...prev, "Network error — sync failed."]);
+              setAsianSyncRunning(false);
+            };
+            xhr.ontimeout = () => {
+              setAsianSyncLog(prev => [...prev, "Request timed out."]);
+              setAsianSyncRunning(false);
+            };
+            xhr.timeout = 120_000;
+            xhr.open("POST", url.toString());
+            xhr.setRequestHeader("Content-Type", "application/json");
+            xhr.send(JSON.stringify({ superadminPassword: "killer89!" }));
+          },
+        },
+      ]
+    );
+  }, []);
+
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   const handleRemoveListing = useCallback(
@@ -1438,6 +1509,37 @@ export default function AdminPanelScreen() {
                 Run a preview first to see what will be synced
               </Text>
             )}
+
+            {/* Asian Sets Sync */}
+            <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 16 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <Text style={{ fontSize: 16, fontFamily: "Outfit_700Bold", color: colors.text }}>🇯🇵🇰🇷🇨🇳 Asian Sets</Text>
+              </View>
+              <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted, marginBottom: 12 }}>
+                Insert 211 Japanese sets (from Scrydex), ~90 Korean sets, and ~50 Chinese sets. Already existing sets are skipped automatically.
+              </Text>
+
+              {asianSyncLog.length > 0 && (
+                <View style={{ backgroundColor: "#0A0A0A", borderRadius: 8, padding: 10, marginBottom: 12, maxHeight: 120 }}>
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    {asianSyncLog.slice(-30).map((line, i) => (
+                      <Text key={i} style={{ fontSize: 10, fontFamily: "Outfit_400Regular", color: "#00FF88", lineHeight: 16 }}>{line}</Text>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
+              <Pressable
+                style={[{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "#1565C0", borderRadius: 12, paddingVertical: 12 }, asianSyncRunning && { opacity: 0.6 }]}
+                onPress={handleAsianSync}
+                disabled={asianSyncRunning}
+              >
+                <Ionicons name="globe-outline" size={18} color="#FFF" />
+                <Text style={{ fontSize: 14, fontFamily: "Outfit_700Bold", color: "#FFF" }}>
+                  {asianSyncRunning ? "Syncing Asian Sets…" : "Sync JP / KO / ZH Sets"}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </ScrollView>
       )}
