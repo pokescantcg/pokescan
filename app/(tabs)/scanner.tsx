@@ -346,6 +346,8 @@ interface GradingResult {
   grade: number;
   label: string;
   breakdown: { centering: number; corners: number; edges: number; surface: number };
+  aiAssessed?: boolean;
+  aiNotes?: string | null;
 }
 
 const CONDITION_LEVELS = [
@@ -411,23 +413,96 @@ function ConditionRow({
 }
 
 function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useThemeColors>; isPremium: boolean }) {
+  const [gradeImage, setGradeImage] = useState<string | null>(null);
+  const [isAiGrading, setIsAiGrading] = useState(false);
+  const [result, setResult] = useState<GradingResult | null>(null);
+  const [showManual, setShowManual] = useState(false);
+  // Manual sliders
   const [centering, setCentering] = useState(0);
   const [cornerDamage, setCornerDamage] = useState(0);
   const [edgeDamage, setEdgeDamage] = useState(0);
   const [surfaceDamage, setSurfaceDamage] = useState(0);
-  const [result, setResult] = useState<GradingResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [manualLoading, setManualLoading] = useState(false);
 
   const resetAll = () => {
+    setGradeImage(null);
+    setResult(null);
     setCentering(0);
     setCornerDamage(0);
     setEdgeDamage(0);
     setSurfaceDamage(0);
-    setResult(null);
   };
 
-  const handleGrade = async () => {
-    setLoading(true);
+  const gradeFromImage = async (uri: string, base64Data: string | null | undefined) => {
+    setGradeImage(uri);
+    setResult(null);
+    setIsAiGrading(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      let base64: string;
+      if (base64Data) {
+        base64 = base64Data.startsWith("data:") ? base64Data : `data:image/jpeg;base64,${base64Data}`;
+      } else if (Platform.OS === "web") {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        const fileBase64 = await FileSystem.readAsStringAsync(uri, { encoding: "base64" as any });
+        base64 = `data:image/jpeg;base64,${fileBase64}`;
+      }
+
+      const url = new URL("/api/grade", getApiUrl());
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: base64 }),
+      });
+      const data: GradingResult = await res.json();
+      setResult(data);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert("Error", "AI grading failed. Please try again or use Manual Grade.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsAiGrading(false);
+    }
+  };
+
+  const handleCameraGrade = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Required", "Camera access is needed to grade cards.");
+        return;
+      }
+      const picked = await ImagePicker.launchCameraAsync({ quality: 0.7, allowsEditing: true, aspect: [3, 4], base64: true });
+      if (!picked.canceled && picked.assets[0]) {
+        gradeFromImage(picked.assets[0].uri, picked.assets[0].base64);
+      }
+    } catch (e) {
+      console.error("Camera error:", e);
+    }
+  };
+
+  const handleGalleryGrade = async () => {
+    try {
+      const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsEditing: true, aspect: [3, 4], base64: true });
+      if (!picked.canceled && picked.assets[0]) {
+        gradeFromImage(picked.assets[0].uri, picked.assets[0].base64);
+      }
+    } catch (e) {
+      console.error("Gallery error:", e);
+    }
+  };
+
+  const handleManualGrade = async () => {
+    setManualLoading(true);
     try {
       const url = new URL("/api/grade", getApiUrl());
       const res = await fetch(url.toString(), {
@@ -441,7 +516,7 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
     } catch {
       Alert.alert("Error", "Failed to calculate grade. Please try again.");
     } finally {
-      setLoading(false);
+      setManualLoading(false);
     }
   };
 
@@ -469,49 +544,74 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={gradingStyles.scrollContent}>
+
+      {/* ── Camera scan section ── */}
       <View style={[gradingStyles.card, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "50" }]}>
         <LinearGradient colors={[colors.pokemonRed + "12", "transparent"]} style={gradingStyles.cardGrad} />
 
         <View style={gradingStyles.cardHeader}>
           <View style={[gradingStyles.headerBadge, { backgroundColor: colors.pokemonRed + "20" }]}>
             <MaterialCommunityIcons name="certificate" size={16} color={colors.pokemonRed} />
-            <Text style={[gradingStyles.headerBadgeText, { color: colors.pokemonRed }]}>Card Grader</Text>
+            <Text style={[gradingStyles.headerBadgeText, { color: colors.pokemonRed }]}>AI Card Grader</Text>
           </View>
-          <Pressable onPress={resetAll}>
-            <Text style={[gradingStyles.resetText, { color: colors.textMuted }]}>Reset</Text>
-          </Pressable>
+          {(gradeImage || result) && (
+            <Pressable onPress={resetAll}>
+              <Text style={[gradingStyles.resetText, { color: colors.textMuted }]}>Reset</Text>
+            </Pressable>
+          )}
         </View>
 
         <Text style={[gradingStyles.cardHint, { color: colors.textMuted }]}>
-          Rate each condition from 0 (perfect) to 5 (severe damage)
+          Take a clear photo of your card — AI analyses centering, corners, edges & surface
         </Text>
 
-        <ConditionRow label="Centering" icon="resize" value={centering} onChange={setCentering} colors={colors} />
-        <ConditionRow label="Corners" icon="triangle" value={cornerDamage} onChange={setCornerDamage} colors={colors} />
-        <ConditionRow label="Edges" icon="remove" value={edgeDamage} onChange={setEdgeDamage} colors={colors} />
-        <ConditionRow label="Surface" icon="eye" value={surfaceDamage} onChange={setSurfaceDamage} colors={colors} />
-
-        <Pressable
-          style={({ pressed }) => [gradingStyles.gradeBtn, { opacity: pressed ? 0.85 : 1 }]}
-          onPress={handleGrade}
-          disabled={loading}
-        >
-          <LinearGradient colors={["#CC0000", "#8B0000"]} style={gradingStyles.gradeBtnInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-            {loading ? (
-              <ActivityIndicator color="#FFF" size="small" />
-            ) : (
-              <>
-                <MaterialCommunityIcons name="certificate-outline" size={20} color="#FFF" />
-                <Text style={gradingStyles.gradeBtnText}>Calculate Grade</Text>
-              </>
+        {/* Image preview */}
+        {gradeImage && (
+          <View style={gradingStyles.gradeImageWrap}>
+            <Image source={{ uri: gradeImage }} style={gradingStyles.gradeImage} contentFit="contain" />
+            {isAiGrading && (
+              <View style={gradingStyles.gradeImageOverlay}>
+                <ActivityIndicator color="#FFF" size="large" />
+                <Text style={gradingStyles.gradeImageOverlayText}>AI Analysing…</Text>
+              </View>
             )}
-          </LinearGradient>
-        </Pressable>
+          </View>
+        )}
+
+        {/* Camera / Gallery buttons */}
+        <View style={gradingStyles.scanBtns}>
+          <Pressable style={({ pressed }) => [gradingStyles.scanBtn, { opacity: pressed ? 0.85 : 1 }]} onPress={handleCameraGrade} disabled={isAiGrading}>
+            <LinearGradient colors={["#CC0000", "#8B0000"]} style={gradingStyles.scanBtnInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+              <Ionicons name="camera" size={22} color="#FFF" />
+              <Text style={gradingStyles.scanBtnText}>Scan Card</Text>
+            </LinearGradient>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [gradingStyles.scanBtn, { opacity: pressed ? 0.85 : 1 }]}
+            onPress={handleGalleryGrade}
+            disabled={isAiGrading}
+          >
+            <View style={[gradingStyles.scanBtnInner, { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.borderLight }]}>
+              <Ionicons name="images" size={22} color={colors.text} />
+              <Text style={[gradingStyles.scanBtnText, { color: colors.text }]}>Gallery</Text>
+            </View>
+          </Pressable>
+        </View>
       </View>
 
+      {/* ── Grade result ── */}
       {result && (
         <View style={[gradingStyles.resultCard, { backgroundColor: colors.card, borderColor: gradeColor(result.grade) + "80" }]}>
           <LinearGradient colors={[gradeColor(result.grade) + "18", "transparent"]} style={gradingStyles.cardGrad} />
+
+          {result.aiAssessed && (
+            <View style={[gradingStyles.aiBadgeRow]}>
+              <View style={[gradingStyles.aiBadge, { backgroundColor: colors.pokemonRed + "20" }]}>
+                <MaterialCommunityIcons name="robot" size={13} color={colors.pokemonRed} />
+                <Text style={[gradingStyles.aiBadgeText, { color: colors.pokemonRed }]}>AI Assessed</Text>
+              </View>
+            </View>
+          )}
 
           <View style={gradingStyles.gradeDisplay}>
             <Text style={[gradingStyles.gradeNumber, { color: gradeColor(result.grade) }]}>
@@ -537,12 +637,58 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
             ))}
           </View>
 
+          {result.aiNotes && (
+            <View style={[gradingStyles.aiNotes, { backgroundColor: colors.surface }]}>
+              <MaterialCommunityIcons name="robot" size={13} color={colors.textMuted} />
+              <Text style={[gradingStyles.aiNotesText, { color: colors.textMuted }]}>{result.aiNotes}</Text>
+            </View>
+          )}
+
           <View style={[gradingStyles.disclaimer, { backgroundColor: colors.surface }]}>
             <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
             <Text style={[gradingStyles.disclaimerText, { color: colors.textMuted }]}>
               This is an estimated grade only. Professional grading (PSA, BGS) may differ.
             </Text>
           </View>
+        </View>
+      )}
+
+      {/* ── Manual Grade toggle ── */}
+      <Pressable
+        style={[gradingStyles.manualToggle, { borderColor: colors.borderLight }]}
+        onPress={() => setShowManual(v => !v)}
+      >
+        <Ionicons name={showManual ? "chevron-up" : "chevron-down"} size={14} color={colors.textMuted} />
+        <Text style={[gradingStyles.manualToggleText, { color: colors.textMuted }]}>
+          {showManual ? "Hide Manual Grade" : "Manual Grade (no photo)"}
+        </Text>
+      </Pressable>
+
+      {showManual && (
+        <View style={[gradingStyles.card, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          <Text style={[gradingStyles.cardHint, { color: colors.textMuted }]}>
+            Rate each condition from 0 (perfect) to 5 (severe damage)
+          </Text>
+          <ConditionRow label="Centering" icon="resize" value={centering} onChange={setCentering} colors={colors} />
+          <ConditionRow label="Corners" icon="triangle" value={cornerDamage} onChange={setCornerDamage} colors={colors} />
+          <ConditionRow label="Edges" icon="remove" value={edgeDamage} onChange={setEdgeDamage} colors={colors} />
+          <ConditionRow label="Surface" icon="eye" value={surfaceDamage} onChange={setSurfaceDamage} colors={colors} />
+          <Pressable
+            style={({ pressed }) => [gradingStyles.gradeBtn, { opacity: pressed ? 0.85 : 1 }]}
+            onPress={handleManualGrade}
+            disabled={manualLoading}
+          >
+            <LinearGradient colors={["#CC0000", "#8B0000"]} style={gradingStyles.gradeBtnInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+              {manualLoading ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="certificate-outline" size={20} color="#FFF" />
+                  <Text style={gradingStyles.gradeBtnText}>Calculate Grade</Text>
+                </>
+              )}
+            </LinearGradient>
+          </Pressable>
         </View>
       )}
     </ScrollView>
@@ -587,6 +733,22 @@ const gradingStyles = StyleSheet.create({
   lockDesc: { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", lineHeight: 20 },
   lockBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
   lockBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#1A1A2E" },
+  // Camera-grading styles
+  gradeImageWrap: { borderRadius: 12, overflow: "hidden", height: 220, backgroundColor: "#000" },
+  gradeImage: { width: "100%", height: "100%" },
+  gradeImageOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", gap: 10 },
+  gradeImageOverlayText: { color: "#FFF", fontSize: 14, fontFamily: "Outfit_600SemiBold" },
+  scanBtns: { flexDirection: "row", gap: 12 },
+  scanBtn: { flex: 1 },
+  scanBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 14, gap: 8 },
+  scanBtnText: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+  aiBadgeRow: { flexDirection: "row" },
+  aiBadge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  aiBadgeText: { fontSize: 12, fontFamily: "Outfit_700Bold" },
+  aiNotes: { flexDirection: "row", alignItems: "flex-start", gap: 6, borderRadius: 8, padding: 10, marginTop: 8 },
+  aiNotesText: { flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", lineHeight: 16, fontStyle: "italic" },
+  manualToggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
+  manualToggleText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
 });
 
 export default function ScannerScreen() {

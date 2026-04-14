@@ -1741,12 +1741,57 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     res.json({ message: "Card reseed started in background — monitor server logs for progress.", running: true });
   });
 
-  app.post("/api/grade", async (req: Request, res: Response) => {
+  app.post("/api/grade", express.json({ limit: "10mb" }), async (req: Request, res: Response) => {
     try {
-      const { centering, cornerDamage, edgeDamage, surfaceDamage } = req.body;
+      const { centering, cornerDamage, edgeDamage, surfaceDamage, imageBase64 } = req.body;
+
+      if (imageBase64) {
+        // AI vision grading mode — analyse the card photo
+        const prompt = `You are a professional Pokémon TCG card grader. Analyse this card photo and score each of the four grading criteria on a scale of 0 to 5, where 0 = perfect condition and 5 = severe damage.
+
+Criteria:
+- centering: how off-center the print is on the card (0=perfectly centred, 5=severely off-centre)
+- cornerDamage: wear or fraying on any corner (0=sharp/pristine, 5=heavily worn/bent)
+- edgeDamage: nicks, chips, or roughness on any edge (0=clean, 5=severe chipping)
+- surfaceDamage: scratches, print lines, indentations or scuffs on front or back surface (0=flawless, 5=heavily scratched)
+
+Return ONLY valid JSON in exactly this format:
+{"centering":0,"cornerDamage":0,"edgeDamage":0,"surfaceDamage":0,"notes":"brief explanation"}`;
+
+        const aiRes = await openai.chat.completions.create({
+          model: "gpt-4o",
+          max_tokens: 200,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                { type: "image_url", image_url: { url: imageBase64, detail: "high" } },
+              ],
+            },
+          ],
+        });
+
+        const raw = aiRes.choices[0]?.message?.content?.trim() || "";
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("AI returned invalid response");
+        const parsed = JSON.parse(jsonMatch[0]);
+
+        const result = calculateGrade({
+          centering: Math.max(0, Math.min(5, parsed.centering ?? 0)),
+          cornerDamage: Math.max(0, Math.min(5, parsed.cornerDamage ?? 0)),
+          edgeDamage: Math.max(0, Math.min(5, parsed.edgeDamage ?? 0)),
+          surfaceDamage: Math.max(0, Math.min(5, parsed.surfaceDamage ?? 0)),
+        });
+
+        return res.json({ ...result, aiNotes: parsed.notes ?? null, aiAssessed: true });
+      }
+
+      // Manual mode — use the supplied slider values
       const result = calculateGrade({ centering, cornerDamage, edgeDamage, surfaceDamage });
       res.json(result);
     } catch (err) {
+      console.error("Grading error:", err);
       res.status(500).json({ error: "Grading failed" });
     }
   });
