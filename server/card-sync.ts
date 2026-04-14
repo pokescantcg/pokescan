@@ -706,6 +706,13 @@ export async function startSyncService(): Promise<void> {
         ).catch(console.error);
       }).catch(console.error);
 
+      // Always seed Non-TCG sets (Babanuki, Mengka, etc.) in background
+      import("./non-tcg-seed").then(({ seedNonTcgSets }) => {
+        seedNonTcgSets().then(r =>
+          console.log(`[NonTcgSeed] Done — inserted ${r.inserted}, skipped ${r.skipped}, errors ${r.errors}`)
+        ).catch(console.error);
+      }).catch(console.error);
+
       if (totalSets === 0) {
         console.log("[CardSync] DB empty — seeding sets first...");
         await syncAllSets();
