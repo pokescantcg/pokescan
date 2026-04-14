@@ -17,6 +17,12 @@ export interface DbUser {
   role: string;
   avatarUrl?: string | null;
   createdAt: string;
+  // Stripe subscription fields
+  stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
+  stripePriceId?: string | null;
+  subscriptionStatus?: string | null;
+  subscriptionPeriodEnd?: Date | string | null;
 }
 
 export interface IStorage {
@@ -142,6 +148,26 @@ export class PgStorage implements IStorage {
       sets.push(`mobile_number = $${idx++}`);
       values.push(fields.mobileNumber.trim());
     }
+    if ((fields as any).stripeCustomerId !== undefined) {
+      sets.push(`stripe_customer_id = $${idx++}`);
+      values.push((fields as any).stripeCustomerId);
+    }
+    if ((fields as any).stripeSubscriptionId !== undefined) {
+      sets.push(`stripe_subscription_id = $${idx++}`);
+      values.push((fields as any).stripeSubscriptionId);
+    }
+    if ((fields as any).stripePriceId !== undefined) {
+      sets.push(`stripe_price_id = $${idx++}`);
+      values.push((fields as any).stripePriceId);
+    }
+    if ((fields as any).subscriptionStatus !== undefined) {
+      sets.push(`subscription_status = $${idx++}`);
+      values.push((fields as any).subscriptionStatus);
+    }
+    if ((fields as any).subscriptionPeriodEnd !== undefined) {
+      sets.push(`subscription_period_end = $${idx++}`);
+      values.push((fields as any).subscriptionPeriodEnd);
+    }
 
     if (sets.length === 0) return this.getUserById(id);
 
@@ -202,6 +228,11 @@ function mapRow(row: any): DbUser {
     role: row.role,
     avatarUrl: row.avatar_url,
     createdAt: row.created_at?.toISOString?.() ?? row.created_at,
+    stripeCustomerId: row.stripe_customer_id ?? null,
+    stripeSubscriptionId: row.stripe_subscription_id ?? null,
+    stripePriceId: row.stripe_price_id ?? null,
+    subscriptionStatus: row.subscription_status ?? null,
+    subscriptionPeriodEnd: row.subscription_period_end ?? null,
   };
 }
 

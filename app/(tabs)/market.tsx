@@ -212,10 +212,13 @@ export default function MarketScreen() {
             <Text style={styles.premiumDesc}>
               Upgrade to Premium to list cards for trade or sale and browse marketplace listings from other collectors.
             </Text>
-            <View style={[styles.premiumBtn, { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(0,0,0,0.15)" }]}>
-              <Ionicons name="lock-closed" size={16} color="#000" />
-              <Text style={[styles.premiumBtnText, { color: "#000" }]}>Contact admin to unlock</Text>
-            </View>
+            <Pressable
+              style={[styles.premiumBtn, { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(0,0,0,0.20)" }]}
+              onPress={() => router.push("/premium")}
+            >
+              <MaterialCommunityIcons name="star-circle" size={18} color="#000" />
+              <Text style={[styles.premiumBtnText, { color: "#000" }]}>Upgrade to Premium</Text>
+            </Pressable>
           </LinearGradient>
 
           <View style={styles.premiumFeatures}>

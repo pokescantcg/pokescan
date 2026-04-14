@@ -16,6 +16,12 @@ export const pokescanUsers = pgTable("pokescan_users", {
   isPremium: boolean("is_premium").notNull().default(false),
   role: text("role").notNull().default("user"),
   avatarUrl: text("avatar_url"),
+  // Stripe subscription fields
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripePriceId: text("stripe_price_id"),
+  subscriptionStatus: text("subscription_status"),   // active | canceled | past_due | trialing
+  subscriptionPeriodEnd: timestamp("subscription_period_end", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
 });
 

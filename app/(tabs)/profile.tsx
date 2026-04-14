@@ -403,15 +403,19 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
         ) : !user.isPremium ? (
-          <View style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <MaterialCommunityIcons name="pokeball" size={24} color={colors.textMuted} />
+          <Pressable
+            style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "60" }]}
+            onPress={() => router.push("/premium")}
+          >
+            <MaterialCommunityIcons name="star-circle" size={24} color={colors.pokemonRed} />
             <View style={{ flex: 1 }}>
-              <Text style={[styles.premiumBannerTitle, { color: colors.textSecondary }]}>Premium Member</Text>
+              <Text style={[styles.premiumBannerTitle, { color: colors.pokemonRed }]}>Go Premium</Text>
               <Text style={[styles.premiumBannerDesc, { color: colors.textMuted }]}>
-                Contact an admin to unlock premium access
+                From £4.99/mo · Tap to unlock all features
               </Text>
             </View>
-          </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
         ) : null}
 
         <View style={styles.dbSection}>
