@@ -119,9 +119,8 @@ export async function dailyCheckin(userId: string): Promise<ScanQuota & { bonusE
     // Consecutive day — extend streak
     currentStreak = currentStreak + 1;
   } else {
-    // Missed a day — reset streak, lose all bonus pools
+    // Missed a day — reset streak only, bonus pools are kept until they naturally expire
     currentStreak = 1;
-    existingPools = [];
     streakReset = lastLogin !== null; // only flag reset if they had a streak
   }
 

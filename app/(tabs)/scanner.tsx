@@ -1305,7 +1305,7 @@ export default function ScannerScreen() {
             </Text>
             {streakModal?.reset && (
               <Text style={[streakStyles.resetNote, { color: colors.textMuted }]}>
-                Your previous streak was reset — missed a day. Starting fresh!
+                Your streak was reset — missed a day. Your existing bonus scans are still safe though!
               </Text>
             )}
             <Pressable
