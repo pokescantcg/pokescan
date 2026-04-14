@@ -480,7 +480,7 @@ function CreateUserModal({
     try {
       const { getApiUrl } = await import("@/lib/query-client");
       const base = getApiUrl();
-      const res = await fetch(`${base}/api/admin/create-user`, {
+      const res = await fetch(new URL("/api/admin/create-user", base).href, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -943,7 +943,7 @@ export default function AdminPanelScreen() {
       if (updates.password) {
         const { getApiUrl } = await import("@/lib/query-client");
         const base = getApiUrl();
-        const res = await fetch(`${base}/api/admin/edit-user`, {
+        const res = await fetch(new URL("/api/admin/edit-user", base).href, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
