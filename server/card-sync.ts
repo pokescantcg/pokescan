@@ -653,6 +653,32 @@ async function runFastCardSeed(): Promise<void> {
   console.log(`[CardSync] Fast card seed complete — ${totalInserted} cards in DB.`);
 }
 
+/** After TCG API seeding, fill any still-empty sets from Scrydex (Japanese, TCG Pocket, etc.) */
+async function runScrydexStartupSync(): Promise<void> {
+  try {
+    // Quick DB check before hitting Scrydex — skip if no sets are missing cards
+    const emptyRes = await db.execute(
+      sql`SELECT COUNT(*) AS cnt FROM pokemon_sets s
+          WHERE NOT EXISTS (SELECT 1 FROM pokemon_cards c WHERE c.set_id = s.id)`
+    );
+    const emptySets = parseInt((emptyRes.rows[0] as any)?.cnt ?? "0", 10);
+    if (emptySets === 0) {
+      console.log("[Scrydex] All sets have cards — skipping startup Scrydex sync.");
+      return;
+    }
+    console.log(`[Scrydex] ${emptySets} empty sets found — running Scrydex startup sync...`);
+    const { runScrydexSync } = await import("./scrydex-scraper");
+    const result = await runScrydexSync((p) => {
+      if (p.currentSet) {
+        console.log(`[Scrydex] [${p.setsProcessed}/${p.setsTotal}] ${p.currentSet} — +${p.cardsAdded} cards`);
+      }
+    });
+    console.log(`[Scrydex] Startup sync done — ${result.setsAdded} sets added, ${result.cardsAdded} cards added, ${result.cardsUpdated} images updated.`);
+  } catch (err: any) {
+    console.error("[Scrydex] Startup sync error:", err.message);
+  }
+}
+
 export async function startSyncService(): Promise<void> {
   console.log("[CardSync] Sync service starting...");
 
@@ -677,13 +703,19 @@ export async function startSyncService(): Promise<void> {
         console.log("[CardSync] DB empty — seeding sets first...");
         await syncAllSets();
         console.log("[CardSync] Sets seeded. Starting fast card seed in background...");
-        runFastCardSeed().catch(console.error);
+        await runFastCardSeed();
+        // After TCG API seeding, fill remaining empty sets from Scrydex
+        runScrydexStartupSync().catch(console.error);
       } else if (seededSets < totalSets) {
-        // Some sets still have 0 cards — seed them (resumes where it left off)
+        // Some sets still have 0 cards — seed from TCG API first, then Scrydex
         console.log(`[CardSync] ${seededSets}/${totalSets} sets have cards — seeding ${totalSets - seededSets} missing sets...`);
-        runFastCardSeed().catch(console.error);
+        await runFastCardSeed();
+        // After TCG API seeding, fill any that are still empty (non-TCG-API sets)
+        runScrydexStartupSync().catch(console.error);
       } else {
         console.log(`[CardSync] DB fully seeded: ${seededSets}/${totalSets} sets with cards — OK.`);
+        // Still run Scrydex sync in background to catch any new/empty sets
+        runScrydexStartupSync().catch(console.error);
       }
     } catch (err) {
       console.error("[CardSync] Auto-seed check failed:", err);
