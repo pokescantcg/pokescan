@@ -36,12 +36,9 @@ import { getSessionToken } from "@/lib/storage";
 import { useUser } from "@/lib/user-context";
 
 // ─── Stripe Price IDs ─────────────────────────────────────────────────────────
-// Replace these with the actual Price IDs from your Stripe dashboard.
-// Create two recurring prices in Stripe for a "PokeScan Premium" product:
-//   • £4.99/month → copy the "price_..." ID here
-//   • £39.99/year → copy the "price_..." ID here
-const STRIPE_PRICE_MONTHLY = "price_monthly_placeholder";  // TODO: replace
-const STRIPE_PRICE_ANNUAL  = "price_annual_placeholder";   // TODO: replace
+// Stripe Price IDs for PokeScan Premium recurring plans
+const STRIPE_PRICE_MONTHLY = "price_1TM7D8K7N6BNdayAPnuINUuU";
+const STRIPE_PRICE_ANNUAL  = "price_1TM7D8K7N6BNdayAB1PFakyH";
 
 // ─── Feature list ─────────────────────────────────────────────────────────────
 const FEATURES = [
