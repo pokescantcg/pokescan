@@ -32,7 +32,7 @@ import {
   pokescanMessages,
   pokescanReports,
 } from "@shared/schema";
-import { eq, desc, sql, ilike, or, and, ne } from "drizzle-orm";
+import { eq, desc, sql, ilike, or, and, ne, exists } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
 
 const openai = new OpenAI({
@@ -205,23 +205,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/pokemon/sets", async (_req: Request, res: Response) => {
     try {
-      const result = await pool.query(
-        `SELECT * FROM pokemon_sets
-         WHERE EXISTS (SELECT 1 FROM pokemon_cards WHERE pokemon_cards.set_id = pokemon_sets.id)
-         ORDER BY release_date DESC`
-      );
-      const dbSets = result.rows.map((row: any) => ({
-        id: row.id,
-        name: row.name,
-        series: row.series,
-        printedTotal: row.printed_total,
-        total: row.total,
-        releaseDate: row.release_date,
-        logoUrl: row.logo_url,
-        symbolUrl: row.symbol_url,
-        imageUrl: row.image_url,
-        syncedAt: row.synced_at,
-      })) as typeof pokemonSets.$inferSelect[];
+      const dbSets = await db
+        .select()
+        .from(pokemonSets)
+        .where(
+          exists(
+            db
+              .select({ id: pokemonCards.id })
+              .from(pokemonCards)
+              .where(eq(pokemonCards.setId, pokemonSets.id))
+          )
+        )
+        .orderBy(desc(pokemonSets.releaseDate));
       if (dbSets.length > 0) {
         res.json({ data: dbSets.map(dbSetToApiFormat), count: dbSets.length, source: "db" });
         return;
