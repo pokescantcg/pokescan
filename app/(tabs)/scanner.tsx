@@ -39,6 +39,13 @@ import {
   findCard,
 } from "@/lib/pokemon-api";
 
+function langFlag(lang: string): string {
+  if (lang === "Japanese") return "🇯🇵";
+  if (lang === "Korean") return "🇰🇷";
+  if (lang === "Chinese") return "🇨🇳";
+  return "🇬🇧";
+}
+
 function IdentificationCard({
   identification,
   colors,
@@ -122,6 +129,177 @@ function IdentificationCard({
     </View>
   );
 }
+
+// ─── AI Price Card (shown when no database match found) ───────────────────────
+
+function AIPriceCard({
+  identification,
+  pcvResults,
+  colors,
+  onEbayListings,
+  onEbaySold,
+}: {
+  identification: CardIdentification;
+  pcvResults: PCVCard[];
+  colors: ReturnType<typeof useThemeColors>;
+  onEbayListings: () => void;
+  onEbaySold: () => void;
+}) {
+  const isForeign = ["Japanese", "Korean", "Chinese"].includes(identification.language);
+  const flag = langFlag(identification.language);
+  const topPrice = pcvResults.length > 0 ? pcvResults[0].priceGBP : null;
+  const confidenceColor =
+    identification.confidence === "high"
+      ? colors.success
+      : identification.confidence === "medium"
+        ? colors.pokemonYellow
+        : colors.error;
+
+  return (
+    <View style={[aiPriceStyles.wrap, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "50" }]}>
+      <LinearGradient colors={[colors.pokemonRed + "14", "transparent"]} style={aiPriceStyles.gradient} />
+
+      {/* Header row */}
+      <View style={aiPriceStyles.headerRow}>
+        <View style={aiPriceStyles.badgeRow}>
+          <View style={[aiPriceStyles.aiBadge, { backgroundColor: colors.pokemonRed + "20" }]}>
+            <MaterialCommunityIcons name="robot" size={13} color={colors.pokemonRed} />
+            <Text style={[aiPriceStyles.aiBadgeText, { color: colors.pokemonRed }]}>AI Result</Text>
+          </View>
+          <View style={[aiPriceStyles.confBadge, { backgroundColor: confidenceColor }]}>
+            <Text style={aiPriceStyles.confBadgeText}>{identification.confidence}</Text>
+          </View>
+        </View>
+        {topPrice ? (
+          <Text style={[aiPriceStyles.priceText, { color: colors.success }]}>{formatGBP(topPrice)}</Text>
+        ) : (
+          <View style={[aiPriceStyles.noPriceBadge, { backgroundColor: colors.surface }]}>
+            <Text style={[aiPriceStyles.noPriceText, { color: colors.textMuted }]}>No UK price</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Card identity */}
+      <View style={aiPriceStyles.cardIdentity}>
+        <View style={aiPriceStyles.nameRow}>
+          <Text style={aiPriceStyles.flagEmoji}>{flag}</Text>
+          <Text style={[aiPriceStyles.cardName, { color: colors.text }]} numberOfLines={2}>
+            {identification.englishName}
+          </Text>
+        </View>
+        {isForeign && identification.originalName && identification.originalName !== identification.englishName && (
+          <Text style={[aiPriceStyles.originalName, { color: colors.textSecondary }]}>
+            {identification.originalName}
+          </Text>
+        )}
+        <Text style={[aiPriceStyles.setLine, { color: colors.textSecondary }]} numberOfLines={1}>
+          {identification.setName}
+          {identification.cardNumber ? `  ·  #${identification.cardNumber}` : ""}
+        </Text>
+
+        {/* Tags */}
+        <View style={aiPriceStyles.tagsRow}>
+          {identification.language && isForeign && (
+            <View style={[aiPriceStyles.tag, { backgroundColor: colors.pokemonBlue + "25" }]}>
+              <Text style={[aiPriceStyles.tagText, { color: colors.pokemonBlue }]}>{identification.language}</Text>
+            </View>
+          )}
+          {identification.rarity && (
+            <View style={[aiPriceStyles.tag, { backgroundColor: colors.pokemonYellow + "28" }]}>
+              <Text style={[aiPriceStyles.tagText, { color: colors.pokemonYellow }]}>{identification.rarity}</Text>
+            </View>
+          )}
+          {identification.holoType && identification.holoType !== "Non-Holo" && (
+            <View style={[aiPriceStyles.tag, { backgroundColor: colors.pokemonRed + "20" }]}>
+              <Text style={[aiPriceStyles.tagText, { color: colors.pokemonRed }]}>{identification.holoType}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* Price context note */}
+      {topPrice && pcvResults.length > 1 && (
+        <Text style={[aiPriceStyles.priceNote, { color: colors.textMuted }]}>
+          Best UK price from {pcvResults.length} variant{pcvResults.length > 1 ? "s" : ""} · tap eBay for live market prices
+        </Text>
+      )}
+      {!topPrice && (
+        <Text style={[aiPriceStyles.priceNote, { color: colors.textMuted }]}>
+          No UK database price found — use eBay UK below to check current market value
+        </Text>
+      )}
+
+      {/* eBay buttons */}
+      <View style={aiPriceStyles.ebayRow}>
+        <Pressable
+          style={({ pressed }) => [aiPriceStyles.ebayBtn, { backgroundColor: "#E53238", opacity: pressed ? 0.85 : 1 }]}
+          onPress={onEbayListings}
+        >
+          <Ionicons name="search" size={15} color="#FFF" />
+          <Text style={aiPriceStyles.ebayBtnText}>eBay Listings</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [aiPriceStyles.ebayBtn, { backgroundColor: "#0064D2", opacity: pressed ? 0.85 : 1 }]}
+          onPress={onEbaySold}
+        >
+          <Ionicons name="checkmark-done" size={15} color="#FFF" />
+          <Text style={aiPriceStyles.ebayBtnText}>Sold Items</Text>
+        </Pressable>
+      </View>
+
+      {/* No DB note */}
+      <View style={[aiPriceStyles.noDbNote, { backgroundColor: colors.surfaceElevated }]}>
+        <Ionicons name="information-circle-outline" size={13} color={colors.textMuted} />
+        <Text style={[aiPriceStyles.noDbNoteText, { color: colors.textMuted }]}>
+          Card not found in our database — results are AI-identified only
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const aiPriceStyles = StyleSheet.create({
+  wrap: { borderRadius: 16, borderWidth: 1.5, padding: 14, gap: 12, overflow: "hidden", marginBottom: 12 },
+  gradient: { position: "absolute", top: 0, left: 0, right: 0, height: 80 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  badgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  aiBadge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  aiBadgeText: { fontSize: 11, fontFamily: "Outfit_700Bold" },
+  confBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
+  confBadgeText: { fontSize: 11, fontFamily: "Outfit_700Bold", color: "#FFF", textTransform: "capitalize" },
+  priceText: { fontSize: 22, fontFamily: "Outfit_700Bold" },
+  noPriceBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  noPriceText: { fontSize: 12, fontFamily: "Outfit_500Medium" },
+  cardIdentity: { gap: 4 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  flagEmoji: { fontSize: 22, lineHeight: 28 },
+  cardName: { fontSize: 20, fontFamily: "Outfit_700Bold", flex: 1 },
+  originalName: { fontSize: 13, fontFamily: "Outfit_400Regular", marginLeft: 30, fontStyle: "italic" },
+  setLine: { fontSize: 13, fontFamily: "Outfit_500Medium", marginLeft: 30 },
+  tagsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginLeft: 30, marginTop: 4 },
+  tag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  tagText: { fontSize: 11, fontFamily: "Outfit_700Bold" },
+  priceNote: { fontSize: 11, fontFamily: "Outfit_400Regular" },
+  ebayRow: { flexDirection: "row", gap: 8 },
+  ebayBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 6,
+  },
+  ebayBtnText: { fontSize: 13, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  noDbNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    borderRadius: 8,
+    padding: 8,
+  },
+  noDbNoteText: { flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", lineHeight: 16 },
+});
 
 function PCVResultCard({ card, colors }: { card: PCVCard; colors: ReturnType<typeof useThemeColors> }) {
   const [isLoading, setIsLoading] = useState(false);
@@ -965,44 +1143,32 @@ export default function ScannerScreen() {
 
       {identification && !isIdentifying && (
         <>
-          <IdentificationCard identification={identification} colors={colors} />
-
           {tcgApiResults.length > 0 ? (
-            <DatabaseMatchCard
-              card={tcgApiResults[0]}
-              pcvCard={pcvResults[0] || null}
+            // ── DB match found: AI context card + full database card with price + eBay ──
+            <>
+              <IdentificationCard identification={identification} colors={colors} />
+              <DatabaseMatchCard
+                card={tcgApiResults[0]}
+                pcvCard={pcvResults[0] || null}
+                identification={identification}
+                colors={colors}
+                onEbayListings={() => handleEbayListings(identification.englishName, identification.setName, identification.cardNumber)}
+                onEbaySold={() => handleEbaySold(identification.englishName, identification.setName, identification.cardNumber)}
+              />
+            </>
+          ) : identification.englishName ? (
+            // ── No DB match: rich AI result card with price + eBay links ──
+            <AIPriceCard
               identification={identification}
+              pcvResults={pcvResults}
               colors={colors}
               onEbayListings={() => handleEbayListings(identification.englishName, identification.setName, identification.cardNumber)}
               onEbaySold={() => handleEbaySold(identification.englishName, identification.setName, identification.cardNumber)}
             />
-          ) : identification.englishName ? (
-            <View style={[styles.ebaySection, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
-              <View style={styles.ebaySectionHeader}>
-                <Ionicons name="globe-outline" size={16} color="#E53238" />
-                <Text style={[styles.ebaySectionTitle, { color: colors.text }]}>eBay UK Search</Text>
-              </View>
-              <Text style={[styles.ebaySectionDesc, { color: colors.textSecondary }]}>
-                No exact database match found — search eBay UK directly
-              </Text>
-              <View style={styles.ebayBtns}>
-                <Pressable
-                  style={({ pressed }) => [styles.ebayBtn, { backgroundColor: "#E53238", opacity: pressed ? 0.85 : 1 }]}
-                  onPress={() => handleEbayListings(identification.englishName, identification.setName, identification.cardNumber)}
-                >
-                  <Ionicons name="search" size={15} color="#FFF" />
-                  <Text style={styles.ebayBtnText}>Active Listings</Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [styles.ebayBtn, { backgroundColor: "#0064D2", opacity: pressed ? 0.85 : 1 }]}
-                  onPress={() => handleEbaySold(identification.englishName, identification.setName, identification.cardNumber)}
-                >
-                  <Ionicons name="checkmark-done" size={15} color="#FFF" />
-                  <Text style={styles.ebayBtnText}>Sold Items</Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : null}
+          ) : (
+            // ── Could not identify ──
+            <IdentificationCard identification={identification} colors={colors} />
+          )}
         </>
       )}
 
@@ -1010,7 +1176,7 @@ export default function ScannerScreen() {
         <View style={styles.resultsHeaderRow}>
           <View style={[styles.resultsHeaderDot, { backgroundColor: colors.success }]} />
           <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            UK Price Options ({pcvResults.length})
+            {tcgApiResults.length > 0 ? `UK Price Variants (${pcvResults.length})` : `All UK Price Variants (${pcvResults.length})`}
           </Text>
         </View>
       )}
