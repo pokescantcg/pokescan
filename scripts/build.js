@@ -501,6 +501,14 @@ async function main() {
 
   setupSignalHandlers();
 
+  console.log("Building server bundle...");
+  const { execSync } = require("child_process");
+  execSync(
+    "node_modules/tsx/node_modules/.bin/esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=server_dist",
+    { stdio: "inherit" }
+  );
+  console.log("Server bundle built successfully.");
+
   const domain = getDeploymentDomain();
   const baseUrl = `https://${domain}`;
   const timestamp = `${Date.now()}-${process.pid}`;
