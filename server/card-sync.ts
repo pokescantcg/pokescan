@@ -565,7 +565,22 @@ async function runFastCardSeed(): Promise<void> {
   // Note: me*, zsv*, rsv* sets DO have cards — they are not skipped
   const NO_CARD_PREFIXES: string[] = [];
 
+  // Language suffix check — KO, ZH, CN, and JP sets are never in the TCG API
+  const isNonTcgApiSet = (id: string) =>
+    id.endsWith("_ko") ||
+    id.endsWith("_zh") ||
+    id.endsWith("_cn") ||
+    id.endsWith("_ja") ||
+    id.startsWith("babanuki-") ||
+    id.startsWith("mengka-");
+
   for (const set of sets) {
+    // Instantly skip non-English sets that are handled by other seeders
+    if (isNonTcgApiSet(set.id)) {
+      // no log noise — these are silently handled by Scrydex / KoZhSeed
+      continue;
+    }
+
     // Skip regional sets with no TCG API card data immediately
     if (NO_CARD_PREFIXES.some((p) => set.id.startsWith(p))) {
       console.log(`[CardSync] Skipped set ${set.id} (regional set, no TCG API cards)`);
@@ -713,23 +728,48 @@ export async function startSyncService(): Promise<void> {
         ).catch(console.error);
       }).catch(console.error);
 
+      /** After Scrydex runs (which fills JP cards), mirror JP→KO/ZH and fix empty JP sets */
+      async function runKoZhAndJpFix() {
+        try {
+          const { seedKoZhCards, fixEmptyJpSets } = await import("./ko-zh-seed");
+          const [jpFix, koZh] = await Promise.all([
+            fixEmptyJpSets(),
+            seedKoZhCards(),
+          ]);
+          if (jpFix.inserted > 0)
+            console.log(`[JpFix] Inserted ${jpFix.inserted} cards for empty JP sets`);
+          if (koZh.inserted > 0)
+            console.log(`[KoZhSeed] Done — ${koZh.setsProcessed} sets, ${koZh.inserted} cards inserted`);
+          else
+            console.log(`[KoZhSeed] Nothing new to insert (${koZh.skipped} sets skipped — JP source not ready yet)`);
+        } catch (err: any) {
+          console.error("[KoZhSeed] Error:", err.message);
+        }
+      }
+
       if (totalSets === 0) {
         console.log("[CardSync] DB empty — seeding sets first...");
         await syncAllSets();
         console.log("[CardSync] Sets seeded. Starting fast card seed in background...");
         await runFastCardSeed();
         // After TCG API seeding, fill remaining empty sets from Scrydex
-        runScrydexStartupSync().catch(console.error);
+        runScrydexStartupSync()
+          .then(runKoZhAndJpFix)
+          .catch(console.error);
       } else if (seededSets < totalSets) {
         // Some sets still have 0 cards — seed from TCG API first, then Scrydex
         console.log(`[CardSync] ${seededSets}/${totalSets} sets have cards — seeding ${totalSets - seededSets} missing sets...`);
         await runFastCardSeed();
         // After TCG API seeding, fill any that are still empty (non-TCG-API sets)
-        runScrydexStartupSync().catch(console.error);
+        runScrydexStartupSync()
+          .then(runKoZhAndJpFix)
+          .catch(console.error);
       } else {
         console.log(`[CardSync] DB fully seeded: ${seededSets}/${totalSets} sets with cards — OK.`);
         // Still run Scrydex sync in background to catch any new/empty sets
-        runScrydexStartupSync().catch(console.error);
+        runScrydexStartupSync()
+          .then(runKoZhAndJpFix)
+          .catch(console.error);
       }
     } catch (err) {
       console.error("[CardSync] Auto-seed check failed:", err);
