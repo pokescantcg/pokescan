@@ -269,6 +269,14 @@ export default function MarketScreen() {
 
       <FlatList
         data={filtered}
+        ListHeaderComponent={
+          <View style={[styles.disclaimer, { backgroundColor: colors.card, borderColor: colors.pokemonYellow + "55" }]}>
+            <Ionicons name="information-circle-outline" size={16} color={colors.pokemonYellow} style={{ marginTop: 1 }} />
+            <Text style={[styles.disclaimerText, { color: colors.textMuted }]}>
+              PokeScan TCG is an advertising platform only. We are not involved in any trades or sales between users and accept no responsibility for lost, stolen, or undelivered cards. All exchanges are carried out entirely between buyers and sellers at their own risk.
+            </Text>
+          </View>
+        }
         renderItem={({ item }) => (
           <ListingCard
             listing={item}
@@ -373,6 +381,17 @@ const styles = StyleSheet.create({
   filterBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   filterBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
   listContent: { paddingHorizontal: 20, paddingTop: 8 },
+  disclaimer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  disclaimerText: { flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", lineHeight: 16 },
   listingCard: {
     flexDirection: "row",
     borderRadius: 14,
