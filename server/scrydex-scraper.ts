@@ -20,7 +20,7 @@ import { pool } from "./db";
 const BASE_URL = "https://scrydex.com";
 const IMAGE_BASE = "https://images.scrydex.com/pokemon";
 
-const DELAY_MS = 400; // polite delay between page requests
+const DELAY_MS = 150; // polite delay between page requests
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

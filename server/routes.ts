@@ -1712,3 +1712,26 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   const httpServer = createServer(app);
   return httpServer;
 }
+
+import { calculateGrade } from "./services/grading";
+
+export function registerRoutes(app) {
+
+  app.post("/grade", async (req, res) => {
+    try {
+      const { centering, cornerDamage, edgeDamage, surfaceDamage } = req.body;
+
+      const result = calculateGrade({
+        centering,
+        cornerDamage,
+        edgeDamage,
+        surfaceDamage,
+      });
+
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ error: "Grading failed" });
+    }
+  });
+
+}
