@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -596,6 +596,21 @@ export default function ScannerScreen() {
   const { user } = useUser();
   const isPremium = user?.isPremium ?? false;
   const [mode, setMode] = useState<"identify" | "grade">("identify");
+  const gradeDisclaimerShown = useRef(false);
+
+  const handleSwitchToGrade = useCallback(() => {
+    if (!gradeDisclaimerShown.current) {
+      gradeDisclaimerShown.current = true;
+      Alert.alert(
+        "Estimated Grades Only",
+        "The grades provided by this tool are estimates based on the condition details you enter and are intended as a guide only.\n\nThese are NOT official grades from PSA, BGS, CGC or any other professional grading company.\n\nPokeScan TCG and its development team accept no responsibility for any difference between the estimated grade shown here and the final grade given by a professional grading service. Always seek professional grading for accurate results.",
+        [{ text: "I Understand", style: "default", onPress: () => setMode("grade") }],
+        { cancelable: false }
+      );
+    } else {
+      setMode("grade");
+    }
+  }, []);
   const [searchText, setSearchText] = useState("");
   const [results, setResults] = useState<PokemonCard[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -877,7 +892,7 @@ export default function ScannerScreen() {
         </Pressable>
         <Pressable
           style={[styles.modeBtn, mode === "grade" && { backgroundColor: colors.pokemonRed }]}
-          onPress={() => setMode("grade")}
+          onPress={handleSwitchToGrade}
         >
           <MaterialCommunityIcons name="certificate-outline" size={16} color={mode === "grade" ? "#FFF" : colors.textMuted} />
           <Text style={[styles.modeBtnText, { color: mode === "grade" ? "#FFF" : colors.textMuted }]}>Grade</Text>
