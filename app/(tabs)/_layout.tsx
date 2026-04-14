@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import React, { useEffect, useRef } from "react";
 import { useThemeColors } from "@/constants/colors";
 import { useCardCache } from "@/lib/card-cache-context";
+import WelcomeModal from "@/components/WelcomeModal";
 
 function DownloadBanner() {
   const { isDownloading, downloadPercent, progress } = useCardCache();
@@ -196,6 +197,7 @@ export default function TabLayout() {
     <View style={{ flex: 1 }}>
       {isLiquidGlassAvailable() ? <NativeTabLayout /> : <ClassicTabLayout />}
       <DownloadBanner />
+      <WelcomeModal />
     </View>
   );
 }
