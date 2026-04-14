@@ -286,8 +286,8 @@ function inferSeries(id: string): string {
   if (lower.startsWith("sm")) return "Sun & Moon";
   if (lower.startsWith("xy")) return "XY";
   if (lower.startsWith("bw")) return "Black & White";
-  if (/^me\d/.test(lower)) return "Chinese Mega Evolution";
-  if (lower.startsWith("rsv") || lower.startsWith("zsv")) return "Chinese Scarlet & Violet";
+  if (/^me\d/.test(lower)) return "Mega Evolution";
+  if (lower.startsWith("rsv") || lower.startsWith("zsv")) return "Scarlet & Violet";
   if (lower.startsWith("me")) return "Mega Evolution";
   if (lower.startsWith("neo")) return "Neo";
   if (lower.startsWith("ecard")) return "E-Card";

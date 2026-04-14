@@ -82,7 +82,7 @@ function detectSetLanguage(setId: string): "english" | "japanese" | "korean" | "
   if (id.includes("_ja")) return "japanese";
   if (id.includes("_ko")) return "korean";
   if (id.includes("_zh") || id.includes("_cn")) return "chinese";
-  if (/^(me|zsv|rsv)\d/.test(id)) return "chinese";
+  // me*, rsv*, zsv* sets have English names and belong in English
   return "english";
 }
 

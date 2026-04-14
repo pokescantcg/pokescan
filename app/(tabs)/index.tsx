@@ -31,8 +31,7 @@ function detectLanguage(setId: string): LangId {
   if (id.includes("_ja")) return "japanese";
   if (id.includes("_ko")) return "korean";
   if (id.includes("_zh") || id.includes("_cn")) return "chinese";
-  // Chinese TCG prefixes (Simplified Chinese official sets)
-  if (/^(me|zsv|rsv)\d/.test(id)) return "chinese";
+  // me*, rsv*, zsv* sets have English names — keep them in English
   return "english";
 }
 

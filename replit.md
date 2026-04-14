@@ -20,7 +20,7 @@ Preferred communication style: Simple, everyday language.
 - **Key UI Libraries**: expo-image, expo-linear-gradient, expo-blur, expo-haptics, react-native-reanimated, react-native-gesture-handler
 
 ### Screen Structure
-- `app/(tabs)/index.tsx` — Browse Pokémon card sets with language category selector (English 🇬🇧, Japanese 🇯🇵, Korean 🇰🇷, Chinese 🇨🇳). First screen shows language grid; selecting a language shows filtered sets. Language is detected from set ID by `detectLanguage()`: `_ja` suffix → Japanese, `_ko` → Korean, `_zh`/`_cn` → Chinese, `me*`/`zsv*`/`rsv*` prefix (followed by digit) → Chinese, everything else → English. Language categories with no matching sets show the scanner CTA; ones with sets show the browseable set list.
+- `app/(tabs)/index.tsx` — Browse Pokémon card sets with language category selector (English 🇬🇧, Japanese 🇯🇵, Korean 🇰🇷, Chinese 🇨🇳). First screen shows language grid; selecting a language shows filtered sets. Language is detected from set ID by `detectLanguage()`: `_ja` suffix → Japanese, `_ko` → Korean, `_zh`/`_cn` → Chinese, everything else (including `me*`, `zsv*`, `rsv*`) → English. Language categories with no matching sets show the scanner CTA; ones with sets show the browseable set list.
 - `app/(tabs)/scanner.tsx` — Search/scan cards (text search + image picker). Has two modes: **Identify** (AI card scan, text search) and **Grade** (premium-only card grading tool — rates Centering/Corners/Edges/Surface on 0–5 scale, calls `/api/grade`, returns PSA-style grade with colour-coded result card)
 - `app/(tabs)/collection.tsx` — User's card collection with values
 - `app/(tabs)/market.tsx` — Marketplace for trading/selling cards
