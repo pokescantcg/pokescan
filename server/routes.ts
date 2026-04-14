@@ -795,21 +795,29 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       }
 
       let tcgApiResults: any[] = [];
-      // 1. Search local DB first for identified card name (fast, offline-capable)
+      // 1. Search local DB first for identified card name — includes pricing JOIN
       try {
         const cardName = identification.englishName?.trim();
+        const origName = identification.originalName?.trim();
         if (cardName && cardName.length >= 2) {
+          // Try English name first; if that returns nothing try originalName too
+          const nameConditions = [ilike(pokemonCards.name, `%${cardName}%`)];
+          if (origName && origName !== cardName) {
+            nameConditions.push(ilike(pokemonCards.name, `%${origName}%`));
+          }
+
           const dbMatches = await db
-            .select({ card: pokemonCards, set: pokemonSets })
+            .select({ card: pokemonCards, set: pokemonSets, pricing: cardPricing })
             .from(pokemonCards)
             .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
-            .where(ilike(pokemonCards.name, `%${cardName}%`))
+            .leftJoin(cardPricing, eq(cardPricing.cardId, pokemonCards.id))
+            .where(or(...nameConditions))
             .orderBy(desc(pokemonSets.releaseDate))
-            .limit(10);
+            .limit(20);
 
           if (dbMatches.length > 0) {
-            let formatted = dbMatches.map(({ card, set }) => {
-              const base = dbCardToApiFormat(card, null);
+            let formatted = dbMatches.map(({ card, set, pricing }) => {
+              const base = dbCardToApiFormat(card, pricing ?? null);
               if (set) {
                 base.set = {
                   id: set.id,
@@ -824,7 +832,17 @@ If you cannot identify the card, set confidence to "low" and provide your best g
               return base;
             });
 
-            // Filter by card number if AI identified one
+            // 1a. Filter by set name if AI identified one (prefer exact set)
+            if (identification.setName && formatted.length > 1) {
+              const aiSet = identification.setName.toLowerCase();
+              const setMatch = formatted.filter((c: any) => {
+                const dbSet = (c.set?.name ?? "").toLowerCase();
+                return dbSet.includes(aiSet) || aiSet.includes(dbSet);
+              });
+              if (setMatch.length > 0) formatted = setMatch;
+            }
+
+            // 1b. Filter by card number
             if (identification.cardNumber && formatted.length > 1) {
               const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
               const exactMatch = formatted.filter((c: any) => {
@@ -833,6 +851,14 @@ If you cannot identify the card, set confidence to "low" and provide your best g
               });
               if (exactMatch.length > 0) formatted = exactMatch;
             }
+
+            // 1c. Sort: prefer cards that have a card image (imageSmall not null)
+            formatted.sort((a: any, b: any) => {
+              const aHasImg = a.images?.small ? 1 : 0;
+              const bHasImg = b.images?.small ? 1 : 0;
+              return bHasImg - aHasImg;
+            });
+
             tcgApiResults = formatted;
           }
         }
