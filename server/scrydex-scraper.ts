@@ -15,7 +15,9 @@
  *            update image_small/image_large if the card exists but images are null
  */
 
-import { pool } from "./db";
+import { db } from "./db";
+import { pokemonSets, pokemonCards } from "@shared/schema";
+import { count, inArray, isNull, eq, or, and } from "drizzle-orm";
 
 const BASE_URL = "https://scrydex.com";
 const IMAGE_BASE = "https://images.scrydex.com/pokemon";
@@ -361,18 +363,16 @@ export async function runScrydexSync(
     report({ setsTotal: allSets.length, message: `Found ${allSets.length} sets on scrydex.com (EN + TCG Pocket + JP)` });
 
     // ── Phase 2: Get existing sets and their card counts from DB ─────────
-    const existingSetRows = await pool.query(
-      `SELECT s.id,
-              COUNT(c.id) AS card_count
-       FROM pokemon_sets s
-       LEFT JOIN pokemon_cards c ON c.set_id = s.id
-       GROUP BY s.id`
-    );
+    const existingSetRows = await db
+      .select({ id: pokemonSets.id, cardCount: count(pokemonCards.id) })
+      .from(pokemonSets)
+      .leftJoin(pokemonCards, eq(pokemonCards.setId, pokemonSets.id))
+      .groupBy(pokemonSets.id);
     const existingSetIds    = new Set<string>();
     const setsWithCards     = new Set<string>(); // sets that already have cards
-    for (const row of existingSetRows.rows as any[]) {
+    for (const row of existingSetRows) {
       existingSetIds.add(row.id);
-      if (parseInt(row.card_count, 10) > 0) setsWithCards.add(row.id);
+      if (row.cardCount > 0) setsWithCards.add(row.id);
     }
 
     // Only process sets that are either new OR have no cards yet.
@@ -400,22 +400,17 @@ export async function runScrydexSync(
           await delay(DELAY_MS);
           const detail = await scrapeScrydexSetDetail(set.slug, set.id);
 
-          await pool.query(
-            `INSERT INTO pokemon_sets (id, name, series, printed_total, total, release_date, logo_url, symbol_url, image_url)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-             ON CONFLICT (id) DO NOTHING`,
-            [
-              detail.id,
-              detail.name,
-              detail.series,
-              detail.total,
-              detail.total,
-              detail.releaseDate || null,
-              detail.logoUrl,
-              detail.symbolUrl,
-              detail.logoUrl,
-            ]
-          );
+          await db.insert(pokemonSets).values({
+            id: detail.id,
+            name: detail.name,
+            series: detail.series,
+            printedTotal: detail.total,
+            total: detail.total,
+            releaseDate: detail.releaseDate || null,
+            logoUrl: detail.logoUrl,
+            symbolUrl: detail.symbolUrl,
+            imageUrl: detail.logoUrl,
+          }).onConflictDoNothing();
           existingSetIds.add(setId);
           report({ setsAdded: progress.setsAdded + 1 });
         } catch (err: any) {
@@ -435,12 +430,12 @@ export async function runScrydexSync(
 
         // Batch-check which cards already exist and what images they have
         const cardIds = cards.map((c) => c.id);
-        const existingCardsRes = await pool.query(
-          `SELECT id, image_small FROM pokemon_cards WHERE id = ANY($1)`,
-          [cardIds]
-        );
+        const existingCardsRes = await db
+          .select({ id: pokemonCards.id, imageSmall: pokemonCards.imageSmall })
+          .from(pokemonCards)
+          .where(inArray(pokemonCards.id, cardIds));
         const existingCards = new Map<string, string | null>(
-          existingCardsRes.rows.map((r: any) => [r.id, r.image_small])
+          existingCardsRes.map((r) => [r.id, r.imageSmall])
         );
 
         for (const card of cards) {
@@ -450,12 +445,14 @@ export async function runScrydexSync(
             // New card — insert if its set is in the DB
             if (!existingSetIds.has(setId)) continue;
             try {
-              await pool.query(
-                `INSERT INTO pokemon_cards (id, set_id, name, number, image_small, image_large)
-                 VALUES ($1, $2, $3, $4, $5, $6)
-                 ON CONFLICT (id) DO NOTHING`,
-                [card.id, card.setId, card.name, card.number, card.imageSmall, card.imageLarge]
-              );
+              await db.insert(pokemonCards).values({
+                id: card.id,
+                setId: card.setId,
+                name: card.name,
+                number: card.number,
+                imageSmall: card.imageSmall,
+                imageLarge: card.imageLarge,
+              }).onConflictDoNothing();
               progress.cardsAdded++;
             } catch (err: any) {
               // ignore FK violations etc.
@@ -465,12 +462,14 @@ export async function runScrydexSync(
             const existingImg = existingCards.get(card.id);
             if (!existingImg || existingImg === "") {
               try {
-                await pool.query(
-                  `UPDATE pokemon_cards
-                   SET image_small = $1, image_large = $2
-                   WHERE id = $3 AND (image_small IS NULL OR image_small = '')`,
-                  [card.imageSmall, card.imageLarge, card.id]
-                );
+                await db.update(pokemonCards)
+                  .set({ imageSmall: card.imageSmall, imageLarge: card.imageLarge })
+                  .where(
+                    and(
+                      eq(pokemonCards.id, card.id),
+                      or(isNull(pokemonCards.imageSmall), eq(pokemonCards.imageSmall, ""))
+                    )
+                  );
                 progress.cardsUpdated++;
               } catch (err: any) {
                 // ignore
