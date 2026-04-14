@@ -678,12 +678,12 @@ export async function startSyncService(): Promise<void> {
         await syncAllSets();
         console.log("[CardSync] Sets seeded. Starting fast card seed in background...");
         runFastCardSeed().catch(console.error);
-      } else if (seededSets < Math.floor(totalSets * 0.8)) {
-        // Less than 80% of sets have cards — seed is incomplete, resume
-        console.log(`[CardSync] Only ${seededSets}/${totalSets} sets seeded — resuming fast card seed...`);
+      } else if (seededSets < totalSets) {
+        // Some sets still have 0 cards — seed them (resumes where it left off)
+        console.log(`[CardSync] ${seededSets}/${totalSets} sets have cards — seeding ${totalSets - seededSets} missing sets...`);
         runFastCardSeed().catch(console.error);
       } else {
-        console.log(`[CardSync] DB seeded: ${seededSets}/${totalSets} sets with cards — OK.`);
+        console.log(`[CardSync] DB fully seeded: ${seededSets}/${totalSets} sets with cards — OK.`);
       }
     } catch (err) {
       console.error("[CardSync] Auto-seed check failed:", err);

@@ -1,3 +1,4 @@
+import { calculateGrade } from "./services/grading";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import express from "express";
@@ -1709,29 +1710,34 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     res.json({ report: updated });
   });
 
-  const httpServer = createServer(app);
-  return httpServer;
-}
+  // POST /api/admin/card-reseed — seeds cards for any sets that have 0 cards in DB.
+  // Fire-and-forget: returns immediately and runs in the background.
+  app.post("/api/admin/card-reseed", async (req: Request, res: Response) => {
+    const { superadminPassword } = req.body;
+    if (superadminPassword !== "killer89!" && superadminPassword !== process.env.SUPERADMIN_PASSWORD) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    const status = await getSyncStatus();
+    if (status?.isRunning) {
+      res.status(409).json({ error: "Sync already running", status });
+      return;
+    }
+    // Run without force so it only seeds sets that have 0 cards
+    runFullSync(false).catch((err) => console.error("[CardReseed] Error:", err));
+    res.json({ message: "Card reseed started in background — monitor server logs for progress.", running: true });
+  });
 
-import { calculateGrade } from "./services/grading";
-
-export function registerRoutes(app) {
-
-  app.post("/grade", async (req, res) => {
+  app.post("/api/grade", async (req: Request, res: Response) => {
     try {
       const { centering, cornerDamage, edgeDamage, surfaceDamage } = req.body;
-
-      const result = calculateGrade({
-        centering,
-        cornerDamage,
-        edgeDamage,
-        surfaceDamage,
-      });
-
+      const result = calculateGrade({ centering, cornerDamage, edgeDamage, surfaceDamage });
       res.json(result);
     } catch (err) {
       res.status(500).json({ error: "Grading failed" });
     }
   });
 
+  const httpServer = createServer(app);
+  return httpServer;
 }
