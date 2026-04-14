@@ -242,7 +242,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      // 2. Check DB — only serve if the set is fully seeded (≥90% of expected cards)
+      // Non-English set IDs (JP/KO/ZH suffixes or non-TCG patterns) are not in the
+      // TCG API — only serve from DB, never fall through to TCG API.
+      const nonEnglishPatterns = ["_ja", "_ko", "_zh", "_cn", "topsun", "babanuki", "mengka", "oldmaid", "hanafuda"];
+      const isNonEnglish = nonEnglishPatterns.some((p) => setId.toLowerCase().includes(p));
+
+      // 2. Check DB
       try {
         const [totalCountResult, setInfoResult] = await Promise.all([
           db.select({ count: sql<number>`count(*)::int` }).from(pokemonCards).where(eq(pokemonCards.setId, setId)),
@@ -250,7 +255,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ]);
         const totalCount = totalCountResult[0]?.count ?? 0;
         const expectedTotal = setInfoResult[0]?.total ?? 0;
-        const fullySeeded = totalCount > 0 && (expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
+
+        // For non-English sets: serve whatever cards we have (any amount).
+        // For English sets: only serve if ≥90% seeded (ensures complete sets).
+        const hasCards = totalCount > 0;
+        const fullySeeded = hasCards && (isNonEnglish || expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
 
         if (fullySeeded) {
           const dbCards = await db
@@ -272,7 +281,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.error("DB query failed for set cards:", dbErr);
       }
 
-      // 3. Fetch from TCG API (30s timeout)
+      // Non-English sets with no DB cards → return empty data gracefully (no TCG API call)
+      if (isNonEnglish) {
+        const emptyPayload = { data: [], count: 0, totalCount: 0, page, source: "no-data" };
+        res.json(emptyPayload);
+        return;
+      }
+
+      // 3. Fetch from TCG API for English sets (30s timeout)
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000);
       const response = await fetch(

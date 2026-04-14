@@ -123,12 +123,14 @@ function SetCard({ set, colors }: { set: PokemonSet; colors: ReturnType<typeof u
           {set.name}
         </Text>
         <View style={styles.setMeta}>
-          <View style={styles.setMetaItem}>
-            <MaterialCommunityIcons name="cards-outline" size={12} color={colors.textSecondary} />
-            <Text style={[styles.setMetaText, { color: colors.textSecondary }]}>
-              {set.total || set.printedTotal || "?"} cards
-            </Text>
-          </View>
+          {(set.total || set.printedTotal) ? (
+            <View style={styles.setMetaItem}>
+              <MaterialCommunityIcons name="cards-outline" size={12} color={colors.textSecondary} />
+              <Text style={[styles.setMetaText, { color: colors.textSecondary }]}>
+                {set.total || set.printedTotal} cards
+              </Text>
+            </View>
+          ) : null}
           {set.releaseDate ? (
             <View style={styles.setMetaItem}>
               <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
@@ -291,6 +293,22 @@ export default function BrowseScreen() {
           </View>
           <View style={styles.langRow}>
             {LANGUAGES.slice(2, 4).map((lang) => (
+              <LanguageCard
+                key={lang.id}
+                lang={lang}
+                count={setsByLang[lang.id]?.length || 0}
+                colors={colors}
+                onPress={() => handleSelectLang(lang)}
+              />
+            ))}
+          </View>
+
+          <Text style={[styles.langSectionTitle, { color: colors.textMuted, marginTop: 4 }]}>
+            OTHER COLLECTIONS
+          </Text>
+
+          <View style={styles.langRow}>
+            {LANGUAGES.slice(4).map((lang) => (
               <LanguageCard
                 key={lang.id}
                 lang={lang}

@@ -143,6 +143,22 @@ function CardGridItem({
   );
 }
 
+const NON_ENGLISH_PATTERNS = ["_ja", "_ko", "_zh", "_cn", "topsun", "babanuki", "mengka", "oldmaid", "hanafuda"];
+
+function getSetLanguageLabel(setId: string): string {
+  const id = (setId || "").toLowerCase();
+  if (["babanuki", "mengka", "topsun", "oldmaid", "hanafuda"].some((p) => id.includes(p))) return "Non-TCG";
+  if (id.includes("_ja")) return "Japanese";
+  if (id.includes("_ko")) return "Korean";
+  if (id.includes("_zh") || id.includes("_cn")) return "Chinese";
+  return "";
+}
+
+function isNonEnglishSet(setId: string): boolean {
+  const id = (setId || "").toLowerCase();
+  return NON_ENGLISH_PATTERNS.some((p) => id.includes(p));
+}
+
 export default function SetDetailScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
   const colorScheme = useColorScheme();
@@ -392,6 +408,29 @@ export default function SetDetailScreen() {
                 <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
                   No {activeFilter} cards in this set
                 </Text>
+              </View>
+            ) : isNonEnglishSet(id as string) ? (
+              <View style={styles.emptyContainer}>
+                <Text style={{ fontSize: 48, textAlign: "center" }}>
+                  {getSetLanguageLabel(id as string) === "Japanese" ? "🇯🇵"
+                    : getSetLanguageLabel(id as string) === "Korean" ? "🇰🇷"
+                    : getSetLanguageLabel(id as string) === "Chinese" ? "🇨🇳"
+                    : "🎴"}
+                </Text>
+                <Text style={[styles.emptyText, { color: colors.text }]}>
+                  {getSetLanguageLabel(id as string)} Set
+                </Text>
+                <Text style={[styles.emptySubText, { color: colors.textSecondary }]}>
+                  Individual card data for this set isn't available yet in the database.{"\n\n"}
+                  Use the Scanner tab to identify any card — the AI will recognise it and show you its details and UK pricing.
+                </Text>
+                <Pressable
+                  onPress={() => router.push("/(tabs)/scanner")}
+                  style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}
+                >
+                  <Ionicons name="scan-outline" size={16} color="#FFF" />
+                  <Text style={styles.retryBtnText}>Open Scanner</Text>
+                </Pressable>
               </View>
             ) : (
               <View style={styles.emptyContainer}>
