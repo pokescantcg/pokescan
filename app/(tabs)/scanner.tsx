@@ -1278,6 +1278,40 @@ export default function ScannerScreen() {
   const hasIdentifiedResults = pcvResults.length > 0 || (tcgApiResults.length > 0 && !!identification);
   const allSearchShown = results.length > 0 && !hasIdentifiedResults;
 
+  if (!user) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <PokeBackground opacity={colorScheme === "dark" ? 0.18 : 0.12} />
+        <View style={[authGateStyles.wrapper, { paddingTop: insets.top + 20 }]}>
+          <LinearGradient
+            colors={colorScheme === "dark" ? ["#1A1A2E", "#0A1A2A"] : ["#EFF6FF", "#F5F5F5"]}
+            style={authGateStyles.inner}
+          >
+            <View style={[authGateStyles.iconRing, { backgroundColor: colors.pokemonRed + "20", borderColor: colors.pokemonRed + "40" }]}>
+              <MaterialCommunityIcons name="line-scan" size={48} color={colors.pokemonRed} />
+            </View>
+            <Text style={[authGateStyles.title, { color: colors.text }]}>Sign in to Scan</Text>
+            <Text style={[authGateStyles.body, { color: colors.textMuted }]}>
+              Create a free account to scan and identify Pokémon cards with AI, track prices, and build your collection.
+            </Text>
+            <Pressable
+              style={[authGateStyles.primaryBtn, { backgroundColor: colors.pokemonRed }]}
+              onPress={() => router.push("/register")}
+            >
+              <Text style={authGateStyles.primaryBtnText}>Create Account</Text>
+            </Pressable>
+            <Pressable
+              style={[authGateStyles.secondaryBtn, { borderColor: colors.border }]}
+              onPress={() => router.push("/login")}
+            >
+              <Text style={[authGateStyles.secondaryBtnText, { color: colors.text }]}>Sign In</Text>
+            </Pressable>
+          </LinearGradient>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <PokeBackground opacity={colorScheme === "dark" ? 0.18 : 0.12} />
@@ -1770,4 +1804,25 @@ const streakStyles = StyleSheet.create({
   resetNote: { fontSize: 12, fontFamily: "Outfit_400Regular", textAlign: "center", fontStyle: "italic" },
   btn: { marginTop: 8, paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14 },
   btnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#1A1A2E" },
+});
+
+const authGateStyles = StyleSheet.create({
+  wrapper: { flex: 1, justifyContent: "center", alignItems: "center", padding: 28 },
+  inner: { width: "100%", borderRadius: 28, padding: 32, alignItems: "center", gap: 16 },
+  iconRing: {
+    width: 96, height: 96, borderRadius: 48,
+    borderWidth: 2, justifyContent: "center", alignItems: "center", marginBottom: 4,
+  },
+  title: { fontSize: 26, fontFamily: "Outfit_700Bold", textAlign: "center" },
+  body: { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", lineHeight: 22, opacity: 0.8 },
+  primaryBtn: {
+    width: "100%", paddingVertical: 16, borderRadius: 16,
+    alignItems: "center", marginTop: 4,
+  },
+  primaryBtnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  secondaryBtn: {
+    width: "100%", paddingVertical: 14, borderRadius: 16,
+    alignItems: "center", borderWidth: 1.5,
+  },
+  secondaryBtnText: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
 });
