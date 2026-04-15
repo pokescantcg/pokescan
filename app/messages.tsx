@@ -20,9 +20,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { socialApi, InboxMessage, SentMessage, SocialUser, FriendsData, ChatroomMessage } from "@/lib/social-api";
+
+const CHAT_RULES_KEY = "pokescan_chat_rules_accepted_v1";
 
 type Tab = "inbox" | "sent" | "friends" | "chat";
 
@@ -302,6 +305,7 @@ export default function MessagesScreen() {
   const [chatroomSending, setChatroomSending] = useState(false);
   const [chatroomLoading, setChatroomLoading] = useState(false);
   const [chatroomError, setChatroomError] = useState<string | null>(null);
+  const [showChatRules, setShowChatRules] = useState(false);
   const chatroomPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatListRef = useRef<FlatList>(null);
 
@@ -343,6 +347,9 @@ export default function MessagesScreen() {
 
   useEffect(() => {
     if (activeTab === "chat") {
+      AsyncStorage.getItem(CHAT_RULES_KEY).then(val => {
+        if (!val) setShowChatRules(true);
+      });
       setChatroomLoading(true);
       loadChatroom().finally(() => setChatroomLoading(false));
       chatroomPollRef.current = setInterval(loadChatroom, 10000);
@@ -354,6 +361,12 @@ export default function MessagesScreen() {
       }
     };
   }, [activeTab, loadChatroom]);
+
+  const handleAcceptChatRules = useCallback(async () => {
+    await AsyncStorage.setItem(CHAT_RULES_KEY, "1");
+    setShowChatRules(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
 
   const handleSendChatroom = useCallback(async () => {
     if (!chatroomInput.trim() || chatroomSending) return;
@@ -1012,6 +1025,57 @@ export default function MessagesScreen() {
         }}
         colors={colors}
       />
+
+      <Modal visible={showChatRules} transparent animationType="fade" statusBarTranslucent>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center", paddingHorizontal: 24 }}>
+          <View style={{ backgroundColor: colors.card, borderRadius: 20, overflow: "hidden", width: "100%", maxWidth: 380 }}>
+            <LinearGradient
+              colors={[colors.pokemonRed, "#B71C1C"]}
+              style={{ paddingTop: 28, paddingBottom: 20, paddingHorizontal: 24, alignItems: "center" }}
+            >
+              <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
+                <Ionicons name="shield-checkmark" size={30} color="#FFF" />
+              </View>
+              <Text style={{ fontSize: 20, fontFamily: "Outfit_700Bold", color: "#FFF", textAlign: "center" }}>
+                Moderated Chat
+              </Text>
+              <Text style={{ fontSize: 13, fontFamily: "Outfit_400Regular", color: "rgba(255,255,255,0.85)", textAlign: "center", marginTop: 4 }}>
+                This chat is actively monitored
+              </Text>
+            </LinearGradient>
+
+            <View style={{ padding: 24, gap: 14 }}>
+              {[
+                { icon: "happy-outline" as const, text: "Keep it family friendly — no offensive or inappropriate language" },
+                { icon: "eye-outline" as const, text: "All messages are checked by our moderation team" },
+                { icon: "ban-outline" as const, text: "Mutes and bans will be issued for rule violations" },
+                { icon: "card-outline" as const, text: "Keep discussions Pokémon and trading related" },
+                { icon: "person-outline" as const, text: "Treat every collector with respect" },
+              ].map((rule, i) => (
+                <View key={i} style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.pokemonRed + "18", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>
+                    <Ionicons name={rule.icon} size={16} color={colors.pokemonRed} />
+                  </View>
+                  <Text style={{ flex: 1, fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.text, lineHeight: 20 }}>
+                    {rule.text}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={{ paddingHorizontal: 24, paddingBottom: 24 }}>
+              <Pressable
+                onPress={handleAcceptChatRules}
+                style={{ backgroundColor: colors.pokemonRed, borderRadius: 14, paddingVertical: 14, alignItems: "center" }}
+              >
+                <Text style={{ fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFF" }}>
+                  I Understand — Enter Chat
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
