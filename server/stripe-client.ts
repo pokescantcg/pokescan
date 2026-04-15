@@ -21,24 +21,26 @@ async function getCredentials(): Promise<{ publishableKey: string; secretKey: st
   }
 
   const isProduction = process.env.REPLIT_DEPLOYMENT === "1";
-  const targetEnvironment = isProduction ? "production" : "development";
+  const environments = isProduction ? ["production", "development"] : ["development", "production"];
 
-  const url = new URL(`https://${hostname}/api/v2/connection`);
-  url.searchParams.set("include_secrets", "true");
-  url.searchParams.set("connector_names", "stripe");
-  url.searchParams.set("environment", targetEnvironment);
+  for (const env of environments) {
+    const url = new URL(`https://${hostname}/api/v2/connection`);
+    url.searchParams.set("include_secrets", "true");
+    url.searchParams.set("connector_names", "stripe");
+    url.searchParams.set("environment", env);
 
-  const response = await fetch(url.toString(), {
-    headers: { Accept: "application/json", "X-Replit-Token": xReplitToken },
-  });
-  const data = await response.json();
-  const conn = data.items?.[0];
+    const response = await fetch(url.toString(), {
+      headers: { Accept: "application/json", "X-Replit-Token": xReplitToken },
+    });
+    const data = await response.json();
+    const conn = data.items?.[0];
 
-  if (!conn?.settings?.secret || !conn?.settings?.publishable) {
-    throw new Error(`Stripe ${targetEnvironment} connection not found`);
+    if (conn?.settings?.secret && conn?.settings?.publishable) {
+      return { secretKey: conn.settings.secret, publishableKey: conn.settings.publishable };
+    }
   }
 
-  return { secretKey: conn.settings.secret, publishableKey: conn.settings.publishable };
+  throw new Error("Stripe connection not found. Set up the Stripe connector in Replit integrations.");
 }
 
 export async function getUncachableStripeClient(): Promise<Stripe> {
