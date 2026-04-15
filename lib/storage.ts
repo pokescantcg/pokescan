@@ -21,6 +21,7 @@ export interface UserProfile {
   createdAt: string;
   subscriptionStatus?: string | null;
   subscriptionPeriodEnd?: string | null;
+  stripePriceId?: string | null;
 }
 
 export type CardVariant = "Non-Holo" | "Holo" | "Reverse Holo";
@@ -301,6 +302,7 @@ function dbUserToProfile(dbUser: any): UserProfile {
     createdAt: dbUser.createdAt ?? dbUser.created_at ?? new Date().toISOString(),
     subscriptionStatus: dbUser.subscriptionStatus ?? dbUser.subscription_status ?? null,
     subscriptionPeriodEnd: periodEnd ? new Date(periodEnd).toISOString() : null,
+    stripePriceId: dbUser.stripePriceId ?? dbUser.stripe_price_id ?? null,
   };
 }
 

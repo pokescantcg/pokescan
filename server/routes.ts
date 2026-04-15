@@ -1867,6 +1867,91 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  app.get("/api/admin/subscription-stats", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (caller.role !== "admin") { res.status(403).json({ error: "Admin required" }); return; }
+
+      const MONTHLY_PRICE = 4.99;
+      const ANNUAL_PRICE = 49.99;
+      const MONTHLY_ID = "price_1TM7D8K7N6BNdayAPnuINUuU";
+      const ANNUAL_ID = "price_1TM7D8K7N6BNdayAB1PFakyH";
+
+      const result = await db.execute(
+        sql`SELECT id, username, display_name, stripe_price_id, subscription_status, subscription_period_end, created_at
+            FROM pokescan_users
+            WHERE is_premium = true AND subscription_status IS NOT NULL
+            ORDER BY subscription_period_end DESC NULLS LAST`
+      );
+
+      const subscribers = (result.rows as any[]).map(r => {
+        const plan = r.stripe_price_id === MONTHLY_ID ? "monthly" : r.stripe_price_id === ANNUAL_ID ? "annual" : "unknown";
+        return {
+          id: r.id,
+          username: r.username,
+          displayName: r.display_name,
+          plan,
+          price: plan === "monthly" ? MONTHLY_PRICE : plan === "annual" ? ANNUAL_PRICE : 0,
+          status: r.subscription_status,
+          periodEnd: r.subscription_period_end,
+          createdAt: r.created_at,
+        };
+      });
+
+      const now = new Date();
+      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekStart = new Date(dayStart);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const yearStart = new Date(now.getFullYear(), 0, 1);
+
+      let dailyRevenue = 0, weeklyRevenue = 0, monthlyRevenue = 0, yearlyRevenue = 0;
+      let totalActive = 0, monthlyCount = 0, annualCount = 0;
+
+      for (const s of subscribers) {
+        if (s.status === "active" || s.status === "canceling") {
+          totalActive++;
+          if (s.plan === "monthly") monthlyCount++;
+          else annualCount++;
+        }
+
+        if (s.periodEnd) {
+          const pEnd = new Date(s.periodEnd);
+          const periodStart = s.plan === "monthly"
+            ? new Date(pEnd.getTime() - 30 * 24 * 60 * 60 * 1000)
+            : new Date(pEnd.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+          if (periodStart >= dayStart) dailyRevenue += s.price;
+          if (periodStart >= weekStart) weeklyRevenue += s.price;
+          if (periodStart >= monthStart) monthlyRevenue += s.price;
+          if (periodStart >= yearStart) yearlyRevenue += s.price;
+        }
+      }
+
+      const monthlyRecurring = monthlyCount * MONTHLY_PRICE + annualCount * (ANNUAL_PRICE / 12);
+
+      res.json({
+        subscribers,
+        stats: {
+          totalActive,
+          monthlyCount,
+          annualCount,
+          dailyRevenue,
+          weeklyRevenue,
+          monthlyRevenue,
+          yearlyRevenue,
+          monthlyRecurring: Math.round(monthlyRecurring * 100) / 100,
+        },
+      });
+    } catch (error: any) {
+      console.error("Subscription stats error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch stats" });
+    }
+  });
+
   app.get("/api/auth/users", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");

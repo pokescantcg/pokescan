@@ -232,7 +232,24 @@ const editStyles = StyleSheet.create({
   saveBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFF" },
 });
 
-type Tab = "listings" | "users" | "reports" | "database";
+type Tab = "listings" | "users" | "reports" | "revenue" | "database";
+
+const STRIPE_PRICE_MONTHLY = "price_1TM7D8K7N6BNdayAPnuINUuU";
+
+const STRIPE_PRICE_ANNUAL = "price_1TM7D8K7N6BNdayAB1PFakyH";
+
+function getSubscriptionLabel(priceId?: string | null): string {
+  if (!priceId) return "Manual";
+  if (priceId === STRIPE_PRICE_MONTHLY) return "Monthly (£4.99)";
+  if (priceId === STRIPE_PRICE_ANNUAL) return "Annual (£49.99)";
+  return "Paid";
+}
+
+function formatRenewalDate(dateStr?: string | null): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
 
 function ListingRow({
   listing,
@@ -346,7 +363,17 @@ function UserRow({
               <Text style={styles.premBadgeText}>PREMIUM</Text>
             </View>
           )}
+          {profile.isPremium && profile.subscriptionStatus && (
+            <View style={[styles.roleBadge, { backgroundColor: colors.accent }]}>
+              <Text style={styles.roleBadgeText}>{getSubscriptionLabel(profile.stripePriceId)}</Text>
+            </View>
+          )}
         </View>
+        {profile.isPremium && profile.subscriptionPeriodEnd && (
+          <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted, marginTop: 2 }}>
+            {profile.subscriptionStatus === "canceling" ? "Expires" : "Renews"}: {formatRenewalDate(profile.subscriptionPeriodEnd)}
+          </Text>
+        )}
       </View>
       {isSuperadmin && !isSuperadminAccount && (
         <View style={styles.userActions}>
@@ -649,6 +676,8 @@ export default function AdminPanelScreen() {
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const [expandedReport, setExpandedReport] = useState<string | null>(null);
+  const [revenueData, setRevenueData] = useState<{ subscribers: any[]; stats: any } | null>(null);
+  const [revenueLoading, setRevenueLoading] = useState(false);
 
   const loadReports = useCallback(async () => {
     setReportsLoading(true);
@@ -662,9 +691,30 @@ export default function AdminPanelScreen() {
     }
   }, []);
 
+  const loadRevenue = useCallback(async () => {
+    setRevenueLoading(true);
+    try {
+      const { getSessionToken } = await import("@/lib/storage");
+      const token = await getSessionToken();
+      const base = getApiUrl();
+      const res = await fetch(new URL("/api/admin/subscription-stats", base).href, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRevenueData(data);
+      }
+    } catch (e) {
+      console.error("Failed to load revenue:", e);
+    } finally {
+      setRevenueLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     if (activeTab === "reports") loadReports();
-  }, [activeTab, loadReports]);
+    if (activeTab === "revenue") loadRevenue();
+  }, [activeTab, loadReports, loadRevenue]);
 
   const handleUpdateReport = useCallback(async (id: string, status: "reviewed" | "dismissed") => {
     try {
@@ -1173,6 +1223,26 @@ export default function AdminPanelScreen() {
         </Pressable>
         {isSuperadminUser && (
           <Pressable
+            style={[styles.tab, activeTab === "revenue" && styles.tabActive]}
+            onPress={() => setActiveTab("revenue")}
+          >
+            <Ionicons
+              name="cash-outline"
+              size={18}
+              color={activeTab === "revenue" ? "#FFF" : colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                { color: activeTab === "revenue" ? "#FFF" : colors.textMuted },
+              ]}
+            >
+              Revenue
+            </Text>
+          </Pressable>
+        )}
+        {isSuperadminUser && (
+          <Pressable
             style={[styles.tab, activeTab === "database" && styles.tabActive]}
             onPress={() => setActiveTab("database")}
           >
@@ -1398,6 +1468,113 @@ export default function AdminPanelScreen() {
             );
           }}
         />
+      )}
+
+      {activeTab === "revenue" && isSuperadminUser && (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ padding: 16, paddingBottom: 120, gap: 14 }}
+        >
+          {revenueLoading && !revenueData ? (
+            <View style={{ alignItems: "center", paddingTop: 40 }}>
+              <Text style={{ color: colors.textMuted, fontFamily: "Outfit_400Regular" }}>Loading revenue data…</Text>
+            </View>
+          ) : revenueData ? (
+            <>
+              <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.borderLight }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <Ionicons name="trending-up" size={20} color={colors.success} />
+                  <Text style={{ fontSize: 17, fontFamily: "Outfit_700Bold", color: colors.text }}>Revenue Overview</Text>
+                </View>
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                  {[
+                    { label: "Today", value: revenueData.stats.dailyRevenue, icon: "today-outline" as const },
+                    { label: "This Week", value: revenueData.stats.weeklyRevenue, icon: "calendar-outline" as const },
+                    { label: "This Month", value: revenueData.stats.monthlyRevenue, icon: "calendar" as const },
+                    { label: "This Year", value: revenueData.stats.yearlyRevenue, icon: "analytics-outline" as const },
+                  ].map((item) => (
+                    <View key={item.label} style={{ width: "47%", backgroundColor: colors.card, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.borderLight }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                        <Ionicons name={item.icon} size={14} color={colors.textMuted} />
+                        <Text style={{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textMuted }}>{item.label}</Text>
+                      </View>
+                      <Text style={{ fontSize: 20, fontFamily: "Outfit_700Bold", color: colors.success }}>£{item.value.toFixed(2)}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+
+              <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.borderLight }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <Ionicons name="people" size={20} color={colors.accent} />
+                  <Text style={{ fontSize: 17, fontFamily: "Outfit_700Bold", color: colors.text }}>Subscriber Breakdown</Text>
+                </View>
+                <View style={{ flexDirection: "row", gap: 10 }}>
+                  <View style={{ flex: 1, backgroundColor: colors.card, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.borderLight, alignItems: "center" }}>
+                    <Text style={{ fontSize: 28, fontFamily: "Outfit_700Bold", color: colors.text }}>{revenueData.stats.totalActive}</Text>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textMuted }}>Active Total</Text>
+                  </View>
+                  <View style={{ flex: 1, backgroundColor: colors.card, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.borderLight, alignItems: "center" }}>
+                    <Text style={{ fontSize: 28, fontFamily: "Outfit_700Bold", color: colors.accent }}>{revenueData.stats.monthlyCount}</Text>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textMuted }}>Monthly</Text>
+                  </View>
+                  <View style={{ flex: 1, backgroundColor: colors.card, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.borderLight, alignItems: "center" }}>
+                    <Text style={{ fontSize: 28, fontFamily: "Outfit_700Bold", color: colors.gold }}>{revenueData.stats.annualCount}</Text>
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textMuted }}>Annual</Text>
+                  </View>
+                </View>
+                <View style={{ marginTop: 10, backgroundColor: colors.card, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.borderLight, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, fontFamily: "Outfit_500Medium", color: colors.textMuted }}>Monthly Recurring Revenue (MRR)</Text>
+                  <Text style={{ fontSize: 17, fontFamily: "Outfit_700Bold", color: colors.success }}>£{revenueData.stats.monthlyRecurring.toFixed(2)}</Text>
+                </View>
+              </View>
+
+              {revenueData.subscribers.length > 0 && (
+                <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.borderLight }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                    <Ionicons name="diamond" size={20} color={colors.gold} />
+                    <Text style={{ fontSize: 17, fontFamily: "Outfit_700Bold", color: colors.text }}>Paid Subscribers ({revenueData.subscribers.length})</Text>
+                  </View>
+                  {revenueData.subscribers.map((sub: any) => (
+                    <View key={sub.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
+                      <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: sub.status === "active" || sub.status === "canceling" ? colors.success + "20" : colors.error + "20", alignItems: "center", justifyContent: "center", marginRight: 10 }}>
+                        <Ionicons name={sub.status === "active" || sub.status === "canceling" ? "checkmark-circle" : "close-circle"} size={18} color={sub.status === "active" || sub.status === "canceling" ? colors.success : colors.error} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.text }}>{sub.displayName}</Text>
+                        <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>@{sub.username}</Text>
+                      </View>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <View style={{ backgroundColor: sub.plan === "annual" ? colors.gold : colors.accent, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+                            <Text style={{ fontSize: 10, fontFamily: "Outfit_700Bold", color: "#000" }}>{sub.plan === "annual" ? "ANNUAL" : "MONTHLY"}</Text>
+                          </View>
+                          <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text }}>£{sub.price.toFixed(2)}</Text>
+                        </View>
+                        <Text style={{ fontSize: 10, fontFamily: "Outfit_400Regular", color: colors.textMuted, marginTop: 2 }}>
+                          {sub.status === "canceling" ? "Expires" : "Renews"}: {formatRenewalDate(sub.periodEnd)}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              <Pressable
+                onPress={loadRevenue}
+                style={{ alignSelf: "center", marginTop: 4, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.borderLight }}
+              >
+                <Ionicons name="refresh-outline" size={16} color={colors.text} />
+                <Text style={{ fontSize: 13, fontFamily: "Outfit_500Medium", color: colors.text }}>Refresh</Text>
+              </Pressable>
+            </>
+          ) : (
+            <View style={{ alignItems: "center", paddingTop: 40 }}>
+              <Ionicons name="cash-outline" size={40} color={colors.textMuted} />
+              <Text style={{ color: colors.textMuted, fontFamily: "Outfit_400Regular", marginTop: 8 }}>No revenue data available</Text>
+            </View>
+          )}
+        </ScrollView>
       )}
 
       {activeTab === "database" && isSuperadminUser && (
