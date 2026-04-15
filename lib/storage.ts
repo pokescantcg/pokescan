@@ -65,6 +65,28 @@ const SESSION_KEY = "pokescan_session_token";
 const SUPERADMIN_EMAIL = "richiett17@hotmail.com";
 const SUPERADMIN_PASSWORD = "killer89!";
 
+async function safeSetItem(key: string, value: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(key, value);
+  } catch (err: any) {
+    if (err?.message?.includes?.("SQLITE_FULL") || err?.message?.includes?.("disk is full")) {
+      try {
+        const allKeys = await AsyncStorage.getAllKeys();
+        const cacheKeys = allKeys.filter((k) => k.startsWith("pokescan_cache_cards_"));
+        if (cacheKeys.length > 0) {
+          await AsyncStorage.multiRemove(cacheKeys);
+          console.log(`[Storage] Cleared ${cacheKeys.length} card cache entries to free space`);
+          await AsyncStorage.setItem(key, value);
+          return;
+        }
+      } catch {}
+      console.warn("[Storage] AsyncStorage full, could not write:", key);
+    } else {
+      throw err;
+    }
+  }
+}
+
 async function secureGet(key: string): Promise<string | null> {
   if (Platform.OS === "web") {
     return AsyncStorage.getItem(key);
@@ -74,7 +96,7 @@ async function secureGet(key: string): Promise<string | null> {
 
 async function secureSet(key: string, value: string): Promise<void> {
   if (Platform.OS === "web") {
-    await AsyncStorage.setItem(key, value);
+    await safeSetItem(key, value);
     return;
   }
   await SecureStore.setItemAsync(key, value);
@@ -306,7 +328,7 @@ export async function superadminLogin(email: string, password: string): Promise<
   if (existing) {
     existing.role = "admin";
     existing.isPremium = true;
-    await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(existing));
+    await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(existing));
     await upsertUserInRegistry(existing);
   } else {
     const user: UserProfile = {
@@ -317,11 +339,11 @@ export async function superadminLogin(email: string, password: string): Promise<
       role: "admin",
       createdAt: new Date().toISOString(),
     };
-    await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(user));
+    await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(user));
     await upsertUserInRegistry(user);
   }
 
-  await AsyncStorage.setItem(KEYS.SUPERADMIN_FLAG, "true");
+  await safeSetItem(KEYS.SUPERADMIN_FLAG, "true");
   return true;
 }
 
@@ -334,7 +356,7 @@ export async function getUser(): Promise<UserProfile | null> {
 }
 
 export async function saveLocalUser(user: UserProfile): Promise<void> {
-  await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(user));
+  await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(user));
 }
 
 export async function registerSocialUser(
@@ -349,7 +371,7 @@ export async function registerSocialUser(
       (u) => u.email === email.toLowerCase().trim()
     );
     if (existing) {
-      await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(existing));
+      await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(existing));
       return existing;
     }
   }
@@ -372,7 +394,7 @@ export async function registerSocialUser(
     role: "user",
     createdAt: new Date().toISOString(),
   };
-  await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(user));
+  await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(user));
   await upsertUserInRegistry(user);
   return user;
 }
@@ -387,7 +409,7 @@ export async function togglePremium(): Promise<UserProfile | null> {
   const user = await getUser();
   if (!user) return null;
   user.isPremium = !user.isPremium;
-  await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(user));
+  await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(user));
   return user;
 }
 
@@ -407,7 +429,7 @@ export async function addToCollection(item: Omit<CollectionItem, "addedAt">): Pr
   } else {
     collection.push({ ...item, addedAt: new Date().toISOString() });
   }
-  await AsyncStorage.setItem(KEYS.COLLECTION, JSON.stringify(collection));
+  await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
   return collection;
 }
 
@@ -416,7 +438,7 @@ export async function removeFromCollection(cardId: string, condition: string): P
   collection = collection.filter(
     (c) => !(c.cardId === cardId && c.condition === condition)
   );
-  await AsyncStorage.setItem(KEYS.COLLECTION, JSON.stringify(collection));
+  await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
   return collection;
 }
 
@@ -431,7 +453,7 @@ export async function updateCollectionQuantity(cardId: string, condition: string
       return removeFromCollection(cardId, condition);
     }
   }
-  await AsyncStorage.setItem(KEYS.COLLECTION, JSON.stringify(collection));
+  await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
   return collection;
 }
 
@@ -499,7 +521,7 @@ export async function upsertUserInRegistry(user: UserProfile): Promise<void> {
   } else {
     users.push(user);
   }
-  await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+  await safeSetItem(KEYS.ALL_USERS, JSON.stringify(users));
 }
 
 export async function getAllUsers(): Promise<UserProfile[]> {
@@ -527,11 +549,11 @@ export async function grantPremiumToUser(userId: string): Promise<UserProfile[]>
   const target = users.find((u) => u.id === userId);
   if (target) {
     target.isPremium = true;
-    await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+    await safeSetItem(KEYS.ALL_USERS, JSON.stringify(users));
     const currentUser = await getUser();
     if (currentUser && currentUser.id === userId) {
       currentUser.isPremium = true;
-      await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
+      await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
     }
   }
   await serverAdminUpdateUser(userId, { isPremium: true });
@@ -543,11 +565,11 @@ export async function revokePremiumFromUser(userId: string): Promise<UserProfile
   const target = users.find((u) => u.id === userId);
   if (target) {
     target.isPremium = false;
-    await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+    await safeSetItem(KEYS.ALL_USERS, JSON.stringify(users));
     const currentUser = await getUser();
     if (currentUser && currentUser.id === userId) {
       currentUser.isPremium = false;
-      await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
+      await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
     }
   }
   await serverAdminUpdateUser(userId, { isPremium: false });
@@ -561,12 +583,12 @@ export async function setUserRole(userId: string, role: UserRole): Promise<UserP
   if (target) {
     target.role = role;
     if (isPremiumForRole) target.isPremium = true;
-    await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+    await safeSetItem(KEYS.ALL_USERS, JSON.stringify(users));
     const currentUser = await getUser();
     if (currentUser && currentUser.id === userId) {
       currentUser.role = role;
       if (isPremiumForRole) currentUser.isPremium = true;
-      await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
+      await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
     }
   }
   await serverAdminUpdateUser(userId, { role, ...(isPremiumForRole ? { isPremium: true } : {}) });
@@ -578,12 +600,12 @@ export async function updateUserAvatar(userId: string, avatarUrl: string): Promi
   const target = users.find((u) => u.id === userId);
   if (target) {
     target.avatarUrl = avatarUrl;
-    await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+    await safeSetItem(KEYS.ALL_USERS, JSON.stringify(users));
   }
   const currentUser = await getUser();
   if (currentUser && currentUser.id === userId) {
     currentUser.avatarUrl = avatarUrl;
-    await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
+    await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
     return currentUser;
   }
   return target || null;
@@ -601,7 +623,7 @@ export async function adminUpdateUser(
     if (updates.email !== undefined) target.email = updates.email;
     if (updates.mobileNumber !== undefined) target.mobileNumber = updates.mobileNumber;
     if (updates.avatarUrl !== undefined) target.avatarUrl = updates.avatarUrl;
-    await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(users));
+    await safeSetItem(KEYS.ALL_USERS, JSON.stringify(users));
     // If this user is the currently logged-in user, update local user too
     const currentUser = await getUser();
     if (currentUser && currentUser.id === userId) {
@@ -609,7 +631,7 @@ export async function adminUpdateUser(
       if (updates.email !== undefined) currentUser.email = updates.email;
       if (updates.mobileNumber !== undefined) currentUser.mobileNumber = updates.mobileNumber;
       if (updates.avatarUrl !== undefined) currentUser.avatarUrl = updates.avatarUrl;
-      await AsyncStorage.setItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
+      await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
     }
   }
   // Also update in PostgreSQL (if user is server-registered)
@@ -634,7 +656,7 @@ export async function deleteUserFromRegistry(userId: string): Promise<UserProfil
   // Remove from local registry
   const users = await getAllUsers();
   const filtered = users.filter((u) => u.id !== userId);
-  await AsyncStorage.setItem(KEYS.ALL_USERS, JSON.stringify(filtered));
+  await safeSetItem(KEYS.ALL_USERS, JSON.stringify(filtered));
   // Also delete from PostgreSQL
   try {
     const base = getApiUrl();

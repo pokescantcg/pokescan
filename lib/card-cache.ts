@@ -71,8 +71,31 @@ export async function getCacheStatus(): Promise<CacheMeta> {
   };
 }
 
+async function safeSet(key: string, value: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(key, value);
+  } catch (err: any) {
+    if (err?.message?.includes?.("SQLITE_FULL") || err?.message?.includes?.("disk is full")) {
+      try {
+        const allKeys = await AsyncStorage.getAllKeys();
+        const cacheKeys = allKeys.filter((k) => k.startsWith(KEYS.CARDS_PREFIX));
+        if (cacheKeys.length > 0) {
+          const toRemove = cacheKeys.slice(0, Math.max(1, Math.floor(cacheKeys.length / 2)));
+          await AsyncStorage.multiRemove(toRemove);
+          console.log(`[CardCache] Evicted ${toRemove.length} cached sets to free space`);
+          await AsyncStorage.setItem(key, value);
+          return;
+        }
+      } catch {}
+      console.warn("[CardCache] Storage full, skipping write:", key);
+    } else {
+      throw err;
+    }
+  }
+}
+
 async function saveMeta(meta: CacheMeta): Promise<void> {
-  await AsyncStorage.setItem(KEYS.META, JSON.stringify(meta));
+  await safeSet(KEYS.META, JSON.stringify(meta));
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────
@@ -199,7 +222,7 @@ export async function syncDatabase(
   const setsData = await setsRes.json();
   const allSets: Array<{ id: string; name: string; total: number }> = setsData.data || [];
 
-  await AsyncStorage.setItem(KEYS.SETS, JSON.stringify(allSets));
+  await safeSet(KEYS.SETS, JSON.stringify(allSets));
 
   // Filter to selected languages (or all if no filter specified)
   const sets =
@@ -237,7 +260,7 @@ export async function syncDatabase(
         imageLarge: c.images?.large || "",
       }));
 
-      await AsyncStorage.setItem(KEYS.CARDS_PREFIX + set.id, JSON.stringify(cached));
+      await safeSet(KEYS.CARDS_PREFIX + set.id, JSON.stringify(cached));
 
       totalCards += cached.length;
       syncedSetIds.push(set.id);
