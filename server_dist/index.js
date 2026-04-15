@@ -4079,21 +4079,32 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       );
       if (active) {
         const periodEnd = new Date(active.current_period_end * 1e3);
+        const resolvedStatus = active.cancel_at_period_end ? "canceling" : active.status;
         await storage.updateUser(user.id, {
           isPremium: true,
           stripeSubscriptionId: active.id,
           stripePriceId: active.items.data[0]?.price?.id ?? null,
-          subscriptionStatus: active.status,
+          subscriptionStatus: resolvedStatus,
           subscriptionPeriodEnd: periodEnd
         });
-        res.json({ isPremium: true, subscriptionStatus: active.status, periodEnd: periodEnd.toISOString() });
+        res.json({ isPremium: true, subscriptionStatus: resolvedStatus, periodEnd: periodEnd.toISOString(), cancelAtPeriodEnd: !!active.cancel_at_period_end });
       } else {
         const latestSub = subscriptions.data[0];
-        await storage.updateUser(user.id, {
-          isPremium: false,
-          subscriptionStatus: latestSub?.status ?? "canceled"
-        });
-        res.json({ isPremium: false, subscriptionStatus: latestSub?.status ?? "canceled" });
+        const storedUser = user;
+        const periodEndDate = storedUser.subscriptionPeriodEnd ? new Date(storedUser.subscriptionPeriodEnd) : null;
+        const stillInGracePeriod = periodEndDate && periodEndDate > /* @__PURE__ */ new Date();
+        if (stillInGracePeriod) {
+          await storage.updateUser(user.id, {
+            subscriptionStatus: "canceling"
+          });
+          res.json({ isPremium: true, subscriptionStatus: "canceling", periodEnd: periodEndDate.toISOString(), cancelAtPeriodEnd: true });
+        } else {
+          await storage.updateUser(user.id, {
+            isPremium: false,
+            subscriptionStatus: latestSub?.status ?? "canceled"
+          });
+          res.json({ isPremium: false, subscriptionStatus: latestSub?.status ?? "canceled" });
+        }
       }
     } catch (err) {
       console.error("[Stripe] Sync error:", err.message);
@@ -4134,28 +4145,31 @@ If you cannot identify the card, set confidence to "low" and provide your best g
               const userId = userRow.rows[0].id;
               const isActive = sub.status === "active" || sub.status === "trialing";
               const periodEnd = new Date(sub.current_period_end * 1e3);
+              const resolvedStatus = isActive && sub.cancel_at_period_end ? "canceling" : sub.status;
               await pool3.query(
                 `UPDATE pokescan_users
                  SET is_premium = $1, stripe_subscription_id = $2,
                      stripe_price_id = $3, subscription_status = $4,
                      subscription_period_end = $5
                  WHERE id = $6`,
-                [isActive, sub.id, sub.items?.data?.[0]?.price?.id ?? null, sub.status, periodEnd, userId]
+                [isActive, sub.id, sub.items?.data?.[0]?.price?.id ?? null, resolvedStatus, periodEnd, userId]
               );
-              console.log(`[Stripe Webhook] Updated user ${userId}: isPremium=${isActive} status=${sub.status}`);
+              console.log(`[Stripe Webhook] Updated user ${userId}: isPremium=${isActive} status=${resolvedStatus} cancelAtPeriodEnd=${sub.cancel_at_period_end}`);
             }
             break;
           }
           case "customer.subscription.deleted": {
             const sub = event.data.object;
             const customerId = sub.customer;
+            const periodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1e3) : /* @__PURE__ */ new Date();
             await pool3.query(
               `UPDATE pokescan_users
-               SET is_premium = false, subscription_status = 'canceled'
+               SET is_premium = false, subscription_status = 'canceled',
+                   subscription_period_end = $2
                WHERE stripe_customer_id = $1`,
-              [customerId]
+              [customerId, periodEnd]
             );
-            console.log(`[Stripe Webhook] Subscription cancelled for customer ${customerId}`);
+            console.log(`[Stripe Webhook] Subscription ended for customer ${customerId} \u2014 premium removed`);
             break;
           }
           case "invoice.payment_failed": {

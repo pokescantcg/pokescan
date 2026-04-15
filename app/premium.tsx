@@ -147,7 +147,18 @@ export default function PremiumScreen() {
   }, []);
 
   if (user?.isPremium) {
-    return <ActivePremiumScreen colors={colors} insets={insets} webTopInset={webTopInset} webBotInset={webBotInset} onManage={handleManageSubscription} loading={loading} />;
+    return (
+      <ActivePremiumScreen
+        colors={colors}
+        insets={insets}
+        webTopInset={webTopInset}
+        webBotInset={webBotInset}
+        onManage={handleManageSubscription}
+        loading={loading}
+        subscriptionStatus={user.subscriptionStatus ?? null}
+        subscriptionPeriodEnd={user.subscriptionPeriodEnd ?? null}
+      />
+    );
   }
 
   const monthlyPrice = "£4.99";
@@ -277,6 +288,8 @@ function ActivePremiumScreen({
   webBotInset,
   onManage,
   loading,
+  subscriptionStatus,
+  subscriptionPeriodEnd,
 }: {
   colors: ReturnType<typeof useThemeColors>;
   insets: ReturnType<typeof useSafeAreaInsets>;
@@ -284,7 +297,15 @@ function ActivePremiumScreen({
   webBotInset: number;
   onManage: () => void;
   loading: boolean;
+  subscriptionStatus: string | null;
+  subscriptionPeriodEnd: string | null;
 }) {
+  const isCanceling = subscriptionStatus === "canceling";
+  const periodEndDate = subscriptionPeriodEnd ? new Date(subscriptionPeriodEnd) : null;
+  const formattedEnd = periodEndDate
+    ? periodEndDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
+    : null;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient
@@ -296,8 +317,12 @@ function ActivePremiumScreen({
         </Pressable>
         <View style={styles.headerCenter}>
           <MaterialCommunityIcons name="star-circle" size={36} color="#FFDE00" />
-          <Text style={styles.headerTitle}>Premium Active</Text>
-          <Text style={styles.headerSub}>You have full access to all features</Text>
+          <Text style={styles.headerTitle}>{isCanceling ? "Premium Cancelling" : "Premium Active"}</Text>
+          <Text style={styles.headerSub}>
+            {isCanceling && formattedEnd
+              ? `Access until ${formattedEnd}`
+              : "You have full access to all features"}
+          </Text>
         </View>
       </LinearGradient>
 
@@ -305,11 +330,42 @@ function ActivePremiumScreen({
         contentContainerStyle={[styles.scroll, { paddingBottom: (insets.bottom || webBotInset) + 24 }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.activeCard, { backgroundColor: colors.card, borderColor: "#FFDE00" + "60" }]}>
-          <MaterialCommunityIcons name="crown" size={48} color="#FFDE00" />
-          <Text style={[styles.activeTitle, { color: colors.text }]}>You're a Premium member!</Text>
+        {isCanceling && formattedEnd && (
+          <View style={{
+            backgroundColor: "#FF6B0020",
+            borderColor: "#FF6B00",
+            borderWidth: 1,
+            borderRadius: 12,
+            padding: 16,
+            marginHorizontal: 20,
+            marginTop: 16,
+            flexDirection: "row",
+            alignItems: "flex-start",
+            gap: 12,
+          }}>
+            <Ionicons name="time-outline" size={22} color="#FF6B00" style={{ marginTop: 1 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 14, color: "#FF6B00", marginBottom: 4 }}>
+                Subscription Cancelled
+              </Text>
+              <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 13, color: colors.textSecondary, lineHeight: 18 }}>
+                Your premium access remains active until{" "}
+                <Text style={{ fontFamily: "Outfit_700Bold", color: colors.text }}>{formattedEnd}</Text>
+                . After that date your account will revert to the free plan.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        <View style={[styles.activeCard, { backgroundColor: colors.card, borderColor: isCanceling ? "#FF6B0060" : "#FFDE0060" }]}>
+          <MaterialCommunityIcons name="crown" size={48} color={isCanceling ? "#FF6B00" : "#FFDE00"} />
+          <Text style={[styles.activeTitle, { color: colors.text }]}>
+            {isCanceling ? "Still enjoying Premium" : "You're a Premium member!"}
+          </Text>
           <Text style={[styles.activeSub, { color: colors.textSecondary }]}>
-            All features are unlocked. Enjoy the full PokeScan experience.
+            {isCanceling && formattedEnd
+              ? `All features unlocked until ${formattedEnd}.`
+              : "All features are unlocked. Enjoy the full PokeScan experience."}
           </Text>
         </View>
 

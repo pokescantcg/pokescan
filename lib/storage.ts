@@ -19,6 +19,8 @@ export interface UserProfile {
   isPremium: boolean;
   role: UserRole;
   createdAt: string;
+  subscriptionStatus?: string | null;
+  subscriptionPeriodEnd?: string | null;
 }
 
 export interface CollectionItem {
@@ -217,6 +219,7 @@ export async function logoutUser(): Promise<void> {
 }
 
 function dbUserToProfile(dbUser: any): UserProfile {
+  const periodEnd = dbUser.subscriptionPeriodEnd ?? dbUser.subscription_period_end ?? null;
   return {
     id: dbUser.id,
     username: dbUser.username,
@@ -228,6 +231,8 @@ function dbUserToProfile(dbUser: any): UserProfile {
     role: (dbUser.role ?? "user") as UserRole,
     avatarUrl: dbUser.avatarUrl ?? dbUser.avatar_url,
     createdAt: dbUser.createdAt ?? dbUser.created_at ?? new Date().toISOString(),
+    subscriptionStatus: dbUser.subscriptionStatus ?? dbUser.subscription_status ?? null,
+    subscriptionPeriodEnd: periodEnd ? new Date(periodEnd).toISOString() : null,
   };
 }
 
