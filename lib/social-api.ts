@@ -136,4 +136,8 @@ export const socialApi = {
   sendChatroomMessage: (body: string): Promise<{ message: ChatroomMessage }> =>
     post("api/chatroom/messages", { body }),
   deleteChatroomMessage: (id: string) => del(`api/chatroom/messages/${id}`),
+  muteChatUser: (userId: string, minutes: number) => post("api/chatroom/mute", { userId, minutes }),
+  unmuteChatUser: (userId: string) => post("api/chatroom/unmute", { userId }),
+  banChatUser: (userId: string, minutes: number) => post("api/chatroom/ban", { userId, minutes }),
+  unbanChatUser: (userId: string) => post("api/chatroom/unban", { userId }),
 };

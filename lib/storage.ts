@@ -22,6 +22,8 @@ export interface UserProfile {
   subscriptionStatus?: string | null;
   subscriptionPeriodEnd?: string | null;
   stripePriceId?: string | null;
+  chatMutedUntil?: string | null;
+  chatBannedUntil?: string | null;
 }
 
 export type CardVariant = "Non-Holo" | "Holo" | "Reverse Holo";
@@ -303,6 +305,8 @@ function dbUserToProfile(dbUser: any): UserProfile {
     subscriptionStatus: dbUser.subscriptionStatus ?? dbUser.subscription_status ?? null,
     subscriptionPeriodEnd: periodEnd ? new Date(periodEnd).toISOString() : null,
     stripePriceId: dbUser.stripePriceId ?? dbUser.stripe_price_id ?? null,
+    chatMutedUntil: dbUser.chatMutedUntil ?? dbUser.chat_muted_until ?? null,
+    chatBannedUntil: dbUser.chatBannedUntil ?? dbUser.chat_banned_until ?? null,
   };
 }
 

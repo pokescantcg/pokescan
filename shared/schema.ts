@@ -28,6 +28,8 @@ export const pokescanUsers = pgTable("pokescan_users", {
   consecutiveLoginDays: integer("consecutive_login_days").notNull().default(0),
   lastLoginDate: text("last_login_date"),             // YYYY-MM-DD of last checkin
   bonusScanPools: text("bonus_scan_pools"),           // JSON: [{amount, expiresAt}]
+  chatMutedUntil: timestamp("chat_muted_until", { withTimezone: true }),
+  chatBannedUntil: timestamp("chat_banned_until", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
 });
 

@@ -410,7 +410,7 @@ function UserRow({
             onPress={() => {
               const options: { label: string; role: UserRole }[] = [
                 { label: "Regular User", role: "user" },
-                { label: "Market Moderator", role: "moderator" },
+                { label: "Moderator", role: "moderator" },
                 { label: "Full App Admin", role: "admin" },
               ];
               const currentRoleLabel = options.find((o) => o.role === profile.role)?.label || "User";
@@ -1132,7 +1132,7 @@ export default function AdminPanelScreen() {
     (profile: UserProfile, role: UserRole) => {
       const roleLabels: Record<UserRole, string> = {
         user: "Regular User",
-        moderator: "Market Moderator",
+        moderator: "Moderator",
         admin: "Full App Admin",
       };
       Alert.alert(

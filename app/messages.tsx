@@ -301,8 +301,11 @@ export default function MessagesScreen() {
   const [chatroomInput, setChatroomInput] = useState("");
   const [chatroomSending, setChatroomSending] = useState(false);
   const [chatroomLoading, setChatroomLoading] = useState(false);
+  const [chatroomError, setChatroomError] = useState<string | null>(null);
   const chatroomPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const chatListRef = useRef<FlatList>(null);
+
+  const isStaff = user?.role === "admin" || user?.role === "moderator";
 
   const loadAll = useCallback(async () => {
     if (!user) return;
@@ -326,12 +329,17 @@ export default function MessagesScreen() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   const loadChatroom = useCallback(async () => {
-    if (!user?.isPremium && user?.role !== "admin") return;
+    if (!user?.isPremium && !isStaff) return;
     try {
       const data = await socialApi.getChatroomMessages();
       setChatroomMessages(data.messages);
-    } catch { }
-  }, [user]);
+      setChatroomError(null);
+    } catch (e: any) {
+      if (e.message?.includes("banned")) {
+        setChatroomError("banned");
+      }
+    }
+  }, [user, isStaff]);
 
   useEffect(() => {
     if (activeTab === "chat") {
@@ -356,7 +364,14 @@ export default function MessagesScreen() {
       setChatroomInput("");
       setTimeout(() => chatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to send message");
+      const msg = e.message || "Failed to send message";
+      if (msg.includes("muted")) {
+        Alert.alert("Muted", "You are currently muted and cannot send messages.");
+      } else if (msg.includes("banned")) {
+        Alert.alert("Banned", "You are banned from the chat.");
+      } else {
+        Alert.alert("Error", msg);
+      }
     } finally {
       setChatroomSending(false);
     }
@@ -377,6 +392,71 @@ export default function MessagesScreen() {
       },
     ]);
   }, []);
+
+  const showModActions = useCallback((senderId: string, senderName: string) => {
+    if (!isStaff || senderId === user?.id) return;
+    const MUTE_OPTIONS = [
+      { text: "5 minutes", minutes: 5 },
+      { text: "15 minutes", minutes: 15 },
+      { text: "30 minutes", minutes: 30 },
+      { text: "1 hour", minutes: 60 },
+      { text: "6 hours", minutes: 360 },
+      { text: "24 hours", minutes: 1440 },
+    ];
+    const BAN_OPTIONS = [
+      { text: "1 hour", minutes: 60 },
+      { text: "6 hours", minutes: 360 },
+      { text: "24 hours", minutes: 1440 },
+      { text: "3 days", minutes: 4320 },
+      { text: "7 days", minutes: 10080 },
+      { text: "30 days", minutes: 43200 },
+    ];
+
+    Alert.alert(
+      `Moderate ${senderName}`,
+      "Choose an action:",
+      [
+        {
+          text: "Mute (can't send)",
+          onPress: () => {
+            Alert.alert("Mute Duration", `How long to mute ${senderName}?`, [
+              ...MUTE_OPTIONS.map(opt => ({
+                text: opt.text,
+                onPress: async () => {
+                  try {
+                    await socialApi.muteChatUser(senderId, opt.minutes);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    Alert.alert("Muted", `${senderName} muted for ${opt.text}`);
+                  } catch (e: any) { Alert.alert("Error", e.message || "Failed to mute"); }
+                },
+              })),
+              { text: "Cancel", style: "cancel" },
+            ]);
+          },
+        },
+        {
+          text: "Ban (can't access chat)",
+          style: "destructive",
+          onPress: () => {
+            Alert.alert("Ban Duration", `How long to ban ${senderName}?`, [
+              ...BAN_OPTIONS.map(opt => ({
+                text: opt.text,
+                onPress: async () => {
+                  try {
+                    await socialApi.banChatUser(senderId, opt.minutes);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                    Alert.alert("Banned", `${senderName} banned for ${opt.text}`);
+                  } catch (e: any) { Alert.alert("Error", e.message || "Failed to ban"); }
+                },
+              })),
+              { text: "Cancel", style: "cancel" },
+            ]);
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ]
+    );
+  }, [isStaff, user]);
 
   // Handle deep link from market "Message Now"
   useEffect(() => {
@@ -752,7 +832,7 @@ export default function MessagesScreen() {
           )}
 
           {activeTab === "chat" && (
-            user?.isPremium || user?.role === "admin" ? (
+            user?.isPremium || isStaff ? (
               <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
                 {chatroomLoading ? (
                   <View style={styles.emptyContainer}><ActivityIndicator size="large" color={colors.pokemonRed} /></View>
@@ -763,7 +843,13 @@ export default function MessagesScreen() {
                         <Ionicons name="diamond" size={14} color={colors.gold} />
                         <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text }}>Premium Chat</Text>
                         <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted, flex: 1 }}>Messages kept for 7 days</Text>
+                        {isStaff && <Ionicons name="shield-checkmark" size={14} color="#E67E22" />}
                       </View>
+                      {isStaff && (
+                        <Text style={{ fontSize: 10, fontFamily: "Outfit_400Regular", color: "#E67E22", marginTop: 2 }}>
+                          Long press a message to moderate
+                        </Text>
+                      )}
                     </View>
                     <FlatList
                       ref={chatListRef}
@@ -785,7 +871,19 @@ export default function MessagesScreen() {
                           <Pressable
                             style={{ flexDirection: "row", alignItems: isOwn ? "flex-end" : "flex-start", marginBottom: 10, justifyContent: isOwn ? "flex-end" : "flex-start" }}
                             onLongPress={() => {
-                              if (isOwn || user?.role === "admin") handleDeleteChatroomMsg(item.id);
+                              if (isOwn) {
+                                handleDeleteChatroomMsg(item.id);
+                              } else if (isStaff) {
+                                Alert.alert(
+                                  item.senderDisplayName,
+                                  "What would you like to do?",
+                                  [
+                                    { text: "Delete Message", onPress: () => handleDeleteChatroomMsg(item.id) },
+                                    { text: "Moderate User", onPress: () => showModActions(item.senderId, item.senderDisplayName) },
+                                    { text: "Cancel", style: "cancel" },
+                                  ]
+                                );
+                              }
                             }}
                           >
                             {!isOwn && (

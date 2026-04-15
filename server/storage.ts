@@ -29,6 +29,8 @@ export interface DbUser {
   consecutiveLoginDays?: number;
   lastLoginDate?: string | null;
   bonusScanPools?: string | null;
+  chatMutedUntil?: Date | string | null;
+  chatBannedUntil?: Date | string | null;
 }
 
 export interface IStorage {
@@ -244,6 +246,8 @@ function mapRow(row: any): DbUser {
     consecutiveLoginDays: row.consecutive_login_days ?? 0,
     lastLoginDate: row.last_login_date ?? null,
     bonusScanPools: row.bonus_scan_pools ?? null,
+    chatMutedUntil: row.chat_muted_until ?? null,
+    chatBannedUntil: row.chat_banned_until ?? null,
   };
 }
 

@@ -2714,14 +2714,21 @@ Return ONLY valid JSON in exactly this format:
   cleanupOldChatroomMessages();
   setInterval(cleanupOldChatroomMessages, 60 * 60 * 1000);
 
+  const isStaffRole = (role: string) => role === "admin" || role === "moderator";
+
   app.get("/api/chatroom/messages", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
       if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
       const caller = await storage.validateSession(token);
       if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (!caller.isPremium && caller.role !== "admin") {
+      if (!caller.isPremium && !isStaffRole(caller.role)) {
         res.status(403).json({ error: "Premium membership required" });
+        return;
+      }
+
+      if (caller.chatBannedUntil && new Date(caller.chatBannedUntil) > new Date()) {
+        res.status(403).json({ error: "You are banned from the chat", bannedUntil: caller.chatBannedUntil });
         return;
       }
 
@@ -2742,8 +2749,18 @@ Return ONLY valid JSON in exactly this format:
       if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
       const caller = await storage.validateSession(token);
       if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (!caller.isPremium && caller.role !== "admin") {
+      if (!caller.isPremium && !isStaffRole(caller.role)) {
         res.status(403).json({ error: "Premium membership required" });
+        return;
+      }
+
+      if (caller.chatBannedUntil && new Date(caller.chatBannedUntil) > new Date()) {
+        res.status(403).json({ error: "You are banned from the chat", bannedUntil: caller.chatBannedUntil });
+        return;
+      }
+
+      if (caller.chatMutedUntil && new Date(caller.chatMutedUntil) > new Date()) {
+        res.status(403).json({ error: "You are muted", mutedUntil: caller.chatMutedUntil });
         return;
       }
 
@@ -2776,8 +2793,13 @@ Return ONLY valid JSON in exactly this format:
       if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
       const caller = await storage.validateSession(token);
       if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (!caller.isPremium && caller.role !== "admin") {
+      if (!caller.isPremium && !isStaffRole(caller.role)) {
         res.status(403).json({ error: "Premium membership required" });
+        return;
+      }
+
+      if (caller.chatBannedUntil && new Date(caller.chatBannedUntil) > new Date() && !isStaffRole(caller.role)) {
+        res.status(403).json({ error: "You are banned from the chat", bannedUntil: caller.chatBannedUntil });
         return;
       }
 
@@ -2785,7 +2807,7 @@ Return ONLY valid JSON in exactly this format:
       const [existing] = await db.select().from(pokescanChatroomMessages).where(eq(pokescanChatroomMessages.id, msgId));
       if (!existing) { res.status(404).json({ error: "Message not found" }); return; }
 
-      if (existing.senderId !== caller.id && caller.role !== "admin") {
+      if (existing.senderId !== caller.id && !isStaffRole(caller.role)) {
         res.status(403).json({ error: "Not allowed" });
         return;
       }
@@ -2795,6 +2817,98 @@ Return ONLY valid JSON in exactly this format:
     } catch (error: any) {
       console.error("Chatroom delete error:", error);
       res.status(500).json({ error: error.message || "Failed to delete message" });
+    }
+  });
+
+  app.post("/api/chatroom/mute", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!isStaffRole(caller.role)) { res.status(403).json({ error: "Staff only" }); return; }
+
+      const { userId, minutes } = req.body;
+      if (!userId || !minutes || typeof minutes !== "number" || minutes < 1) {
+        res.status(400).json({ error: "userId and minutes (positive number) required" });
+        return;
+      }
+
+      const target = await storage.getUserById(userId);
+      if (!target) { res.status(404).json({ error: "User not found" }); return; }
+      if (isStaffRole(target.role)) { res.status(403).json({ error: "Cannot mute staff members" }); return; }
+
+      const mutedUntil = new Date(Date.now() + minutes * 60 * 1000);
+      await pool.query("UPDATE pokescan_users SET chat_muted_until = $1 WHERE id = $2", [mutedUntil, userId]);
+      res.json({ success: true, mutedUntil: mutedUntil.toISOString() });
+    } catch (error: any) {
+      console.error("Mute error:", error);
+      res.status(500).json({ error: error.message || "Failed to mute user" });
+    }
+  });
+
+  app.post("/api/chatroom/unmute", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!isStaffRole(caller.role)) { res.status(403).json({ error: "Staff only" }); return; }
+
+      const { userId } = req.body;
+      if (!userId) { res.status(400).json({ error: "userId required" }); return; }
+
+      await pool.query("UPDATE pokescan_users SET chat_muted_until = NULL WHERE id = $1", [userId]);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Unmute error:", error);
+      res.status(500).json({ error: error.message || "Failed to unmute user" });
+    }
+  });
+
+  app.post("/api/chatroom/ban", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!isStaffRole(caller.role)) { res.status(403).json({ error: "Staff only" }); return; }
+
+      const { userId, minutes } = req.body;
+      if (!userId || !minutes || typeof minutes !== "number" || minutes < 1) {
+        res.status(400).json({ error: "userId and minutes (positive number) required" });
+        return;
+      }
+
+      const target = await storage.getUserById(userId);
+      if (!target) { res.status(404).json({ error: "User not found" }); return; }
+      if (isStaffRole(target.role)) { res.status(403).json({ error: "Cannot ban staff members" }); return; }
+
+      const bannedUntil = new Date(Date.now() + minutes * 60 * 1000);
+      await pool.query("UPDATE pokescan_users SET chat_banned_until = $1 WHERE id = $2", [bannedUntil, userId]);
+      res.json({ success: true, bannedUntil: bannedUntil.toISOString() });
+    } catch (error: any) {
+      console.error("Ban error:", error);
+      res.status(500).json({ error: error.message || "Failed to ban user" });
+    }
+  });
+
+  app.post("/api/chatroom/unban", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!isStaffRole(caller.role)) { res.status(403).json({ error: "Staff only" }); return; }
+
+      const { userId } = req.body;
+      if (!userId) { res.status(400).json({ error: "userId required" }); return; }
+
+      await pool.query("UPDATE pokescan_users SET chat_banned_until = NULL WHERE id = $1", [userId]);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Unban error:", error);
+      res.status(500).json({ error: error.message || "Failed to unban user" });
     }
   });
 
