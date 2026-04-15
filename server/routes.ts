@@ -278,10 +278,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const [totalCountResult, setInfoResult] = await Promise.all([
           db.select({ count: sql<number>`count(*)::int` }).from(pokemonCards).where(eq(pokemonCards.setId, setId)),
-          db.select({ total: pokemonSets.total }).from(pokemonSets).where(eq(pokemonSets.id, setId)).limit(1),
+          db.select().from(pokemonSets).where(eq(pokemonSets.id, setId)).limit(1),
         ]);
         const totalCount = totalCountResult[0]?.count ?? 0;
-        const expectedTotal = setInfoResult[0]?.total ?? 0;
+        const setRow = setInfoResult[0] ?? null;
+        const expectedTotal = setRow?.total ?? 0;
 
         // For non-English sets: serve whatever cards we have (any amount).
         // For English sets: only serve if ≥90% seeded (ensures complete sets).
@@ -297,7 +298,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .limit(pageSize)
             .offset(offset);
 
-          const formattedCards = dbCards.map((card) => dbCardToApiFormat(card, null));
+          const formattedCards = dbCards.map((card) => {
+            const f = dbCardToApiFormat(card, null);
+            if (setRow) {
+              f.set = dbSetToApiFormat(setRow);
+            }
+            return f;
+          });
           const payload = { data: formattedCards, count: formattedCards.length, totalCount, page, source: "db" };
           setMemCache(cacheKey, payload);
           warmCardCache(formattedCards);
@@ -1777,7 +1784,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         );
       } else {
         await db.execute(
-          sql`INSERT INTO pokescan_collections (user_id, card_id, card_name, card_image, set_name, set_id, rarity, quantity, condition, variant, price_gbp) VALUES (${user.id}, ${cardId}, ${cardName}, ${cardImage}, ${setName}, ${setId}, ${rarity || "Unknown"}, ${quantity || 1}, ${condition}, ${v}, ${priceGBP ?? null})`
+          sql`INSERT INTO pokescan_collections (user_id, card_id, card_name, card_image, set_name, set_id, rarity, quantity, condition, variant, price_gbp) VALUES (${user.id}, ${cardId}, ${cardName}, ${cardImage ?? null}, ${setName || setId || "Unknown"}, ${setId || null}, ${rarity || "Unknown"}, ${quantity || 1}, ${condition}, ${v}, ${priceGBP ?? null})`
         );
       }
 
