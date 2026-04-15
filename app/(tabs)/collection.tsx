@@ -1,9 +1,9 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   Text,
   View,
-  FlatList,
+  SectionList,
   Pressable,
   useColorScheme,
   Platform,
@@ -21,6 +21,13 @@ import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
 import { CollectionItem } from "@/lib/storage";
 import PokeBackground from "@/components/PokeBackground";
+
+function setLogoUrl(setId: string) {
+  return `https://images.pokemontcg.io/${setId}/logo.png`;
+}
+function setSymbolUrl(setId: string) {
+  return `https://images.pokemontcg.io/${setId}/symbol.png`;
+}
 
 function CollectionCard({
   item,
@@ -45,9 +52,6 @@ function CollectionCard({
       <View style={styles.cardInfo}>
         <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={1}>
           {item.cardName}
-        </Text>
-        <Text style={[styles.cardSet, { color: colors.textSecondary }]} numberOfLines={1}>
-          {item.setName}
         </Text>
         <Text style={[styles.cardCondition, { color: colors.textMuted }]}>
           {item.variant && item.variant !== "Non-Holo" ? `${item.variant} · ` : ""}{item.condition}
@@ -85,6 +89,16 @@ function CollectionCard({
   );
 }
 
+interface SetSection {
+  setId: string;
+  setName: string;
+  cardCount: number;
+  totalQuantity: number;
+  setValue: number;
+  latestAdded: string;
+  data: CollectionItem[];
+}
+
 export default function CollectionScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
@@ -98,11 +112,47 @@ export default function CollectionScreen() {
     setTimeout(() => setIsRefreshing(false), 600);
   }, []);
 
-  const sorted = [...collection].sort((a, b) => {
-    if (sortBy === "name") return a.cardName.localeCompare(b.cardName);
-    if (sortBy === "value") return (b.priceGBP ?? 0) - (a.priceGBP ?? 0);
-    return new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime();
-  });
+  const sections: SetSection[] = useMemo(() => {
+    const groups = new Map<string, SetSection>();
+
+    for (const item of collection) {
+      const key = item.setId || item.setName;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          setId: item.setId,
+          setName: item.setName,
+          cardCount: 0,
+          totalQuantity: 0,
+          setValue: 0,
+          latestAdded: item.addedAt,
+          data: [],
+        });
+      }
+      const g = groups.get(key)!;
+      g.data.push(item);
+      g.cardCount += 1;
+      g.totalQuantity += item.quantity;
+      g.setValue += (item.priceGBP ?? 0) * item.quantity;
+      if (new Date(item.addedAt) > new Date(g.latestAdded)) {
+        g.latestAdded = item.addedAt;
+      }
+    }
+
+    let result = Array.from(groups.values());
+
+    if (sortBy === "name") {
+      result.sort((a, b) => a.setName.localeCompare(b.setName));
+      result.forEach(s => s.data.sort((a, b) => a.cardName.localeCompare(b.cardName)));
+    } else if (sortBy === "value") {
+      result.sort((a, b) => b.setValue - a.setValue);
+      result.forEach(s => s.data.sort((a, b) => (b.priceGBP ?? 0) - (a.priceGBP ?? 0)));
+    } else {
+      result.sort((a, b) => new Date(b.latestAdded).getTime() - new Date(a.latestAdded).getTime());
+      result.forEach(s => s.data.sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()));
+    }
+
+    return result;
+  }, [collection, sortBy]);
 
   const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -125,16 +175,8 @@ export default function CollectionScreen() {
           <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
             Create an account to start tracking your collection
           </Text>
-          <Pressable
-            style={styles.signInBtn}
-            onPress={() => router.push("/register")}
-          >
-            <LinearGradient
-              colors={["#CC0000", "#8B0000"]}
-              style={styles.signInGradient}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
+          <Pressable style={styles.signInBtn} onPress={() => router.push("/register")}>
+            <LinearGradient colors={["#CC0000", "#8B0000"]} style={styles.signInGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
               <Text style={styles.signInBtnText}>Sign In</Text>
             </LinearGradient>
           </Pressable>
@@ -222,7 +264,6 @@ export default function CollectionScreen() {
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Value</Text>
           </View>
         </View>
-
         <View style={styles.sortRow}>
           {(["recent", "name", "value"] as const).map((s) => (
             <Pressable
@@ -230,12 +271,7 @@ export default function CollectionScreen() {
               style={[styles.sortBtn, sortBy === s && { backgroundColor: colors.pokemonRed }]}
               onPress={() => setSortBy(s)}
             >
-              <Text
-                style={[
-                  styles.sortBtnText,
-                  { color: sortBy === s ? "#FFF" : colors.textSecondary },
-                ]}
-              >
+              <Text style={[styles.sortBtnText, { color: sortBy === s ? "#FFF" : colors.textSecondary }]}>
                 {s === "recent" ? "Recent" : s === "name" ? "A-Z" : "Value"}
               </Text>
             </Pressable>
@@ -243,8 +279,60 @@ export default function CollectionScreen() {
         </View>
       </LinearGradient>
 
-      <FlatList
-        data={sorted}
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => `${item.cardId}-${item.condition}-${item.variant || "Non-Holo"}`}
+        contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
+        showsVerticalScrollIndicator={false}
+        stickySectionHeadersEnabled={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.pokemonRed}
+            colors={[colors.pokemonRed]}
+          />
+        }
+        renderSectionHeader={({ section }) => (
+          <Pressable
+            style={[styles.setHeader, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+            onPress={() => router.push({ pathname: "/set/[id]", params: { id: section.setId, name: section.setName } })}
+          >
+            <Image
+              source={{ uri: setLogoUrl(section.setId) }}
+              style={styles.setLogo}
+              contentFit="contain"
+              placeholder={{ color: colors.surface } as any}
+            />
+            <View style={styles.setInfo}>
+              <Text style={[styles.setName, { color: colors.text }]} numberOfLines={1}>
+                {section.setName}
+              </Text>
+              <View style={styles.setMeta}>
+                <View style={styles.setMetaItem}>
+                  <MaterialCommunityIcons name="cards-outline" size={12} color={colors.textSecondary} />
+                  <Text style={[styles.setMetaText, { color: colors.textSecondary }]}>
+                    {section.totalQuantity} {section.totalQuantity === 1 ? "card" : "cards"}
+                  </Text>
+                </View>
+                {section.setValue > 0 && (
+                  <View style={styles.setMetaItem}>
+                    <Ionicons name="cash-outline" size={12} color={colors.success} />
+                    <Text style={[styles.setMetaText, { color: colors.success }]}>
+                      {formatGBP(section.setValue)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+            <Image
+              source={{ uri: setSymbolUrl(section.setId) }}
+              style={styles.setSymbol}
+              contentFit="contain"
+              placeholder={{ color: colors.surface } as any}
+            />
+          </Pressable>
+        )}
         renderItem={({ item }) => (
           <CollectionCard
             item={item}
@@ -262,17 +350,6 @@ export default function CollectionScreen() {
             onUpdateQty={(qty) => updateQuantity(item.cardId, item.condition, qty, item.variant)}
           />
         )}
-        keyExtractor={(item) => `${item.cardId}-${item.condition}-${item.variant || "Non-Holo"}`}
-        contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.pokemonRed}
-            colors={[colors.pokemonRed]}
-          />
-        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Image
@@ -310,26 +387,39 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 18, fontFamily: "Outfit_700Bold" },
   statLabel: { fontSize: 11, fontFamily: "Outfit_400Regular" },
   sortRow: { flexDirection: "row", gap: 8 },
-  sortBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
+  sortBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   sortBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
-  listContent: { paddingHorizontal: 20, paddingTop: 8 },
-  cardItem: {
+  listContent: { paddingHorizontal: 16, paddingTop: 8 },
+  setHeader: {
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 14,
+    padding: 12,
+    marginBottom: 6,
+    marginTop: 10,
+    borderWidth: 1,
+    gap: 12,
+  },
+  setLogo: { width: 80, height: 44, borderRadius: 4 },
+  setInfo: { flex: 1, gap: 3 },
+  setName: { fontSize: 15, fontFamily: "Outfit_700Bold" },
+  setMeta: { flexDirection: "row", gap: 12, alignItems: "center" },
+  setMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  setMetaText: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  setSymbol: { width: 28, height: 28 },
+  cardItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 12,
     padding: 10,
-    marginBottom: 8,
+    marginBottom: 6,
+    marginLeft: 12,
     borderWidth: 1,
     gap: 10,
   },
   cardImage: { width: 48, height: 68, borderRadius: 6 },
-  cardInfo: { flex: 1, gap: 1 },
-  cardName: { fontSize: 15, fontFamily: "Outfit_600SemiBold" },
-  cardSet: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  cardInfo: { flex: 1, gap: 2 },
+  cardName: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
   cardCondition: { fontSize: 11, fontFamily: "Outfit_500Medium" },
   cardPrice: { fontSize: 13, fontFamily: "Outfit_700Bold", marginTop: 2 },
   qtyControls: { alignItems: "center", gap: 4 },
@@ -346,11 +436,6 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 18, fontFamily: "Outfit_600SemiBold" },
   emptySubtext: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 40 },
   signInBtn: { marginTop: 8 },
-  signInGradient: {
-    paddingHorizontal: 32,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
+  signInGradient: { paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12, alignItems: "center" },
   signInBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
 });
