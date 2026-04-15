@@ -148,6 +148,26 @@ export async function loginWithPassword(
   return { user };
 }
 
+export async function verifyPasswordOnly(
+  credential: string,
+  password: string
+): Promise<{
+  userId: string;
+  hasEmail: boolean;
+  hasMobile: boolean;
+  maskedEmail: string | null;
+  maskedMobile: string | null;
+  emailCredential: string | null;
+  mobileCredential: string | null;
+}> {
+  const res = await apiRequest("POST", "/api/auth/verify-password", { credential, password });
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.error || "Password verification failed");
+  }
+  return res.json();
+}
+
 export async function registerUserWithOtp(
   username: string,
   displayName: string,

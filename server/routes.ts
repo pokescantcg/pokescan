@@ -996,6 +996,52 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  // Verify password only — used for the first step of 2FA.
+  // Returns masked contact info so the client can show channel options.
+  // Does NOT create a session.
+  app.post("/api/auth/verify-password", async (req: Request, res: Response) => {
+    try {
+      const { credential, password } = req.body;
+      if (!credential || !password) {
+        res.status(400).json({ error: "Email/username and password are required" });
+        return;
+      }
+      let user = await storage.getUserByEmail(credential.toLowerCase().trim());
+      if (!user) user = await storage.getUserByUsername(credential.toLowerCase().trim());
+      if (!user) {
+        res.status(401).json({ error: "Invalid email/username or password" });
+        return;
+      }
+      if (!user.passwordHash) {
+        res.status(401).json({ error: "This account does not have a password set. Contact an admin." });
+        return;
+      }
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) {
+        res.status(401).json({ error: "Invalid email/username or password" });
+        return;
+      }
+      // Mask email and mobile for display in the OTP channel picker
+      const maskEmail = (e: string) => {
+        const [local, domain] = e.split("@");
+        return local.slice(0, 2) + "***@" + domain;
+      };
+      const maskMobile = (m: string) => m.slice(0, -4).replace(/./g, "*") + m.slice(-4);
+      res.json({
+        userId: user.id,
+        hasEmail: !!user.email,
+        hasMobile: !!user.mobileNumber,
+        maskedEmail: user.email ? maskEmail(user.email) : null,
+        maskedMobile: user.mobileNumber ? maskMobile(user.mobileNumber) : null,
+        emailCredential: user.email,
+        mobileCredential: user.mobileNumber,
+      });
+    } catch (error: any) {
+      console.error("Verify password error:", error);
+      res.status(500).json({ error: error.message || "Verification failed" });
+    }
+  });
+
   app.post("/api/auth/login", async (req: Request, res: Response) => {
     try {
       const { credential, password } = req.body;

@@ -3744,6 +3744,47 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       res.status(500).json({ error: error.message || "Registration failed" });
     }
   });
+  app2.post("/api/auth/verify-password", async (req, res) => {
+    try {
+      const { credential, password } = req.body;
+      if (!credential || !password) {
+        res.status(400).json({ error: "Email/username and password are required" });
+        return;
+      }
+      let user = await storage.getUserByEmail(credential.toLowerCase().trim());
+      if (!user) user = await storage.getUserByUsername(credential.toLowerCase().trim());
+      if (!user) {
+        res.status(401).json({ error: "Invalid email/username or password" });
+        return;
+      }
+      if (!user.passwordHash) {
+        res.status(401).json({ error: "This account does not have a password set. Contact an admin." });
+        return;
+      }
+      const valid = await bcrypt.compare(password, user.passwordHash);
+      if (!valid) {
+        res.status(401).json({ error: "Invalid email/username or password" });
+        return;
+      }
+      const maskEmail = (e) => {
+        const [local, domain] = e.split("@");
+        return local.slice(0, 2) + "***@" + domain;
+      };
+      const maskMobile = (m) => m.slice(0, -4).replace(/./g, "*") + m.slice(-4);
+      res.json({
+        userId: user.id,
+        hasEmail: !!user.email,
+        hasMobile: !!user.mobileNumber,
+        maskedEmail: user.email ? maskEmail(user.email) : null,
+        maskedMobile: user.mobileNumber ? maskMobile(user.mobileNumber) : null,
+        emailCredential: user.email,
+        mobileCredential: user.mobileNumber
+      });
+    } catch (error) {
+      console.error("Verify password error:", error);
+      res.status(500).json({ error: error.message || "Verification failed" });
+    }
+  });
   app2.post("/api/auth/login", async (req, res) => {
     try {
       const { credential, password } = req.body;
