@@ -125,14 +125,16 @@ export async function registerWithPassword(
   password: string,
   mobileNumber?: string
 ): Promise<{ user: UserProfile }> {
-  const res = await apiRequest("POST", "/api/auth/register", {
-    username,
-    displayName,
-    email,
-    password,
-    mobileNumber: mobileNumber || "",
+  const url = new URL("/api/auth/register", getApiUrl());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, displayName, email, password, mobileNumber: mobileNumber || "" }),
   });
   const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Registration failed");
+  }
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
   await saveLocalUser(user);
@@ -143,8 +145,16 @@ export async function loginWithPassword(
   credential: string,
   password: string
 ): Promise<{ user: UserProfile }> {
-  const res = await apiRequest("POST", "/api/auth/login", { credential, password });
+  const url = new URL("/api/auth/login", getApiUrl());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential, password }),
+  });
   const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Login failed");
+  }
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
   await saveLocalUser(user);
@@ -163,12 +173,17 @@ export async function verifyPasswordOnly(
   emailCredential: string | null;
   mobileCredential: string | null;
 }> {
-  const res = await apiRequest("POST", "/api/auth/verify-password", { credential, password });
+  const url = new URL("/api/auth/verify-password", getApiUrl());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential, password }),
+  });
+  const data = await res.json();
   if (!res.ok) {
-    const data = await res.json();
     throw new Error(data.error || "Password verification failed");
   }
-  return res.json();
+  return data;
 }
 
 export async function registerUserWithOtp(
@@ -184,23 +199,49 @@ export async function sendOtpForRegistration(
   userId: string,
   channel: "email" | "sms"
 ): Promise<void> {
-  await apiRequest("POST", "/api/auth/send-otp-register", { userId, channel });
+  const url = new URL("/api/auth/send-otp-register", getApiUrl());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, channel }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || "Failed to send verification code");
+  }
 }
 
 export async function sendOtpForLogin(
   credential: string,
   channel: "email" | "sms"
 ): Promise<{ userId: string }> {
-  const res = await apiRequest("POST", "/api/auth/send-otp", { credential, channel });
-  return res.json();
+  const url = new URL("/api/auth/send-otp", getApiUrl());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential, channel }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Failed to send verification code");
+  }
+  return data;
 }
 
 export async function verifyOtpAndLogin(
   credential: string,
   code: string
 ): Promise<{ token: string; user: UserProfile }> {
-  const res = await apiRequest("POST", "/api/auth/verify-otp", { credential, code });
+  const url = new URL("/api/auth/verify-otp", getApiUrl());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ credential, code }),
+  });
   const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "Verification failed");
+  }
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
   await saveLocalUser(user);
