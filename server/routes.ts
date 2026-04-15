@@ -2553,6 +2553,24 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     res.json({ users });
   });
 
+  // ─── Support ─────────────────────────────────────────────────────────────────
+  app.get("/api/support/admin", async (_req: Request, res: Response) => {
+    try {
+      const admins = await db
+        .select({ id: pokescanUsers.id, displayName: pokescanUsers.displayName, username: pokescanUsers.username })
+        .from(pokescanUsers)
+        .where(eq(pokescanUsers.role, "admin"))
+        .limit(1);
+      if (admins.length === 0) {
+        res.json({ admin: null });
+        return;
+      }
+      res.json({ admin: admins[0] });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to find support contact" });
+    }
+  });
+
   // ─── Messages ────────────────────────────────────────────────────────────────
   app.get("/api/social/messages/inbox", async (req: Request, res: Response) => {
     const me = await getUserFromToken(req);

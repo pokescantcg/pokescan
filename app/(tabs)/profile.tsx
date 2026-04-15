@@ -12,6 +12,7 @@ import {
   Modal,
   TextInput,
   KeyboardAvoidingView,
+  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -62,6 +63,28 @@ export default function ProfileScreen() {
     socialApi.getUnreadCount().then(d => setUnreadCount(d.count)).catch(() => {});
     setCollectionVisible(user.collectionVisible ?? false);
   }, [user]);
+
+  const handleMessageSupport = useCallback(async () => {
+    try {
+      const url = new URL("/api/support/admin", getApiUrl()).href;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.admin) {
+        router.push({
+          pathname: "/messages",
+          params: {
+            recipientId: data.admin.id,
+            recipientName: data.admin.displayName,
+            recipientUsername: data.admin.username,
+          },
+        });
+      } else {
+        Linking.openURL("mailto:pokescantcg@gmail.com?subject=Support%20Request");
+      }
+    } catch {
+      Linking.openURL("mailto:pokescantcg@gmail.com?subject=Support%20Request");
+    }
+  }, []);
 
   const handleToggleCollectionVisible = useCallback(async () => {
     if (!user?.isPremium) return;
@@ -474,6 +497,34 @@ export default function ProfileScreen() {
             onClear={handleClearCache}
             colors={colors}
           />
+        </View>
+
+        <View style={styles.helpSection}>
+          <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>HELP & SUPPORT</Text>
+
+          <Pressable
+            style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+            onPress={handleMessageSupport}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.pokemonBlue} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuText, { color: colors.text }]}>Message Support</Text>
+              <Text style={[styles.menuSubtext, { color: colors.textMuted }]}>Chat directly with our team</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+
+          <Pressable
+            style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+            onPress={() => Linking.openURL("mailto:pokescantcg@gmail.com?subject=Support%20Request")}
+          >
+            <Ionicons name="mail-outline" size={22} color={colors.pokemonRed} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuText, { color: colors.text }]}>Email Support</Text>
+              <Text style={[styles.menuSubtext, { color: colors.textMuted }]}>pokescantcg@gmail.com</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
         </View>
 
         <View style={styles.menuSection}>
@@ -1043,6 +1094,9 @@ const styles = StyleSheet.create({
   },
   cancelModalConfirmText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
   dbSection: { paddingHorizontal: 20, marginBottom: 20 },
+  helpSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
+  sectionLabel: { fontSize: 11, fontFamily: "Outfit_600SemiBold", letterSpacing: 0.8, marginBottom: 4 },
+  menuSubtext: { fontSize: 12, fontFamily: "Outfit_400Regular" },
   menuSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
   menuItem: {
     flexDirection: "row",
