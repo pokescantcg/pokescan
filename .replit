@@ -77,3 +77,9 @@ ensurePreviewReachable = "/status"
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 120000
+
+[userenv]
+
+[userenv.shared]
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = "587"
