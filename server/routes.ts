@@ -1710,6 +1710,163 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  // ─── Collection CRUD ─────────────────────────────────────────────────────────
+
+  app.get("/api/collection", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+
+      const rows = await db.execute(
+        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`
+      );
+      const items = (rows.rows as any[]).map((r) => ({
+        id: r.id,
+        cardId: r.card_id,
+        cardName: r.card_name,
+        cardImage: r.card_image,
+        setName: r.set_name,
+        setId: r.set_id,
+        rarity: r.rarity,
+        quantity: r.quantity,
+        condition: r.condition,
+        variant: r.variant || "Non-Holo",
+        priceGBP: r.price_gbp,
+        addedAt: r.added_at,
+      }));
+      res.json({ collection: items });
+    } catch (error: any) {
+      console.error("Collection fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch collection" });
+    }
+  });
+
+  app.post("/api/collection", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+
+      const { cardId, cardName, cardImage, setName, setId, rarity, quantity, condition, variant, priceGBP, migrate } = req.body;
+      const v = variant || "Non-Holo";
+
+      const existing = await db.execute(
+        sql`SELECT id, quantity FROM pokescan_collections WHERE user_id = ${user.id} AND card_id = ${cardId} AND condition = ${condition} AND COALESCE(variant, 'Non-Holo') = ${v}`
+      );
+
+      if (existing.rows.length > 0) {
+        const row = existing.rows[0] as any;
+        const newQty = migrate ? Math.max(row.quantity, quantity || 1) : row.quantity + (quantity || 1);
+        await db.execute(
+          sql`UPDATE pokescan_collections SET quantity = ${newQty}, price_gbp = ${priceGBP ?? null} WHERE id = ${row.id}`
+        );
+      } else {
+        await db.execute(
+          sql`INSERT INTO pokescan_collections (user_id, card_id, card_name, card_image, set_name, set_id, rarity, quantity, condition, variant, price_gbp) VALUES (${user.id}, ${cardId}, ${cardName}, ${cardImage}, ${setName}, ${setId}, ${rarity || "Unknown"}, ${quantity || 1}, ${condition}, ${v}, ${priceGBP ?? null})`
+        );
+      }
+
+      const rows = await db.execute(
+        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`
+      );
+      const items = (rows.rows as any[]).map((r) => ({
+        id: r.id,
+        cardId: r.card_id,
+        cardName: r.card_name,
+        cardImage: r.card_image,
+        setName: r.set_name,
+        setId: r.set_id,
+        rarity: r.rarity,
+        quantity: r.quantity,
+        condition: r.condition,
+        variant: r.variant || "Non-Holo",
+        priceGBP: r.price_gbp,
+        addedAt: r.added_at,
+      }));
+      res.json({ collection: items });
+    } catch (error: any) {
+      console.error("Collection add error:", error);
+      res.status(500).json({ error: error.message || "Failed to add card" });
+    }
+  });
+
+  app.put("/api/collection/:id", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+
+      const { id } = req.params;
+      const { quantity } = req.body;
+
+      if (quantity <= 0) {
+        await db.execute(sql`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`);
+      } else {
+        await db.execute(sql`UPDATE pokescan_collections SET quantity = ${quantity} WHERE id = ${id} AND user_id = ${user.id}`);
+      }
+
+      const rows = await db.execute(
+        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`
+      );
+      const items = (rows.rows as any[]).map((r) => ({
+        id: r.id,
+        cardId: r.card_id,
+        cardName: r.card_name,
+        cardImage: r.card_image,
+        setName: r.set_name,
+        setId: r.set_id,
+        rarity: r.rarity,
+        quantity: r.quantity,
+        condition: r.condition,
+        variant: r.variant || "Non-Holo",
+        priceGBP: r.price_gbp,
+        addedAt: r.added_at,
+      }));
+      res.json({ collection: items });
+    } catch (error: any) {
+      console.error("Collection update error:", error);
+      res.status(500).json({ error: error.message || "Failed to update card" });
+    }
+  });
+
+  app.delete("/api/collection/:id", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+
+      const { id } = req.params;
+      await db.execute(sql`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`);
+
+      const rows = await db.execute(
+        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`
+      );
+      const items = (rows.rows as any[]).map((r) => ({
+        id: r.id,
+        cardId: r.card_id,
+        cardName: r.card_name,
+        cardImage: r.card_image,
+        setName: r.set_name,
+        setId: r.set_id,
+        rarity: r.rarity,
+        quantity: r.quantity,
+        condition: r.condition,
+        variant: r.variant || "Non-Holo",
+        priceGBP: r.price_gbp,
+        addedAt: r.added_at,
+      }));
+      res.json({ collection: items });
+    } catch (error: any) {
+      console.error("Collection delete error:", error);
+      res.status(500).json({ error: error.message || "Failed to remove card" });
+    }
+  });
+
   app.get("/api/auth/users", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");

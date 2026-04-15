@@ -26,6 +26,7 @@ export interface UserProfile {
 export type CardVariant = "Non-Holo" | "Holo" | "Reverse Holo";
 
 export interface CollectionItem {
+  id?: string;
   cardId: string;
   cardName: string;
   cardImage: string;
@@ -417,49 +418,162 @@ export async function togglePremium(): Promise<UserProfile | null> {
 }
 
 export async function getCollection(): Promise<CollectionItem[]> {
+  try {
+    const token = await getSessionToken();
+    if (!token) {
+      const data = await AsyncStorage.getItem(KEYS.COLLECTION);
+      return data ? JSON.parse(data) : [];
+    }
+    const url = new URL("/api/collection", getApiUrl()).href;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.collection ?? []) as CollectionItem[];
+  } catch {
+    const data = await AsyncStorage.getItem(KEYS.COLLECTION);
+    return data ? JSON.parse(data) : [];
+  }
+}
+
+export async function addToCollection(item: Omit<CollectionItem, "id" | "addedAt">): Promise<CollectionItem[]> {
+  try {
+    const token = await getSessionToken();
+    if (!token) throw new Error("Not authenticated");
+    const url = new URL("/api/collection", getApiUrl()).href;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(item),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to add card");
+    }
+    const data = await res.json();
+    return (data.collection ?? []) as CollectionItem[];
+  } catch (err) {
+    console.error("addToCollection server error, falling back to local:", err);
+    const collection = await getCollectionLocal();
+    const existing = collection.find(
+      (c) => c.cardId === item.cardId && c.condition === item.condition && (c.variant || "Non-Holo") === (item.variant || "Non-Holo")
+    );
+    if (existing) {
+      existing.quantity += item.quantity;
+      existing.priceGBP = item.priceGBP;
+    } else {
+      collection.push({ ...item, addedAt: new Date().toISOString() });
+    }
+    await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
+    return collection;
+  }
+}
+
+export async function removeFromCollection(cardId: string, condition: string, variant?: CardVariant): Promise<CollectionItem[]> {
+  try {
+    const token = await getSessionToken();
+    if (!token) throw new Error("Not authenticated");
+    const collection = await getCollection();
+    const v = variant || "Non-Holo";
+    const target = collection.find(
+      (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
+    );
+    if (!target || !target.id) throw new Error("Item not found");
+    const url = new URL(`/api/collection/${target.id}`, getApiUrl()).href;
+    const res = await fetch(url, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error("Failed to remove card");
+    const data = await res.json();
+    return (data.collection ?? []) as CollectionItem[];
+  } catch {
+    let collection = await getCollectionLocal();
+    const v = variant || "Non-Holo";
+    collection = collection.filter(
+      (c) => !(c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v)
+    );
+    await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
+    return collection;
+  }
+}
+
+export async function updateCollectionQuantity(cardId: string, condition: string, quantity: number, variant?: CardVariant): Promise<CollectionItem[]> {
+  if (quantity <= 0) return removeFromCollection(cardId, condition, variant);
+  try {
+    const token = await getSessionToken();
+    if (!token) throw new Error("Not authenticated");
+    const collection = await getCollection();
+    const v = variant || "Non-Holo";
+    const target = collection.find(
+      (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
+    );
+    if (!target || !target.id) throw new Error("Item not found");
+    const url = new URL(`/api/collection/${target.id}`, getApiUrl()).href;
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ quantity }),
+    });
+    if (!res.ok) throw new Error("Failed to update card");
+    const data = await res.json();
+    return (data.collection ?? []) as CollectionItem[];
+  } catch {
+    const collection = await getCollectionLocal();
+    const v = variant || "Non-Holo";
+    const item = collection.find(
+      (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
+    );
+    if (item) item.quantity = quantity;
+    await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
+    return collection;
+  }
+}
+
+async function getCollectionLocal(): Promise<CollectionItem[]> {
   const data = await AsyncStorage.getItem(KEYS.COLLECTION);
   return data ? JSON.parse(data) : [];
 }
 
-export async function addToCollection(item: Omit<CollectionItem, "addedAt">): Promise<CollectionItem[]> {
-  const collection = await getCollection();
-  const existing = collection.find(
-    (c) => c.cardId === item.cardId && c.condition === item.condition && (c.variant || "Non-Holo") === (item.variant || "Non-Holo")
-  );
-  if (existing) {
-    existing.quantity += item.quantity;
-    existing.priceGBP = item.priceGBP;
-  } else {
-    collection.push({ ...item, addedAt: new Date().toISOString() });
-  }
-  await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
-  return collection;
-}
-
-export async function removeFromCollection(cardId: string, condition: string, variant?: CardVariant): Promise<CollectionItem[]> {
-  let collection = await getCollection();
-  const v = variant || "Non-Holo";
-  collection = collection.filter(
-    (c) => !(c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v)
-  );
-  await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
-  return collection;
-}
-
-export async function updateCollectionQuantity(cardId: string, condition: string, quantity: number, variant?: CardVariant): Promise<CollectionItem[]> {
-  const collection = await getCollection();
-  const v = variant || "Non-Holo";
-  const item = collection.find(
-    (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
-  );
-  if (item) {
-    item.quantity = quantity;
-    if (quantity <= 0) {
-      return removeFromCollection(cardId, condition, variant);
+export async function migrateLocalCollectionToServer(): Promise<void> {
+  try {
+    const token = await getSessionToken();
+    if (!token) return;
+    const localItems = await getCollectionLocal();
+    if (localItems.length === 0) return;
+    const url = new URL("/api/collection", getApiUrl()).href;
+    let allSucceeded = true;
+    for (const item of localItems) {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            cardId: item.cardId,
+            cardName: item.cardName,
+            cardImage: item.cardImage,
+            setName: item.setName,
+            setId: item.setId,
+            rarity: item.rarity,
+            quantity: item.quantity,
+            condition: item.condition,
+            variant: item.variant || "Non-Holo",
+            priceGBP: item.priceGBP,
+            migrate: true,
+          }),
+        });
+        if (!res.ok) allSucceeded = false;
+      } catch {
+        allSucceeded = false;
+      }
     }
+    if (allSucceeded) {
+      await AsyncStorage.removeItem(KEYS.COLLECTION);
+    }
+  } catch (err) {
+    console.error("Collection migration error:", err);
   }
-  await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
-  return collection;
 }
 
 export async function getListings(): Promise<MarketListing[]> {

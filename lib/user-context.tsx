@@ -17,6 +17,7 @@ import {
   addToCollection,
   removeFromCollection,
   updateCollectionQuantity,
+  migrateLocalCollectionToServer,
   getListings,
   addListing,
   removeListing,
@@ -58,7 +59,7 @@ interface UserContextValue {
   adminLogin: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   togglePremium: () => Promise<void>;
-  addCard: (item: Omit<CollectionItem, "addedAt">) => Promise<void>;
+  addCard: (item: Omit<CollectionItem, "id" | "addedAt">) => Promise<void>;
   removeCard: (cardId: string, condition: string, variant?: CardVariant) => Promise<void>;
   updateQuantity: (cardId: string, condition: string, quantity: number, variant?: CardVariant) => Promise<void>;
   createListing: (listing: Omit<MarketListing, "id" | "createdAt">) => Promise<void>;
@@ -93,6 +94,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       const restoredUser = await restoreSession();
       if (restoredUser) {
         userData = restoredUser;
+        migrateLocalCollectionToServer().catch(() => {});
       } else {
         const localUser = await getUser();
         if (localUser && localUser.authProvider !== "local") {
@@ -165,6 +167,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const handleVerifyOtp = useCallback(async (credential: string, code: string) => {
     const { user: newUser } = await verifyOtpAndLogin(credential, code);
     setUser(newUser);
+    migrateLocalCollectionToServer().then(() => getCollection().then(setCollection)).catch(() => {});
     const users = await getAllUsers();
     setAllUsers(users);
   }, []);
@@ -172,6 +175,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const handleSocialRegister = useCallback(async (provider: AuthProvider, displayName: string, email?: string, avatarUrl?: string) => {
     const newUser = await registerSocialUser(provider, displayName, email, avatarUrl);
     setUser(newUser);
+    migrateLocalCollectionToServer().then(() => getCollection().then(setCollection)).catch(() => {});
     const users = await getAllUsers();
     setAllUsers(users);
   }, []);
@@ -204,7 +208,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const addCard = useCallback(async (item: Omit<CollectionItem, "addedAt">) => {
+  const addCard = useCallback(async (item: Omit<CollectionItem, "id" | "addedAt">) => {
     const updated = await addToCollection(item);
     setCollection(updated);
   }, []);

@@ -182,6 +182,24 @@ export const pokescanMarketListings = pgTable("pokescan_market_listings", {
 
 export type PokescanMarketListing = typeof pokescanMarketListings.$inferSelect;
 
+export const pokescanCollections = pgTable("pokescan_collections", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  cardId: text("card_id").notNull(),
+  cardName: text("card_name").notNull(),
+  cardImage: text("card_image").notNull(),
+  setName: text("set_name").notNull(),
+  setId: text("set_id").notNull(),
+  rarity: text("rarity").notNull().default("Unknown"),
+  quantity: integer("quantity").notNull().default(1),
+  condition: text("condition").notNull(),
+  variant: text("variant").default("Non-Holo"),
+  priceGBP: real("price_gbp"),
+  addedAt: timestamp("added_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type PokescanCollection = typeof pokescanCollections.$inferSelect;
+
 export const syncStatus = pgTable("sync_status", {
   id: serial("id").primaryKey(),
   totalSets: integer("total_sets").default(0),
