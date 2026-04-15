@@ -20,6 +20,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { fetchSetCards, PokemonCard, getUKPrice, formatGBP } from "@/lib/pokemon-api";
 import { CachedCard } from "@/lib/card-cache";
+import { useUser } from "@/lib/user-context";
 
 function parseCardNumber(num: string): [number, string] {
   const match = num.match(/^(\d+)(.*)/);
@@ -99,12 +100,34 @@ const GAP = 6;
 const CARD_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - GAP * (NUM_COLS - 1)) / NUM_COLS;
 const CARD_IMG_HEIGHT = CARD_WIDTH * 1.4;
 
+const POKEBALL_GOLD = "#FFD700";
+const MAX_BALLS = 5;
+
+function CollectionBadge({ count }: { count: number }) {
+  const balls = Math.min(count, MAX_BALLS);
+  const extra = count - MAX_BALLS;
+  return (
+    <View style={styles.collectionBadge}>
+      <View style={styles.collectionBadgeInner}>
+        {Array.from({ length: balls }).map((_, i) => (
+          <MaterialCommunityIcons key={i} name="pokeball" size={11} color={POKEBALL_GOLD} />
+        ))}
+        {extra > 0 && (
+          <Text style={styles.collectionBadgeExtra}>+{extra}</Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
 function CardGridItem({
   card,
   colors,
+  collectionCount,
 }: {
   card: PokemonCard;
   colors: ReturnType<typeof useThemeColors>;
+  collectionCount: number;
 }) {
   const priceData = getUKPrice(card);
 
@@ -114,20 +137,24 @@ function CardGridItem({
         styles.gridItem,
         {
           backgroundColor: colors.card,
-          borderColor: colors.borderLight,
+          borderColor: collectionCount > 0 ? POKEBALL_GOLD + "80" : colors.borderLight,
+          borderWidth: collectionCount > 0 ? 1.5 : 1,
           width: CARD_WIDTH,
           opacity: pressed ? 0.8 : 1,
         },
       ]}
       onPress={() => router.push({ pathname: "/card/[id]", params: { id: card.id } })}
     >
-      <Image
-        source={{ uri: card.images?.small || "" }}
-        style={[styles.gridImage, { height: CARD_IMG_HEIGHT, width: CARD_WIDTH }]}
-        contentFit="contain"
-        placeholder={{ color: colors.surface }}
-        transition={200}
-      />
+      <View style={{ width: CARD_WIDTH, height: CARD_IMG_HEIGHT }}>
+        <Image
+          source={{ uri: card.images?.small || "" }}
+          style={[styles.gridImage, { height: CARD_IMG_HEIGHT, width: CARD_WIDTH }]}
+          contentFit="contain"
+          placeholder={{ color: colors.surface }}
+          transition={200}
+        />
+        {collectionCount > 0 && <CollectionBadge count={collectionCount} />}
+      </View>
       <View style={styles.gridInfo}>
         <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={2}>
           {card.name}
@@ -164,6 +191,15 @@ export default function SetDetailScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
+  const { collection } = useUser();
+
+  const collectionMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of collection) {
+      map.set(item.cardId, (map.get(item.cardId) ?? 0) + item.quantity);
+    }
+    return map;
+  }, [collection]);
 
   const [allCards, setAllCards] = useState<PokemonCard[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -265,8 +301,14 @@ export default function SetDetailScreen() {
   const filteredCount = filteredCards.length;
 
   const renderItem = useCallback(
-    ({ item }: { item: PokemonCard }) => <CardGridItem card={item} colors={colors} />,
-    [colors]
+    ({ item }: { item: PokemonCard }) => (
+      <CardGridItem
+        card={item}
+        colors={colors}
+        collectionCount={collectionMap.get(item.id) ?? 0}
+      />
+    ),
+    [colors, collectionMap]
   );
 
   return (
@@ -513,4 +555,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   loadMoreText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
+  collectionBadge: {
+    position: "absolute",
+    top: 5,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  collectionBadgeInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  collectionBadgeExtra: {
+    fontSize: 9,
+    fontFamily: "Outfit_700Bold",
+    color: POKEBALL_GOLD,
+    marginLeft: 1,
+  },
 });
