@@ -31,8 +31,9 @@ import { useColorScheme } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { getApiUrl, apiRequest } from "@/lib/query-client";
+import { getApiUrl } from "@/lib/query-client";
 import { getSessionToken } from "@/lib/storage";
+import { fetch } from "expo/fetch";
 import { useUser } from "@/lib/user-context";
 
 // ─── Stripe Price IDs ─────────────────────────────────────────────────────────
@@ -81,11 +82,14 @@ export default function PremiumScreen() {
       const successUrl   = `${domain}/api/stripe/success?plan=${plan}`;
       const cancelUrl    = `${domain}/api/stripe/cancel`;
 
-      const data = await apiRequest("POST", "/api/stripe/create-checkout", {
-        priceId,
-        successUrl,
-        cancelUrl,
-      }) as { url?: string; error?: string };
+      const checkoutUrl = new URL("/api/stripe/create-checkout", domain).href;
+      const res = await fetch(checkoutUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ priceId, successUrl, cancelUrl }),
+      });
+      const data = await res.json() as { url?: string; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
 
       if (!data.url) throw new Error(data.error ?? "Checkout URL not returned");
 
@@ -117,15 +121,22 @@ export default function PremiumScreen() {
     } finally {
       setLoading(false);
     }
-  }, [user, plan, refreshUser]);
+  }, [user, plan, refreshData]);
 
   const handleManageSubscription = useCallback(async () => {
     setLoading(true);
     try {
+      const token = await getSessionToken();
+      if (!token) throw new Error("No session token found. Please log in again.");
       const domain = getApiUrl();
-      const data = await apiRequest("POST", "/api/stripe/portal", {
-        returnUrl: domain,
-      }) as { url?: string; error?: string };
+      const portalUrl = new URL("/api/stripe/portal", domain).href;
+      const portalRes = await fetch(portalUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ returnUrl: domain }),
+      });
+      const data = await portalRes.json() as { url?: string; error?: string };
+      if (!portalRes.ok) throw new Error(data.error ?? `Error ${portalRes.status}`);
       if (!data.url) throw new Error(data.error ?? "Portal URL not returned");
       await WebBrowser.openBrowserAsync(data.url);
     } catch (err: any) {

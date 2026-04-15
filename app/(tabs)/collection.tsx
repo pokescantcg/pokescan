@@ -167,10 +167,17 @@ export default function CollectionScreen() {
             <Text style={{ fontSize: 14, fontFamily: "Outfit_400Regular", color: "#000", textAlign: "center", opacity: 0.75 }}>
               Upgrade to Premium to save cards to your collection and track your portfolio value.
             </Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(0,0,0,0.15)", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 4 }}>
-              <Ionicons name="lock-closed" size={16} color="#000" />
-              <Text style={{ fontSize: 15, fontFamily: "Outfit_700Bold", color: "#000" }}>Contact admin to unlock</Text>
-            </View>
+            <Pressable
+              onPress={() => router.push("/premium")}
+              style={({ pressed }) => ({
+                flexDirection: "row", alignItems: "center", gap: 8,
+                backgroundColor: pressed ? "rgba(0,0,0,0.25)" : "rgba(0,0,0,0.15)",
+                paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 4,
+              })}
+            >
+              <Ionicons name="star" size={16} color="#000" />
+              <Text style={{ fontSize: 15, fontFamily: "Outfit_700Bold", color: "#000" }}>Upgrade to Premium</Text>
+            </Pressable>
           </LinearGradient>
           <View style={{ marginTop: 24, gap: 14 }}>
             {["Save cards to your collection", "Track portfolio value in GBP", "View collection stats", "Access marketplace"].map(
