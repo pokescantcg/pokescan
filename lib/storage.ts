@@ -134,17 +134,31 @@ export async function restoreSession(): Promise<UserProfile | null> {
   const token = await getSessionToken();
   if (!token) return null;
   try {
-    const res = await apiRequest("POST", "/api/auth/session", { token });
+    const url = new URL("/api/auth/session", getApiUrl()).href;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (res.status === 401 || res.status === 403) {
+      await clearSessionToken();
+      return null;
+    }
+    if (!res.ok) {
+      const localUser = await getUser();
+      return localUser;
+    }
     const data = await res.json();
     if (data.user) {
       const user = dbUserToProfile(data.user);
       await saveLocalUser(user);
       return user;
     }
-    return null;
-  } catch {
     await clearSessionToken();
     return null;
+  } catch {
+    const localUser = await getUser();
+    return localUser;
   }
 }
 

@@ -126,8 +126,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setAllUsers(merged);
       }).catch(() => {});
 
-      // Background-sync collection from server (updates cache + state silently)
-      getCollection().then(setCollection).catch(() => {});
+      // Background-sync collection from server only when authenticated
+      // (prevents empty-array overwrite when the user isn't logged in)
+      if (userData) {
+        getCollection().then(setCollection).catch(() => {});
+      }
     } catch (e) {
       console.error("Failed to load data:", e);
     } finally {
