@@ -45,6 +45,8 @@ export interface SocialUser {
   username: string;
   displayName: string;
   avatarUrl?: string | null;
+  isPremium?: boolean;
+  collectionVisible?: boolean;
 }
 
 export interface FriendsData {
@@ -131,6 +133,11 @@ export const socialApi = {
   getAdminReports: (): Promise<{ reports: AdminReport[] }> => get("api/admin/reports"),
   updateReport: (id: string, status: "reviewed" | "dismissed", reviewNote?: string) =>
     patch(`api/admin/reports/${id}`, { status, reviewNote }),
+
+  getFriendCollection: (userId: string): Promise<{ collection: any[]; owner: SocialUser }> =>
+    get(`api/collection/user/${userId}`),
+  setCollectionVisibility: (visible: boolean) =>
+    patch("api/user/collection-visible", { visible }),
 
   getChatroomMessages: (): Promise<{ messages: ChatroomMessage[] }> => get("api/chatroom/messages"),
   sendChatroomMessage: (body: string): Promise<{ message: ChatroomMessage }> =>

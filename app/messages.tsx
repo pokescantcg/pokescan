@@ -819,6 +819,14 @@ export default function MessagesScreen() {
                         <Text style={[styles.friendName, { color: colors.text }]}>{u.displayName}</Text>
                         <Text style={[styles.friendUser, { color: colors.textMuted }]}>@{u.username}</Text>
                       </View>
+                      {u.collectionVisible && (
+                        <Pressable
+                          style={[styles.friendAction, { backgroundColor: colors.success }]}
+                          onPress={() => router.push({ pathname: "/friend-collection", params: { userId: u.id, displayName: u.displayName } })}
+                        >
+                          <Ionicons name="albums-outline" size={16} color="#FFF" />
+                        </Pressable>
+                      )}
                       <Pressable
                         style={[styles.friendAction, { backgroundColor: colors.pokemonBlue }]}
                         onPress={() => {

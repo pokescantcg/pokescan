@@ -30,6 +30,7 @@ export const pokescanUsers = pgTable("pokescan_users", {
   bonusScanPools: text("bonus_scan_pools"),           // JSON: [{amount, expiresAt}]
   chatMutedUntil: timestamp("chat_muted_until", { withTimezone: true }),
   chatBannedUntil: timestamp("chat_banned_until", { withTimezone: true }),
+  collectionVisible: boolean("collection_visible").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
 });
 

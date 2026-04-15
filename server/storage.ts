@@ -31,6 +31,7 @@ export interface DbUser {
   bonusScanPools?: string | null;
   chatMutedUntil?: Date | string | null;
   chatBannedUntil?: Date | string | null;
+  collectionVisible?: boolean;
 }
 
 export interface IStorage {
@@ -176,6 +177,10 @@ export class PgStorage implements IStorage {
       sets.push(`subscription_period_end = $${idx++}`);
       values.push((fields as any).subscriptionPeriodEnd);
     }
+    if (fields.collectionVisible !== undefined) {
+      sets.push(`collection_visible = $${idx++}`);
+      values.push(fields.collectionVisible);
+    }
 
     if (sets.length === 0) return this.getUserById(id);
 
@@ -248,6 +253,7 @@ function mapRow(row: any): DbUser {
     bonusScanPools: row.bonus_scan_pools ?? null,
     chatMutedUntil: row.chat_muted_until ?? null,
     chatBannedUntil: row.chat_banned_until ?? null,
+    collectionVisible: row.collection_visible ?? false,
   };
 }
 

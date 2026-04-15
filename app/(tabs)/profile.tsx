@@ -48,6 +48,8 @@ export default function ProfileScreen() {
   const { cacheStatus, isDownloading, downloadPercent, progress, startDownload, clearCardCache, refreshStatus, selectedLanguages, setSelectedLanguages } = useCardCache();
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [collectionVisible, setCollectionVisible] = useState(user?.collectionVisible ?? false);
+  const [togglingVisibility, setTogglingVisibility] = useState(false);
 
   // ── Cancel premium state ────────────────────────────────────────────────────
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -58,7 +60,24 @@ export default function ProfileScreen() {
   useEffect(() => {
     if (!user) return;
     socialApi.getUnreadCount().then(d => setUnreadCount(d.count)).catch(() => {});
+    setCollectionVisible(user.collectionVisible ?? false);
   }, [user]);
+
+  const handleToggleCollectionVisible = useCallback(async () => {
+    if (!user?.isPremium) return;
+    setTogglingVisibility(true);
+    const next = !collectionVisible;
+    setCollectionVisible(next);
+    try {
+      await socialApi.setCollectionVisibility(next);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      setCollectionVisible(!next);
+      Alert.alert("Error", "Failed to update collection visibility.");
+    } finally {
+      setTogglingVisibility(false);
+    }
+  }, [user, collectionVisible]);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
@@ -417,6 +436,31 @@ export default function ProfileScreen() {
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
         ) : null}
+
+        {user.isPremium && (
+          <Pressable
+            style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 0 }]}
+            onPress={handleToggleCollectionVisible}
+            disabled={togglingVisibility}
+          >
+            <Ionicons name="albums-outline" size={22} color={collectionVisible ? colors.success : colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.premiumBannerTitle, { color: colors.text, fontSize: 14 }]}>
+                Collection Visibility
+              </Text>
+              <Text style={[styles.premiumBannerDesc, { color: colors.textMuted }]}>
+                {collectionVisible ? "Friends can view your collection" : "Your collection is private"}
+              </Text>
+            </View>
+            {togglingVisibility ? (
+              <ActivityIndicator size="small" color={colors.pokemonRed} />
+            ) : (
+              <View style={[styles.visToggle, { backgroundColor: collectionVisible ? colors.success : colors.border }]}>
+                <View style={[styles.visToggleKnob, { alignSelf: collectionVisible ? "flex-end" : "flex-start" }]} />
+              </View>
+            )}
+          </Pressable>
+        )}
 
         <View style={styles.dbSection}>
           <DatabaseSyncCard
@@ -932,6 +976,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   cancelPremiumBtnText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
+  visToggle: {
+    width: 44,
+    height: 24,
+    borderRadius: 12,
+    padding: 2,
+    justifyContent: "center",
+  },
+  visToggleKnob: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#FFF",
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.65)",

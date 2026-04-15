@@ -1879,6 +1879,71 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  // ─── Collection visibility toggle ─────────────────────────────────────────
+  app.patch("/api/user/collection-visible", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!user.isPremium) { res.status(403).json({ error: "Premium required" }); return; }
+      const { visible } = req.body;
+      const updated = await storage.updateUser(user.id, { collectionVisible: !!visible });
+      res.json({ collectionVisible: updated?.collectionVisible ?? !!visible });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to update visibility" });
+    }
+  });
+
+  // ─── View a friend's public collection ────────────────────────────────────
+  app.get("/api/collection/user/:userId", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const me = await storage.validateSession(token);
+      if (!me) { res.status(401).json({ error: "Invalid session" }); return; }
+
+      const { userId } = req.params;
+
+      // Check the target user exists and has collection visible
+      const target = await storage.getUserById(userId);
+      if (!target) { res.status(404).json({ error: "User not found" }); return; }
+      if (!target.collectionVisible) { res.status(403).json({ error: "This collection is private" }); return; }
+
+      // Check they are friends (accepted friendship)
+      const friendship = await db.execute(
+        sql`SELECT id FROM pokescan_friendships WHERE status = 'accepted' AND (
+          (requester_id = ${me.id} AND addressee_id = ${userId}) OR
+          (requester_id = ${userId} AND addressee_id = ${me.id})
+        )`
+      );
+      if (friendship.rows.length === 0 && me.id !== userId) {
+        res.status(403).json({ error: "You are not friends with this user" }); return;
+      }
+
+      const rows = await db.execute(
+        sql`SELECT * FROM pokescan_collections WHERE user_id = ${userId} ORDER BY added_at DESC`
+      );
+      const items = (rows.rows as any[]).map((r) => ({
+        id: r.id,
+        cardId: r.card_id,
+        cardName: r.card_name,
+        cardImage: r.card_image,
+        setName: r.set_name,
+        setId: r.set_id,
+        rarity: r.rarity,
+        quantity: r.quantity,
+        condition: r.condition,
+        variant: r.variant || "Non-Holo",
+        priceGBP: r.price_gbp,
+        addedAt: r.added_at,
+      }));
+      res.json({ collection: items, owner: { id: target.id, displayName: target.displayName, username: target.username, avatarUrl: target.avatarUrl } });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to fetch collection" });
+    }
+  });
+
   app.get("/api/admin/subscription-stats", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -2404,18 +2469,19 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         friendIds.add(r.requesterId === me.id ? r.addresseeId : r.requesterId);
       }
     }
+    const friendFields = { id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl, isPremium: pokescanUsers.isPremium, collectionVisible: pokescanUsers.collectionVisible };
     const friends = friendIds.size > 0
-      ? await db.select({ id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl })
+      ? await db.select(friendFields)
           .from(pokescanUsers).where(or(...[...friendIds].map(id => eq(pokescanUsers.id, id))))
       : [];
     const pendingReceived = rows.filter(r => r.addresseeId === me.id && r.status === "pending");
     const pendingSent = rows.filter(r => r.requesterId === me.id && r.status === "pending");
     const pendingUsers = pendingReceived.length > 0
-      ? await db.select({ id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl })
+      ? await db.select(friendFields)
           .from(pokescanUsers).where(or(...pendingReceived.map(r => eq(pokescanUsers.id, r.requesterId))))
       : [];
     const sentUsers = pendingSent.length > 0
-      ? await db.select({ id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl })
+      ? await db.select(friendFields)
           .from(pokescanUsers).where(or(...pendingSent.map(r => eq(pokescanUsers.id, r.addresseeId))))
       : [];
     res.json({ friends, pendingReceived: pendingUsers, pendingSent: sentUsers });
