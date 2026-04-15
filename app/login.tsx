@@ -20,6 +20,7 @@ import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 
 type LoginMode = "password" | "otp";
+type OtpChannel = "email" | "sms";
 type OtpStep = "input" | "verify";
 
 export default function LoginScreen() {
@@ -35,17 +36,21 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
 
   // OTP mode
+  const [otpChannel, setOtpChannel] = useState<OtpChannel>("email");
   const [otpCredential, setOtpCredential] = useState("");
   const [otpStep, setOtpStep] = useState<OtpStep>("input");
-  const [otpCode, setOtpCode] = useState("");
-  const otpRefs = [useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null)];
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
+  const otpRefs = [
+    useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null),
+    useRef<TextInput>(null), useRef<TextInput>(null), useRef<TextInput>(null),
+  ];
 
   const [loading, setLoading] = useState(false);
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
+  // ── Password login ──────────────────────────────────────────────────────────
   const handlePasswordLogin = async () => {
     const cred = credential.trim();
     const pass = password.trim();
@@ -60,45 +65,42 @@ export default function LoginScreen() {
       router.back();
     } catch (err: any) {
       const msg = err?.message || "Login failed";
-      const clean = msg.replace(/^Error:\s*/i, "").replace(/\{.*\}/s, "").trim();
-      Alert.alert("Login Failed", clean || msg);
+      Alert.alert("Login Failed", msg.replace(/^Error:\s*/i, "").replace(/\{.*\}/s, "").trim() || msg);
     } finally {
       setLoading(false);
     }
   };
 
+  // ── Send OTP ────────────────────────────────────────────────────────────────
   const handleSendOtp = async () => {
     const cred = otpCredential.trim();
     if (!cred) {
-      Alert.alert("Missing Field", "Please enter your email address.");
+      Alert.alert("Missing Field", otpChannel === "email" ? "Please enter your email address." : "Please enter your mobile number.");
       return;
     }
     try {
       setLoading(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      await sendLoginOtp(cred, "email");
+      await sendLoginOtp(cred, otpChannel);
       setOtpStep("verify");
       setOtpDigits(["", "", "", "", "", ""]);
+      setTimeout(() => otpRefs[0].current?.focus(), 200);
     } catch (err: any) {
       const msg = err?.message || "Failed to send code";
-      const clean = msg.replace(/^Error:\s*/i, "").replace(/\{.*\}/s, "").trim();
-      Alert.alert("Send Failed", clean || msg);
+      Alert.alert("Send Failed", msg.replace(/^Error:\s*/i, "").replace(/\{.*\}/s, "").trim() || msg);
     } finally {
       setLoading(false);
     }
   };
 
+  // ── OTP digit entry ─────────────────────────────────────────────────────────
   const handleDigitChange = (val: string, idx: number) => {
     const digit = val.replace(/[^0-9]/g, "").slice(-1);
     const updated = [...otpDigits];
     updated[idx] = digit;
     setOtpDigits(updated);
-    if (digit && idx < 5) {
-      otpRefs[idx + 1].current?.focus();
-    }
-    if (updated.every((d) => d !== "")) {
-      handleVerifyOtp(updated.join(""));
-    }
+    if (digit && idx < 5) otpRefs[idx + 1].current?.focus();
+    if (updated.every((d) => d !== "")) handleVerifyOtp(updated.join(""));
   };
 
   const handleKeyPress = (e: any, idx: number) => {
@@ -120,32 +122,37 @@ export default function LoginScreen() {
       router.back();
     } catch (err: any) {
       const msg = err?.message || "Invalid or expired code";
-      const clean = msg.replace(/^Error:\s*/i, "").replace(/\{.*\}/s, "").trim();
-      Alert.alert("Verification Failed", clean || msg);
+      Alert.alert("Verification Failed", msg.replace(/^Error:\s*/i, "").replace(/\{.*\}/s, "").trim() || msg);
       setOtpDigits(["", "", "", "", "", ""]);
-      otpRefs[0].current?.focus();
+      setTimeout(() => otpRefs[0].current?.focus(), 100);
     } finally {
       setLoading(false);
     }
   };
 
-  const switchMode = (newMode: LoginMode) => {
-    setMode(newMode);
+  const resetOtp = () => {
     setOtpStep("input");
     setOtpDigits(["", "", "", "", "", ""]);
     setOtpCredential("");
+  };
+
+  const switchMode = (newMode: LoginMode) => {
+    setMode(newMode);
+    resetOtp();
     setCredential("");
     setPassword("");
+  };
+
+  const switchChannel = (ch: OtpChannel) => {
+    setOtpChannel(ch);
+    setOtpCredential("");
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <LinearGradient colors={["#1A0A0A", "#0D0D1A"]} style={StyleSheet.absoluteFill} />
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
           contentContainerStyle={[styles.scroll, { paddingTop: topPad + 24, paddingBottom: botPad + 24 }]}
           keyboardShouldPersistTaps="handled"
@@ -162,11 +169,9 @@ export default function LoginScreen() {
           </View>
 
           <Text style={[styles.title, { color: colors.text }]}>Welcome back</Text>
-          <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-            Sign in to your PokéScan account
-          </Text>
+          <Text style={[styles.subtitle, { color: colors.textMuted }]}>Sign in to your PokéScan account</Text>
 
-          {/* Mode toggle */}
+          {/* Top mode toggle: Password / Code */}
           <View style={[styles.toggle, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Pressable
               style={[styles.toggleBtn, mode === "password" && { backgroundColor: colors.pokemonRed }]}
@@ -179,13 +184,15 @@ export default function LoginScreen() {
               style={[styles.toggleBtn, mode === "otp" && { backgroundColor: colors.pokemonRed }]}
               onPress={() => switchMode("otp")}
             >
-              <Ionicons name="mail-outline" size={15} color={mode === "otp" ? "#FFF" : colors.textMuted} />
-              <Text style={[styles.toggleText, { color: mode === "otp" ? "#FFF" : colors.textMuted }]}>Email Code</Text>
+              <Ionicons name="keypad-outline" size={15} color={mode === "otp" ? "#FFF" : colors.textMuted} />
+              <Text style={[styles.toggleText, { color: mode === "otp" ? "#FFF" : colors.textMuted }]}>Send Code</Text>
             </Pressable>
           </View>
 
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {mode === "password" ? (
+
+            {/* ── PASSWORD MODE ─────────────────────────────────────────── */}
+            {mode === "password" && (
               <>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>Email or Username</Text>
                 <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -223,14 +230,8 @@ export default function LoginScreen() {
                   </Pressable>
                 </View>
 
-                <Pressable
-                  style={[styles.actionBtn, loading && styles.actionBtnDisabled]}
-                  onPress={handlePasswordLogin}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="#FFF" size="small" />
-                  ) : (
+                <Pressable style={[styles.actionBtn, loading && styles.btnDisabled]} onPress={handlePasswordLogin} disabled={loading}>
+                  {loading ? <ActivityIndicator color="#FFF" size="small" /> : (
                     <>
                       <Ionicons name="log-in-outline" size={20} color="#FFF" />
                       <Text style={styles.actionBtnText}>Sign In</Text>
@@ -238,19 +239,45 @@ export default function LoginScreen() {
                   )}
                 </Pressable>
               </>
-            ) : otpStep === "input" ? (
+            )}
+
+            {/* ── OTP STEP 1: channel + credential input ─────────────────── */}
+            {mode === "otp" && otpStep === "input" && (
               <>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Email Address</Text>
+                {/* Channel sub-toggle: Email / SMS */}
+                <View style={[styles.channelToggle, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Pressable
+                    style={[styles.channelBtn, otpChannel === "email" && { backgroundColor: colors.pokemonBlue }]}
+                    onPress={() => switchChannel("email")}
+                  >
+                    <Ionicons name="mail-outline" size={14} color={otpChannel === "email" ? "#FFF" : colors.textMuted} />
+                    <Text style={[styles.channelText, { color: otpChannel === "email" ? "#FFF" : colors.textMuted }]}>Email</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.channelBtn, otpChannel === "sms" && { backgroundColor: colors.pokemonBlue }]}
+                    onPress={() => switchChannel("sms")}
+                  >
+                    <Ionicons name="phone-portrait-outline" size={14} color={otpChannel === "sms" ? "#FFF" : colors.textMuted} />
+                    <Text style={[styles.channelText, { color: otpChannel === "sms" ? "#FFF" : colors.textMuted }]}>SMS</Text>
+                  </Pressable>
+                </View>
+
+                <Text style={[styles.label, { color: colors.textSecondary }]}>
+                  {otpChannel === "email" ? "Email Address" : "Mobile Number"}
+                </Text>
                 <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Ionicons name="mail-outline" size={18} color={colors.textMuted} style={styles.inputIcon} />
+                  <Ionicons
+                    name={otpChannel === "email" ? "mail-outline" : "call-outline"}
+                    size={18} color={colors.textMuted} style={styles.inputIcon}
+                  />
                   <TextInput
                     style={[styles.input, { color: colors.text }]}
                     value={otpCredential}
                     onChangeText={setOtpCredential}
-                    placeholder="your@email.com"
+                    placeholder={otpChannel === "email" ? "your@email.com" : "+447700900123"}
                     placeholderTextColor={colors.textMuted}
                     autoCapitalize="none"
-                    keyboardType="email-address"
+                    keyboardType={otpChannel === "email" ? "email-address" : "phone-pad"}
                     autoCorrect={false}
                     returnKeyType="done"
                     onSubmitEditing={handleSendOtp}
@@ -258,31 +285,33 @@ export default function LoginScreen() {
                 </View>
 
                 <Text style={[styles.hint, { color: colors.textMuted }]}>
-                  We'll send a 6-digit code to your email to sign you in.
+                  {otpChannel === "email"
+                    ? "A 6-digit code will be sent to your email."
+                    : "A 6-digit code will be sent to your mobile via SMS."}
                 </Text>
 
-                <Pressable
-                  style={[styles.actionBtn, loading && styles.actionBtnDisabled]}
-                  onPress={handleSendOtp}
-                  disabled={loading}
-                >
-                  {loading ? (
-                    <ActivityIndicator color="#FFF" size="small" />
-                  ) : (
+                <Pressable style={[styles.actionBtn, loading && styles.btnDisabled]} onPress={handleSendOtp} disabled={loading}>
+                  {loading ? <ActivityIndicator color="#FFF" size="small" /> : (
                     <>
-                      <Ionicons name="send-outline" size={20} color="#FFF" />
+                      <Ionicons name={otpChannel === "email" ? "mail-outline" : "phone-portrait-outline"} size={20} color="#FFF" />
                       <Text style={styles.actionBtnText}>Send Code</Text>
                     </>
                   )}
                 </Pressable>
               </>
-            ) : (
+            )}
+
+            {/* ── OTP STEP 2: enter the code ─────────────────────────────── */}
+            {mode === "otp" && otpStep === "verify" && (
               <>
                 <View style={styles.otpHeader}>
-                  <Ionicons name="mail-open-outline" size={28} color={colors.pokemonRed} />
-                  <Text style={[styles.otpTitle, { color: colors.text }]}>Check your email</Text>
+                  <Ionicons
+                    name={otpChannel === "email" ? "mail-open-outline" : "chatbubble-ellipses-outline"}
+                    size={30} color={colors.pokemonRed}
+                  />
+                  <Text style={[styles.otpTitle, { color: colors.text }]}>Enter your code</Text>
                   <Text style={[styles.otpSubtitle, { color: colors.textMuted }]}>
-                    Enter the 6-digit code sent to{"\n"}
+                    {otpChannel === "email" ? "Sent to your email" : "Sent via SMS to"}{"\n"}
                     <Text style={{ color: colors.text, fontFamily: "Outfit_600SemiBold" }}>{otpCredential}</Text>
                   </Text>
                 </View>
@@ -311,13 +340,11 @@ export default function LoginScreen() {
                 </View>
 
                 <Pressable
-                  style={[styles.actionBtn, loading && styles.actionBtnDisabled, { marginTop: 16 }]}
+                  style={[styles.actionBtn, { marginTop: 20 }, (loading || otpDigits.some((d) => !d)) && styles.btnDisabled]}
                   onPress={() => handleVerifyOtp()}
                   disabled={loading || otpDigits.some((d) => !d)}
                 >
-                  {loading ? (
-                    <ActivityIndicator color="#FFF" size="small" />
-                  ) : (
+                  {loading ? <ActivityIndicator color="#FFF" size="small" /> : (
                     <>
                       <Ionicons name="checkmark-circle-outline" size={20} color="#FFF" />
                       <Text style={styles.actionBtnText}>Verify & Sign In</Text>
@@ -325,7 +352,7 @@ export default function LoginScreen() {
                   )}
                 </Pressable>
 
-                <Pressable onPress={() => { setOtpStep("input"); setOtpDigits(["", "", "", "", "", ""]); }} style={styles.resendBtn}>
+                <Pressable onPress={resetOtp} style={styles.resendBtn}>
                   <Text style={[styles.resendText, { color: colors.textMuted }]}>Didn't get it? </Text>
                   <Text style={[styles.resendLink, { color: colors.pokemonRed }]}>Send again</Text>
                 </Pressable>
@@ -353,7 +380,8 @@ const styles = StyleSheet.create({
   logoBadge: {
     width: 72, height: 72, borderRadius: 36, backgroundColor: "#CC0000",
     alignItems: "center", justifyContent: "center",
-    shadowColor: "#CC0000", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 20, elevation: 10,
+    shadowColor: "#CC0000", shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4, shadowRadius: 20, elevation: 10,
   },
   logoEmoji: { fontSize: 36 },
   title: { fontSize: 28, fontFamily: "Outfit_700Bold", textAlign: "center", marginBottom: 8 },
@@ -367,6 +395,15 @@ const styles = StyleSheet.create({
     gap: 6, paddingVertical: 10, borderRadius: 10,
   },
   toggleText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
+  channelToggle: {
+    flexDirection: "row", borderRadius: 10, borderWidth: 1,
+    padding: 3, marginBottom: 18, gap: 3,
+  },
+  channelBtn: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 5, paddingVertical: 8, borderRadius: 8,
+  },
+  channelText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
   card: { borderRadius: 20, borderWidth: 1, padding: 20, marginBottom: 24 },
   label: { fontSize: 12, fontFamily: "Outfit_600SemiBold", letterSpacing: 0.5, marginBottom: 8 },
   inputWrap: {
@@ -379,15 +416,16 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, fontFamily: "Outfit_400Regular", lineHeight: 18, marginBottom: 18, marginTop: -8 },
   actionBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    height: 52, borderRadius: 14, backgroundColor: "#CC0000", marginTop: 4,
-    shadowColor: "#CC0000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6,
+    height: 52, borderRadius: 14, backgroundColor: "#CC0000",
+    shadowColor: "#CC0000", shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3, shadowRadius: 12, elevation: 6,
   },
-  actionBtnDisabled: { opacity: 0.6 },
+  btnDisabled: { opacity: 0.6 },
   actionBtnText: { fontSize: 17, fontFamily: "Outfit_700Bold", color: "#FFF" },
-  otpHeader: { alignItems: "center", marginBottom: 24, gap: 8 },
+  otpHeader: { alignItems: "center", marginBottom: 20, gap: 6 },
   otpTitle: { fontSize: 20, fontFamily: "Outfit_700Bold", marginTop: 4 },
   otpSubtitle: { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", lineHeight: 20 },
-  digitRow: { flexDirection: "row", justifyContent: "center", gap: 10, marginBottom: 4 },
+  digitRow: { flexDirection: "row", justifyContent: "center", gap: 10 },
   digitBox: {
     width: 44, height: 54, borderRadius: 12, borderWidth: 2,
     textAlign: "center", fontSize: 22, fontFamily: "Outfit_700Bold",
