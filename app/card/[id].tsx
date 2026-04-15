@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   StyleSheet,
   Text,
@@ -11,6 +11,9 @@ import {
   Alert,
   Dimensions,
   Linking,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -18,6 +21,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import {
@@ -50,6 +54,14 @@ export default function CardDetailScreen() {
   const insets = useSafeAreaInsets();
   const { user, addCard, createListing, collection } = useUser();
   const [selectedCondition, setSelectedCondition] = useState("Near Mint");
+
+  // Listing modal state
+  const [listingModalVisible, setListingModalVisible] = useState(false);
+  const [listingType, setListingType] = useState<"sale" | "trade">("sale");
+  const [listingPrice, setListingPrice] = useState("");
+  const [listingDescription, setListingDescription] = useState("");
+  const [listingPhotos, setListingPhotos] = useState<string[]>([]);
+  const [listingLoading, setListingLoading] = useState(false);
 
   const { data: card, isLoading, isError, refetch } = useQuery({
     queryKey: ["card", id],
@@ -92,52 +104,101 @@ export default function CardDetailScreen() {
     Alert.alert("Added!", `${card.name} added to your collection.`);
   };
 
-  const handleListForSale = () => {
+  const openListingModal = (type: "sale" | "trade") => {
     if (!user?.isPremium) {
-      Alert.alert("Premium Required", "Upgrade to Premium to list cards on the marketplace.");
+      Alert.alert("Premium Required", "Upgrade to Premium to list cards on the marketplace.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Upgrade", onPress: () => router.push("/premium") },
+      ]);
       return;
     }
     if (!card) return;
-    const priceData = getUKPrice(card);
-    createListing({
-      userId: user.id,
-      userName: user.displayName,
-      cardId: card.id,
-      cardName: card.name,
-      cardImage: card.images.small,
-      setName: card.set.name,
-      rarity: card.rarity || "Unknown",
-      type: "sale",
-      priceGBP: priceData.price,
-      condition: selectedCondition,
-      description: "",
-    });
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Listed!", `${card.name} listed for sale on the marketplace.`);
+    setListingType(type);
+    setListingPrice(type === "sale" ? String(getUKPrice(card).price ?? "") : "");
+    setListingDescription("");
+    setListingPhotos([]);
+    setListingModalVisible(true);
   };
 
-  const handleListForTrade = () => {
-    if (!user?.isPremium) {
-      Alert.alert("Premium Required", "Upgrade to Premium to list cards on the marketplace.");
+  const pickPhoto = useCallback(async () => {
+    if (listingPhotos.length >= 6) {
+      Alert.alert("Max Photos", "You can add up to 6 photos per listing.");
       return;
     }
-    if (!card) return;
-    createListing({
-      userId: user.id,
-      userName: user.displayName,
-      cardId: card.id,
-      cardName: card.name,
-      cardImage: card.images.small,
-      setName: card.set.name,
-      rarity: card.rarity || "Unknown",
-      type: "trade",
-      priceGBP: null,
-      condition: selectedCondition,
-      description: "",
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow photo library access to add photos to your listing.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsEditing: false,
+      allowsMultipleSelection: false,
+      quality: 0.6,
+      base64: true,
     });
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Listed!", `${card.name} listed for trade on the marketplace.`);
-  };
+    if (!result.canceled && result.assets[0]?.base64) {
+      setListingPhotos((prev) => [...prev, `data:image/jpeg;base64,${result.assets[0].base64}`]);
+    }
+  }, [listingPhotos]);
+
+  const takePhoto = useCallback(async () => {
+    if (listingPhotos.length >= 6) {
+      Alert.alert("Max Photos", "You can add up to 6 photos per listing.");
+      return;
+    }
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow camera access to take photos for your listing.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: false,
+      quality: 0.6,
+      base64: true,
+    });
+    if (!result.canceled && result.assets[0]?.base64) {
+      setListingPhotos((prev) => [...prev, `data:image/jpeg;base64,${result.assets[0].base64}`]);
+    }
+  }, [listingPhotos]);
+
+  const removePhoto = useCallback((index: number) => {
+    setListingPhotos((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const submitListing = useCallback(async () => {
+    if (!card || !user) return;
+    setListingLoading(true);
+    try {
+      const priceVal = listingType === "sale"
+        ? (parseFloat(listingPrice) || null)
+        : null;
+      await createListing({
+        userId: user.id,
+        userName: user.displayName,
+        cardId: card.id,
+        cardName: card.name,
+        cardImage: card.images.small,
+        setName: card.set.name,
+        rarity: card.rarity || "Unknown",
+        type: listingType,
+        priceGBP: priceVal,
+        condition: selectedCondition,
+        description: listingDescription.trim(),
+        photos: listingPhotos,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setListingModalVisible(false);
+      Alert.alert(
+        "Listed!",
+        `${card.name} listed for ${listingType === "sale" ? "sale" : "trade"} on the marketplace.`
+      );
+    } catch (err: any) {
+      Alert.alert("Error", err.message ?? "Could not create listing. Please try again.");
+    } finally {
+      setListingLoading(false);
+    }
+  }, [card, user, listingType, listingPrice, listingDescription, listingPhotos, selectedCondition, createListing]);
 
   const openEbayListings = () => {
     if (!card) return;
@@ -380,7 +441,7 @@ export default function CardDetailScreen() {
                   styles.actionBtnSmall,
                   { backgroundColor: colors.success, opacity: pressed ? 0.85 : 1 },
                 ]}
-                onPress={handleListForSale}
+                onPress={() => openListingModal("sale")}
               >
                 <Ionicons name="cash-outline" size={18} color="#FFF" />
                 <Text style={styles.actionBtnSmallText}>List for Sale</Text>
@@ -390,7 +451,7 @@ export default function CardDetailScreen() {
                   styles.actionBtnSmall,
                   { backgroundColor: colors.pokemonBlue, opacity: pressed ? 0.85 : 1 },
                 ]}
-                onPress={handleListForTrade}
+                onPress={() => openListingModal("trade")}
               >
                 <Ionicons name="swap-horizontal" size={18} color="#FFF" />
                 <Text style={styles.actionBtnSmallText}>List for Trade</Text>
@@ -399,9 +460,202 @@ export default function CardDetailScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* ── Listing Modal ──────────────────────────────────── */}
+      <Modal
+        visible={listingModalVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setListingModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={{ flex: 1, backgroundColor: colors.background }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+          <View style={[listingStyles.header, { paddingTop: insets.top + 12, backgroundColor: listingType === "sale" ? colors.success : colors.pokemonBlue }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={listingStyles.modalTitle}>
+                {listingType === "sale" ? "List for Sale" : "List for Trade"}
+              </Text>
+              <Text style={listingStyles.modalSubtitle} numberOfLines={1}>{card?.name}</Text>
+            </View>
+            <Pressable onPress={() => setListingModalVisible(false)} style={listingStyles.closeBtn}>
+              <Ionicons name="close" size={22} color="#FFF" />
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+            {/* Price (sale only) */}
+            {listingType === "sale" && (
+              <View>
+                <Text style={[listingStyles.label, { color: colors.textSecondary }]}>Asking Price (£)</Text>
+                <TextInput
+                  style={[listingStyles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.borderLight }]}
+                  value={listingPrice}
+                  onChangeText={setListingPrice}
+                  keyboardType="decimal-pad"
+                  placeholder="e.g. 9.99"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+            )}
+
+            {/* Description */}
+            <View>
+              <Text style={[listingStyles.label, { color: colors.textSecondary }]}>Description (optional)</Text>
+              <TextInput
+                style={[listingStyles.input, listingStyles.textArea, { backgroundColor: colors.card, color: colors.text, borderColor: colors.borderLight }]}
+                value={listingDescription}
+                onChangeText={setListingDescription}
+                placeholder="Describe the card's condition, any extras included, etc."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+
+            {/* Photos */}
+            <View>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <Text style={[listingStyles.label, { color: colors.textSecondary }]}>Your Photos ({listingPhotos.length}/6)</Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: "Outfit_400Regular" }}>
+                  So buyers can see the actual card
+                </Text>
+              </View>
+
+              {/* Photo grid */}
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+                {listingPhotos.map((uri, idx) => (
+                  <View key={idx} style={listingStyles.photoThumb}>
+                    <Image source={{ uri }} style={{ width: "100%", height: "100%", borderRadius: 10 }} contentFit="cover" />
+                    <Pressable
+                      style={listingStyles.photoRemoveBtn}
+                      onPress={() => removePhoto(idx)}
+                    >
+                      <Ionicons name="close-circle" size={20} color="#FFF" />
+                    </Pressable>
+                  </View>
+                ))}
+                {listingPhotos.length < 6 && (
+                  <View style={{ gap: 8 }}>
+                    <Pressable
+                      style={[listingStyles.photoAddBtn, { borderColor: colors.borderLight, backgroundColor: colors.card }]}
+                      onPress={pickPhoto}
+                    >
+                      <Ionicons name="images-outline" size={22} color={colors.textSecondary} />
+                      <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: "Outfit_500Medium" }}>Library</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[listingStyles.photoAddBtn, { borderColor: colors.borderLight, backgroundColor: colors.card }]}
+                      onPress={takePhoto}
+                    >
+                      <Ionicons name="camera-outline" size={22} color={colors.textSecondary} />
+                      <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: "Outfit_500Medium" }}>Camera</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Condition reminder */}
+            <View style={[listingStyles.conditionReminder, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+              <Ionicons name="information-circle-outline" size={16} color={colors.textMuted} />
+              <Text style={{ flex: 1, fontSize: 12, color: colors.textMuted, fontFamily: "Outfit_400Regular" }}>
+                Listing condition: <Text style={{ fontFamily: "Outfit_600SemiBold", color: colors.text }}>{selectedCondition}</Text>. Change this on the card detail page before listing.
+              </Text>
+            </View>
+
+            {/* Submit */}
+            <Pressable
+              style={({ pressed }) => [
+                listingStyles.submitBtn,
+                { backgroundColor: listingType === "sale" ? colors.success : colors.pokemonBlue, opacity: pressed || listingLoading ? 0.8 : 1 },
+              ]}
+              onPress={submitListing}
+              disabled={listingLoading}
+            >
+              {listingLoading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name={listingType === "sale" ? "cash-outline" : "swap-horizontal"} size={20} color="#FFF" />
+                  <Text style={listingStyles.submitBtnText}>
+                    {listingType === "sale" ? "Publish Listing" : "List for Trade"}
+                  </Text>
+                </>
+              )}
+            </Pressable>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
+
+const listingStyles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    gap: 12,
+  },
+  modalTitle: { fontSize: 20, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  modalSubtitle: { fontSize: 13, fontFamily: "Outfit_400Regular", color: "rgba(255,255,255,0.8)", marginTop: 2 },
+  closeBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  label: { fontSize: 13, fontFamily: "Outfit_600SemiBold", marginBottom: 6 },
+  input: {
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 15,
+    fontFamily: "Outfit_400Regular",
+  },
+  textArea: { minHeight: 80, textAlignVertical: "top", paddingTop: 11 },
+  photoThumb: {
+    width: 90,
+    height: 90,
+    borderRadius: 10,
+    overflow: "hidden",
+    position: "relative",
+  },
+  photoRemoveBtn: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    borderRadius: 10,
+  },
+  photoAddBtn: {
+    width: 90,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+  conditionReminder: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  submitBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 16,
+    borderRadius: 14,
+  },
+  submitBtnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#FFF" },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1 },

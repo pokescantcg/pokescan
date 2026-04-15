@@ -4,6 +4,7 @@ import {
   Text,
   View,
   FlatList,
+  ScrollView,
   Pressable,
   useColorScheme,
   Platform,
@@ -43,6 +44,7 @@ function ListingCard({
   onReport: (reason: string) => void;
 }) {
   const canMessage = listing.userId !== currentUserId;
+  const hasPhotos = listing.photos && listing.photos.length > 0;
 
   const handleReport = () => {
     Alert.alert(
@@ -57,6 +59,7 @@ function ListingCard({
       ]
     );
   };
+
   return (
     <Pressable
       style={({ pressed }) => [
@@ -65,68 +68,104 @@ function ListingCard({
       ]}
       onPress={() => router.push({ pathname: "/card/[id]", params: { id: listing.cardId } })}
     >
-      <Image source={{ uri: listing.cardImage }} style={styles.listingImage} contentFit="contain" />
-      <View style={styles.listingInfo}>
-        <View style={styles.listingHeader}>
-          <View
-            style={[
-              styles.listingBadge,
-              { backgroundColor: listing.type === "sale" ? colors.success : colors.pokemonBlue },
-            ]}
-          >
-            <Text style={styles.listingBadgeText}>
-              {listing.type === "sale" ? "FOR SALE" : "TRADE"}
+      {/* Top row: card image + info */}
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        <Image source={{ uri: listing.cardImage }} style={styles.listingImage} contentFit="contain" />
+        <View style={styles.listingInfo}>
+          <View style={styles.listingHeader}>
+            <View
+              style={[
+                styles.listingBadge,
+                { backgroundColor: listing.type === "sale" ? colors.success : colors.pokemonBlue },
+              ]}
+            >
+              <Text style={styles.listingBadgeText}>
+                {listing.type === "sale" ? "FOR SALE" : "TRADE"}
+              </Text>
+            </View>
+            {hasPhotos && (
+              <View style={[styles.listingBadge, { backgroundColor: colors.pokemonYellow, marginLeft: 6 }]}>
+                <Ionicons name="camera" size={9} color="#000" />
+                <Text style={[styles.listingBadgeText, { color: "#000" }]}>{listing.photos.length} PHOTOS</Text>
+              </View>
+            )}
+          </View>
+          <Text style={[styles.listingName, { color: colors.text }]} numberOfLines={1}>
+            {listing.cardName}
+          </Text>
+          <Text style={[styles.listingSet, { color: colors.textSecondary }]} numberOfLines={1}>
+            {listing.setName}
+          </Text>
+          <Text style={[styles.listingCondition, { color: colors.textMuted }]}>
+            {listing.condition}
+          </Text>
+          {listing.priceGBP && (
+            <Text style={[styles.listingPrice, { color: colors.success }]}>
+              {formatGBP(listing.priceGBP)}
             </Text>
+          )}
+          <Text style={[styles.listingUser, { color: colors.textMuted }]}>
+            by {listing.userName}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 6, marginTop: 6 }}>
+            {canMessage && (
+              <Pressable
+                style={[styles.messageBtn, { backgroundColor: colors.pokemonBlue }]}
+                onPress={(e) => { e.stopPropagation(); onMessage(); }}
+              >
+                <Ionicons name="mail-outline" size={13} color="#FFF" />
+                <Text style={styles.messageBtnText}>Message</Text>
+              </Pressable>
+            )}
+            {!isOwner && (
+              <Pressable
+                style={[styles.messageBtn, { backgroundColor: colors.error + "CC" }]}
+                onPress={(e) => { e.stopPropagation(); handleReport(); }}
+              >
+                <Ionicons name="flag-outline" size={13} color="#FFF" />
+                <Text style={styles.messageBtnText}>Report</Text>
+              </Pressable>
+            )}
           </View>
         </View>
-        <Text style={[styles.listingName, { color: colors.text }]} numberOfLines={1}>
-          {listing.cardName}
-        </Text>
-        <Text style={[styles.listingSet, { color: colors.textSecondary }]} numberOfLines={1}>
-          {listing.setName}
-        </Text>
-        <Text style={[styles.listingCondition, { color: colors.textMuted }]}>
-          {listing.condition}
-        </Text>
-        {listing.priceGBP && (
-          <Text style={[styles.listingPrice, { color: colors.success }]}>
-            {formatGBP(listing.priceGBP)}
-          </Text>
+        {isOwner && (
+          <Pressable
+            style={[styles.deleteBtn, { backgroundColor: colors.pokemonRed }]}
+            onPress={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+          >
+            <Ionicons name="trash-outline" size={16} color="#FFF" />
+          </Pressable>
         )}
-        <Text style={[styles.listingUser, { color: colors.textMuted }]}>
-          by {listing.userName}
-        </Text>
-        <View style={{ flexDirection: "row", gap: 6, marginTop: 6 }}>
-          {canMessage && (
-            <Pressable
-              style={[styles.messageBtn, { backgroundColor: colors.pokemonBlue }]}
-              onPress={(e) => { e.stopPropagation(); onMessage(); }}
-            >
-              <Ionicons name="mail-outline" size={13} color="#FFF" />
-              <Text style={styles.messageBtnText}>Message</Text>
-            </Pressable>
-          )}
-          {!isOwner && (
-            <Pressable
-              style={[styles.messageBtn, { backgroundColor: colors.error + "CC" }]}
-              onPress={(e) => { e.stopPropagation(); handleReport(); }}
-            >
-              <Ionicons name="flag-outline" size={13} color="#FFF" />
-              <Text style={styles.messageBtnText}>Report</Text>
-            </Pressable>
-          )}
-        </View>
       </View>
-      {isOwner && (
-        <Pressable
-          style={[styles.deleteBtn, { backgroundColor: colors.pokemonRed }]}
-          onPress={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
+
+      {/* Description */}
+      {!!listing.description && (
+        <Text style={[styles.listingDescription, { color: colors.textSecondary }]} numberOfLines={2}>
+          {listing.description}
+        </Text>
+      )}
+
+      {/* Photo strip */}
+      {hasPhotos && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ marginTop: 10 }}
+          contentContainerStyle={{ gap: 8 }}
+          onStartShouldSetResponder={() => true}
         >
-          <Ionicons name="trash-outline" size={16} color="#FFF" />
-        </Pressable>
+          {listing.photos.map((uri, idx) => (
+            <Image
+              key={idx}
+              source={{ uri }}
+              style={styles.listingPhoto}
+              contentFit="cover"
+            />
+          ))}
+        </ScrollView>
       )}
     </Pressable>
   );
@@ -136,14 +175,18 @@ export default function MarketScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user, listings, deleteListing, isStaff } = useUser();
+  const { user, listings, deleteListing, isStaff, refreshData } = useUser();
   const [filter, setFilter] = useState<"all" | "sale" | "trade">("all");
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const handleRefresh = useCallback(() => {
+  const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 600);
-  }, []);
+    try {
+      await refreshData();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [refreshData]);
 
   const filtered = listings.filter((l) => {
     if (filter === "all") return true;
@@ -395,8 +438,19 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   disclaimerText: { flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", lineHeight: 16 },
+  listingPhoto: {
+    width: 110,
+    height: 110,
+    borderRadius: 10,
+  },
+  listingDescription: {
+    fontSize: 13,
+    fontFamily: "Outfit_400Regular",
+    marginTop: 8,
+    lineHeight: 18,
+  },
   listingCard: {
-    flexDirection: "row",
+    flexDirection: "column",
     borderRadius: 14,
     padding: 10,
     marginBottom: 8,

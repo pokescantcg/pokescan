@@ -1541,6 +1541,109 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  // ─── Market Listings ────────────────────────────────────────────────────────────
+
+  // Helper to parse a DB row into a client-safe listing object
+  function rowToListing(row: any) {
+    return {
+      id: row.id,
+      userId: row.user_id,
+      userName: row.user_name,
+      cardId: row.card_id,
+      cardName: row.card_name,
+      cardImage: row.card_image,
+      setName: row.set_name,
+      rarity: row.rarity,
+      type: row.type,
+      priceGBP: row.price_gbp ?? null,
+      condition: row.condition,
+      description: row.description ?? "",
+      photos: (() => { try { return JSON.parse(row.photos ?? "[]"); } catch { return []; } })(),
+      createdAt: row.created_at,
+    };
+  }
+
+  // GET /api/listings — all active listings (premium required)
+  app.get("/api/listings", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user.isPremium) { res.status(403).json({ error: "Premium required to access the marketplace." }); return; }
+
+      const result = await pool.query(
+        `SELECT * FROM pokescan_market_listings ORDER BY created_at DESC LIMIT 200`
+      );
+      res.json({ listings: result.rows.map(rowToListing) });
+    } catch (err: any) {
+      console.error("[Listings] GET error:", err.message);
+      res.status(500).json({ error: "Could not fetch listings" });
+    }
+  });
+
+  // POST /api/listings — create a listing (premium required)
+  app.post("/api/listings", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user.isPremium) { res.status(403).json({ error: "Premium required to list on the marketplace." }); return; }
+
+      const { cardId, cardName, cardImage, setName, rarity, type, priceGBP, condition, description, photos } = req.body;
+      if (!cardId || !cardName || !cardImage || !setName || !type || !condition) {
+        res.status(400).json({ error: "Missing required listing fields." });
+        return;
+      }
+
+      const rawPhotos: string[] = Array.isArray(photos) ? photos.slice(0, 6) : [];
+      const photosJson = JSON.stringify(rawPhotos);
+
+      const result = await pool.query(
+        `INSERT INTO pokescan_market_listings
+           (user_id, user_name, card_id, card_name, card_image, set_name, rarity, type, price_gbp, condition, description, photos)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         RETURNING *`,
+        [
+          user.id, user.displayName,
+          cardId, cardName, cardImage, setName, rarity ?? "Unknown",
+          type, priceGBP ?? null,
+          condition, description ?? "",
+          photosJson,
+        ]
+      );
+      res.status(201).json({ listing: rowToListing(result.rows[0]) });
+    } catch (err: any) {
+      console.error("[Listings] POST error:", err.message);
+      res.status(500).json({ error: "Could not create listing" });
+    }
+  });
+
+  // DELETE /api/listings/:id — owner or staff can delete
+  app.delete("/api/listings/:id", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+
+      const { id } = req.params;
+      const existing = await pool.query(`SELECT user_id FROM pokescan_market_listings WHERE id = $1`, [id]);
+      if (existing.rows.length === 0) { res.status(404).json({ error: "Listing not found" }); return; }
+
+      const isOwner = existing.rows[0].user_id === user.id;
+      const isStaff = user.role === "admin" || user.role === "moderator";
+      if (!isOwner && !isStaff) { res.status(403).json({ error: "Not authorised to delete this listing" }); return; }
+
+      await pool.query(`DELETE FROM pokescan_market_listings WHERE id = $1`, [id]);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Listings] DELETE error:", err.message);
+      res.status(500).json({ error: "Could not delete listing" });
+    }
+  });
+
   // ─── Daily checkin (login streak + bonus scans) ───────────────────────────────
   app.post("/api/user/daily-checkin", async (req: Request, res: Response) => {
     try {

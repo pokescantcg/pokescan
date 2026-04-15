@@ -49,6 +49,7 @@ export interface MarketListing {
   priceGBP: number | null;
   condition: string;
   description: string;
+  photos: string[];
   createdAt: string;
 }
 
@@ -394,26 +395,50 @@ export async function updateCollectionQuantity(cardId: string, condition: string
 }
 
 export async function getListings(): Promise<MarketListing[]> {
-  const data = await AsyncStorage.getItem(KEYS.LISTINGS);
-  return data ? JSON.parse(data) : [];
+  try {
+    const token = await getSessionToken();
+    if (!token) return [];
+    const url = new URL("/api/listings", getApiUrl()).href;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.listings ?? []) as MarketListing[];
+  } catch {
+    return [];
+  }
 }
 
 export async function addListing(listing: Omit<MarketListing, "id" | "createdAt">): Promise<MarketListing[]> {
-  const listings = await getListings();
-  listings.unshift({
-    ...listing,
-    id: Crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
+  const token = await getSessionToken();
+  if (!token) throw new Error("Not authenticated");
+  const url = new URL("/api/listings", getApiUrl()).href;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(listing),
   });
-  await AsyncStorage.setItem(KEYS.LISTINGS, JSON.stringify(listings));
-  return listings;
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Failed to create listing");
+  }
+  return getListings();
 }
 
 export async function removeListing(listingId: string): Promise<MarketListing[]> {
-  let listings = await getListings();
-  listings = listings.filter((l) => l.id !== listingId);
-  await AsyncStorage.setItem(KEYS.LISTINGS, JSON.stringify(listings));
-  return listings;
+  const token = await getSessionToken();
+  if (!token) throw new Error("Not authenticated");
+  const url = new URL(`/api/listings/${listingId}`, getApiUrl()).href;
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Failed to delete listing");
+  }
+  return getListings();
 }
 
 export function getCollectionValue(collection: CollectionItem[]): number {
