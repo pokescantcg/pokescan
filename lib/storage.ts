@@ -62,6 +62,7 @@ export interface MarketListing {
 
 const KEYS = {
   COLLECTION: "pokescan_collection",
+  COLLECTION_CACHE: "pokescan_collection_cache",
   LISTINGS: "pokescan_listings",
   ALL_USERS: "pokescan_all_users",
   SUPERADMIN_FLAG: "pokescan_superadmin",
@@ -287,6 +288,7 @@ export async function logoutUser(): Promise<void> {
   await clearSessionToken();
   await AsyncStorage.removeItem(KEYS.SUPERADMIN_FLAG);
   await AsyncStorage.removeItem(KEYS.LOCAL_USER);
+  await AsyncStorage.removeItem(KEYS.COLLECTION_CACHE);
 }
 
 function dbUserToProfile(dbUser: any): UserProfile {
@@ -423,6 +425,27 @@ export async function togglePremium(): Promise<UserProfile | null> {
   return user;
 }
 
+export async function loadCollectionCache(): Promise<CollectionItem[]> {
+  try {
+    const data = await AsyncStorage.getItem(KEYS.COLLECTION_CACHE);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveCollectionCache(items: CollectionItem[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(KEYS.COLLECTION_CACHE, JSON.stringify(items));
+  } catch {}
+}
+
+export async function clearCollectionCache(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(KEYS.COLLECTION_CACHE);
+  } catch {}
+}
+
 export async function getCollection(): Promise<CollectionItem[]> {
   try {
     const token = await getSessionToken();
@@ -434,12 +457,13 @@ export async function getCollection(): Promise<CollectionItem[]> {
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return [];
+    if (!res.ok) return await loadCollectionCache();
     const data = await res.json();
-    return (data.collection ?? []) as CollectionItem[];
+    const items = (data.collection ?? []) as CollectionItem[];
+    saveCollectionCache(items);
+    return items;
   } catch {
-    const data = await AsyncStorage.getItem(KEYS.COLLECTION);
-    return data ? JSON.parse(data) : [];
+    return await loadCollectionCache();
   }
 }
 
@@ -458,7 +482,9 @@ export async function addToCollection(item: Omit<CollectionItem, "id" | "addedAt
       throw new Error(err.error || "Failed to add card");
     }
     const data = await res.json();
-    return (data.collection ?? []) as CollectionItem[];
+    const items = (data.collection ?? []) as CollectionItem[];
+    saveCollectionCache(items);
+    return items;
   } catch (err) {
     console.error("addToCollection server error, falling back to local:", err);
     const collection = await getCollectionLocal();
@@ -480,7 +506,7 @@ export async function removeFromCollection(cardId: string, condition: string, va
   try {
     const token = await getSessionToken();
     if (!token) throw new Error("Not authenticated");
-    const collection = await getCollection();
+    const collection = await loadCollectionCache().then(c => c.length ? c : getCollection());
     const v = variant || "Non-Holo";
     const target = collection.find(
       (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
@@ -493,7 +519,9 @@ export async function removeFromCollection(cardId: string, condition: string, va
     });
     if (!res.ok) throw new Error("Failed to remove card");
     const data = await res.json();
-    return (data.collection ?? []) as CollectionItem[];
+    const items = (data.collection ?? []) as CollectionItem[];
+    saveCollectionCache(items);
+    return items;
   } catch {
     let collection = await getCollectionLocal();
     const v = variant || "Non-Holo";
@@ -510,7 +538,7 @@ export async function updateCollectionQuantity(cardId: string, condition: string
   try {
     const token = await getSessionToken();
     if (!token) throw new Error("Not authenticated");
-    const collection = await getCollection();
+    const collection = await loadCollectionCache().then(c => c.length ? c : getCollection());
     const v = variant || "Non-Holo";
     const target = collection.find(
       (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
@@ -524,7 +552,9 @@ export async function updateCollectionQuantity(cardId: string, condition: string
     });
     if (!res.ok) throw new Error("Failed to update card");
     const data = await res.json();
-    return (data.collection ?? []) as CollectionItem[];
+    const items = (data.collection ?? []) as CollectionItem[];
+    saveCollectionCache(items);
+    return items;
   } catch {
     const collection = await getCollectionLocal();
     const v = variant || "Non-Holo";

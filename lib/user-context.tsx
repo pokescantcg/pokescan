@@ -14,6 +14,7 @@ import {
   togglePremium as togglePremiumStorage,
   logoutUser,
   getCollection,
+  loadCollectionCache,
   addToCollection,
   removeFromCollection,
   updateCollectionQuantity,
@@ -89,6 +90,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const loadData = useCallback(async () => {
     try {
+      // Load cached collection immediately so the UI renders without waiting for the server
+      const cachedCollection = await loadCollectionCache();
+      if (cachedCollection.length > 0) {
+        setCollection(cachedCollection);
+      }
+
       let userData: UserProfile | null = null;
 
       const restoredUser = await restoreSession();
@@ -102,12 +109,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const [collectionData, listingsData, localUsersData, saFlag] = await Promise.all([
-        getCollection(),
+      const [listingsData, localUsersData, saFlag] = await Promise.all([
         getListings(),
         getAllUsers(),
         isSuperadmin(),
       ]);
+
+      setUser(userData);
+      setListings(listingsData);
+      setAllUsers(localUsersData);
+      setSuperadminFlag(saFlag);
 
       // Always sync users from server — merges server-registered users into local registry
       fetchAllUsersFromServer().then(async () => {
@@ -115,11 +126,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setAllUsers(merged);
       }).catch(() => {});
 
-      setUser(userData);
-      setCollection(collectionData);
-      setListings(listingsData);
-      setAllUsers(localUsersData);
-      setSuperadminFlag(saFlag);
+      // Background-sync collection from server (updates cache + state silently)
+      getCollection().then(setCollection).catch(() => {});
     } catch (e) {
       console.error("Failed to load data:", e);
     } finally {
