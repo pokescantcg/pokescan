@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useRef } from "react";
 import {
   StyleSheet,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   Alert,
   RefreshControl,
+  Animated,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -89,6 +90,93 @@ function CollectionCard({
   );
 }
 
+function SetHeader({
+  section,
+  isCollapsed,
+  onToggle,
+  onNavigate,
+  colors,
+}: {
+  section: SetSection;
+  isCollapsed: boolean;
+  onToggle: () => void;
+  onNavigate: () => void;
+  colors: ReturnType<typeof useThemeColors>;
+}) {
+  const rotateAnim = useRef(new Animated.Value(isCollapsed ? 0 : 1)).current;
+
+  const rotate = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "180deg"],
+  });
+
+  const handleToggle = () => {
+    Animated.timing(rotateAnim, {
+      toValue: isCollapsed ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+    onToggle();
+  };
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.setHeader,
+        {
+          backgroundColor: colors.card,
+          borderColor: isCollapsed ? colors.borderLight : colors.pokemonRed + "40",
+          opacity: pressed ? 0.9 : 1,
+        },
+      ]}
+      onPress={handleToggle}
+    >
+      <Image
+        source={{ uri: setLogoUrl(section.setId) }}
+        style={styles.setLogo}
+        contentFit="contain"
+        placeholder={{ color: colors.surface } as any}
+      />
+      <View style={styles.setInfo}>
+        <Text style={[styles.setName, { color: colors.text }]} numberOfLines={1}>
+          {section.setName}
+        </Text>
+        <View style={styles.setMeta}>
+          <View style={styles.setMetaItem}>
+            <MaterialCommunityIcons name="cards-outline" size={12} color={colors.textSecondary} />
+            <Text style={[styles.setMetaText, { color: colors.textSecondary }]}>
+              {section.totalQuantity} {section.totalQuantity === 1 ? "card" : "cards"}
+            </Text>
+          </View>
+          {section.setValue > 0 && (
+            <View style={styles.setMetaItem}>
+              <Ionicons name="cash-outline" size={12} color={colors.success} />
+              <Text style={[styles.setMetaText, { color: colors.success }]}>
+                {formatGBP(section.setValue)}
+              </Text>
+            </View>
+          )}
+        </View>
+      </View>
+      <View style={styles.setHeaderRight}>
+        <Pressable
+          style={[styles.setNavBtn, { backgroundColor: colors.surfaceElevated }]}
+          onPress={(e) => {
+            e.stopPropagation();
+            onNavigate();
+          }}
+          hitSlop={8}
+        >
+          <Ionicons name="grid-outline" size={14} color={colors.textSecondary} />
+        </Pressable>
+        <Animated.View style={{ transform: [{ rotate }] }}>
+          <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
+        </Animated.View>
+      </View>
+    </Pressable>
+  );
+}
+
 interface SetSection {
   setId: string;
   setName: string;
@@ -106,13 +194,27 @@ export default function CollectionScreen() {
   const { user, collection, collectionValue, removeCard, updateQuantity } = useUser();
   const [sortBy, setSortBy] = useState<"name" | "value" | "recent">("recent");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [collapsedSets, setCollapsedSets] = useState<Set<string>>(new Set());
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
     setTimeout(() => setIsRefreshing(false), 600);
   }, []);
 
-  const sections: SetSection[] = useMemo(() => {
+  const toggleSet = useCallback((setId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setCollapsedSets((prev) => {
+      const next = new Set(prev);
+      if (next.has(setId)) {
+        next.delete(setId);
+      } else {
+        next.add(setId);
+      }
+      return next;
+    });
+  }, []);
+
+  const rawSections: SetSection[] = useMemo(() => {
     const groups = new Map<string, SetSection>();
 
     for (const item of collection) {
@@ -153,6 +255,14 @@ export default function CollectionScreen() {
 
     return result;
   }, [collection, sortBy]);
+
+  const sections = useMemo(() =>
+    rawSections.map(s => ({
+      ...s,
+      data: collapsedSets.has(s.setId) ? ([] as CollectionItem[]) : s.data,
+    })),
+    [rawSections, collapsedSets]
+  );
 
   const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -294,44 +404,13 @@ export default function CollectionScreen() {
           />
         }
         renderSectionHeader={({ section }) => (
-          <Pressable
-            style={[styles.setHeader, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
-            onPress={() => router.push({ pathname: "/set/[id]", params: { id: section.setId, name: section.setName } })}
-          >
-            <Image
-              source={{ uri: setLogoUrl(section.setId) }}
-              style={styles.setLogo}
-              contentFit="contain"
-              placeholder={{ color: colors.surface } as any}
-            />
-            <View style={styles.setInfo}>
-              <Text style={[styles.setName, { color: colors.text }]} numberOfLines={1}>
-                {section.setName}
-              </Text>
-              <View style={styles.setMeta}>
-                <View style={styles.setMetaItem}>
-                  <MaterialCommunityIcons name="cards-outline" size={12} color={colors.textSecondary} />
-                  <Text style={[styles.setMetaText, { color: colors.textSecondary }]}>
-                    {section.totalQuantity} {section.totalQuantity === 1 ? "card" : "cards"}
-                  </Text>
-                </View>
-                {section.setValue > 0 && (
-                  <View style={styles.setMetaItem}>
-                    <Ionicons name="cash-outline" size={12} color={colors.success} />
-                    <Text style={[styles.setMetaText, { color: colors.success }]}>
-                      {formatGBP(section.setValue)}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-            <Image
-              source={{ uri: setSymbolUrl(section.setId) }}
-              style={styles.setSymbol}
-              contentFit="contain"
-              placeholder={{ color: colors.surface } as any}
-            />
-          </Pressable>
+          <SetHeader
+            section={section as SetSection}
+            isCollapsed={collapsedSets.has((section as SetSection).setId)}
+            onToggle={() => toggleSet((section as SetSection).setId)}
+            onNavigate={() => router.push({ pathname: "/set/[id]", params: { id: section.setId, name: section.setName } })}
+            colors={colors}
+          />
         )}
         renderItem={({ item }) => (
           <CollectionCard
@@ -406,7 +485,14 @@ const styles = StyleSheet.create({
   setMeta: { flexDirection: "row", gap: 12, alignItems: "center" },
   setMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   setMetaText: { fontSize: 12, fontFamily: "Outfit_400Regular" },
-  setSymbol: { width: 28, height: 28 },
+  setHeaderRight: { flexDirection: "row", alignItems: "center", gap: 10 },
+  setNavBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   cardItem: {
     flexDirection: "row",
     alignItems: "center",
