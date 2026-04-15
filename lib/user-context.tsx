@@ -3,6 +3,7 @@ import {
   UserProfile,
   UserRole,
   AuthProvider,
+  CardVariant,
   CollectionItem,
   MarketListing,
   getUser,
@@ -58,8 +59,8 @@ interface UserContextValue {
   logout: () => Promise<void>;
   togglePremium: () => Promise<void>;
   addCard: (item: Omit<CollectionItem, "addedAt">) => Promise<void>;
-  removeCard: (cardId: string, condition: string) => Promise<void>;
-  updateQuantity: (cardId: string, condition: string, quantity: number) => Promise<void>;
+  removeCard: (cardId: string, condition: string, variant?: CardVariant) => Promise<void>;
+  updateQuantity: (cardId: string, condition: string, quantity: number, variant?: CardVariant) => Promise<void>;
   createListing: (listing: Omit<MarketListing, "id" | "createdAt">) => Promise<void>;
   deleteListing: (listingId: string) => Promise<void>;
   grantPremium: (userId: string) => Promise<void>;
@@ -208,13 +209,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setCollection(updated);
   }, []);
 
-  const removeCard = useCallback(async (cardId: string, condition: string) => {
-    const updated = await removeFromCollection(cardId, condition);
+  const removeCard = useCallback(async (cardId: string, condition: string, variant?: CardVariant) => {
+    const updated = await removeFromCollection(cardId, condition, variant);
     setCollection(updated);
   }, []);
 
-  const updateQuantity = useCallback(async (cardId: string, condition: string, quantity: number) => {
-    const updated = await updateCollectionQuantity(cardId, condition, quantity);
+  const updateQuantity = useCallback(async (cardId: string, condition: string, quantity: number, variant?: CardVariant) => {
+    const updated = await updateCollectionQuantity(cardId, condition, quantity, variant);
     setCollection(updated);
   }, []);
 

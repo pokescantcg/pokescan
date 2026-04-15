@@ -33,6 +33,7 @@ import {
   generateEbaySoldUrl,
 } from "@/lib/pokemon-api";
 import { useUser } from "@/lib/user-context";
+import { CardVariant } from "@/lib/storage";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
@@ -54,6 +55,7 @@ export default function CardDetailScreen() {
   const insets = useSafeAreaInsets();
   const { user, addCard, createListing, collection } = useUser();
   const [selectedCondition, setSelectedCondition] = useState("Near Mint");
+  const [selectedVariant, setSelectedVariant] = useState<CardVariant>("Non-Holo");
 
   // Listing modal state
   const [listingModalVisible, setListingModalVisible] = useState(false);
@@ -98,6 +100,7 @@ export default function CardDetailScreen() {
       rarity: card.rarity || "Unknown",
       quantity: 1,
       condition: selectedCondition,
+      variant: selectedVariant,
       priceGBP: priceData.price,
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -382,6 +385,32 @@ export default function CardDetailScreen() {
                 <Text style={styles.ebayBtnText}>Sold Items</Text>
               </Pressable>
             </View>
+          </View>
+
+          <Text style={[styles.conditionTitle, { color: colors.text }]}>Card Variant</Text>
+          <View style={styles.variantRow}>
+            {(["Non-Holo", "Holo", "Reverse Holo"] as CardVariant[]).map((v) => {
+              const active = selectedVariant === v;
+              const iconName = v === "Non-Holo" ? "square-outline" : v === "Holo" ? "sparkles" : "refresh-circle";
+              return (
+                <Pressable
+                  key={v}
+                  style={[
+                    styles.variantChip,
+                    {
+                      backgroundColor: active ? colors.pokemonYellow : colors.card,
+                      borderColor: active ? colors.pokemonYellow : colors.borderLight,
+                    },
+                  ]}
+                  onPress={() => setSelectedVariant(v)}
+                >
+                  <Ionicons name={iconName as any} size={14} color={active ? "#000" : colors.textSecondary} />
+                  <Text style={[styles.variantChipText, { color: active ? "#000" : colors.textSecondary }]}>
+                    {v}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           <Text style={[styles.conditionTitle, { color: colors.text }]}>Card Condition</Text>
@@ -716,6 +745,18 @@ const styles = StyleSheet.create({
   },
   ebayBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
   conditionTitle: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
+  variantRow: { flexDirection: "row", gap: 8, marginBottom: 4 },
+  variantChip: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  variantChipText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
   conditionRow: { gap: 8 },
   conditionChip: {
     paddingHorizontal: 16,

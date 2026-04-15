@@ -50,7 +50,7 @@ function CollectionCard({
           {item.setName}
         </Text>
         <Text style={[styles.cardCondition, { color: colors.textMuted }]}>
-          {item.condition}
+          {item.variant && item.variant !== "Non-Holo" ? `${item.variant} · ` : ""}{item.condition}
         </Text>
         <Text style={[styles.cardPrice, { color: item.priceGBP ? colors.success : colors.textMuted }]}>
           {formatGBP(item.priceGBP)} each
@@ -255,14 +255,14 @@ export default function CollectionScreen() {
                 {
                   text: "Remove",
                   style: "destructive",
-                  onPress: () => removeCard(item.cardId, item.condition),
+                  onPress: () => removeCard(item.cardId, item.condition, item.variant),
                 },
               ]);
             }}
-            onUpdateQty={(qty) => updateQuantity(item.cardId, item.condition, qty)}
+            onUpdateQty={(qty) => updateQuantity(item.cardId, item.condition, qty, item.variant)}
           />
         )}
-        keyExtractor={(item) => `${item.cardId}-${item.condition}`}
+        keyExtractor={(item) => `${item.cardId}-${item.condition}-${item.variant || "Non-Holo"}`}
         contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={

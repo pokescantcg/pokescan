@@ -23,6 +23,8 @@ export interface UserProfile {
   subscriptionPeriodEnd?: string | null;
 }
 
+export type CardVariant = "Non-Holo" | "Holo" | "Reverse Holo";
+
 export interface CollectionItem {
   cardId: string;
   cardName: string;
@@ -32,6 +34,7 @@ export interface CollectionItem {
   rarity: string;
   quantity: number;
   condition: string;
+  variant?: CardVariant;
   addedAt: string;
   priceGBP: number | null;
 }
@@ -421,7 +424,7 @@ export async function getCollection(): Promise<CollectionItem[]> {
 export async function addToCollection(item: Omit<CollectionItem, "addedAt">): Promise<CollectionItem[]> {
   const collection = await getCollection();
   const existing = collection.find(
-    (c) => c.cardId === item.cardId && c.condition === item.condition
+    (c) => c.cardId === item.cardId && c.condition === item.condition && (c.variant || "Non-Holo") === (item.variant || "Non-Holo")
   );
   if (existing) {
     existing.quantity += item.quantity;
@@ -433,24 +436,26 @@ export async function addToCollection(item: Omit<CollectionItem, "addedAt">): Pr
   return collection;
 }
 
-export async function removeFromCollection(cardId: string, condition: string): Promise<CollectionItem[]> {
+export async function removeFromCollection(cardId: string, condition: string, variant?: CardVariant): Promise<CollectionItem[]> {
   let collection = await getCollection();
+  const v = variant || "Non-Holo";
   collection = collection.filter(
-    (c) => !(c.cardId === cardId && c.condition === condition)
+    (c) => !(c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v)
   );
   await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
   return collection;
 }
 
-export async function updateCollectionQuantity(cardId: string, condition: string, quantity: number): Promise<CollectionItem[]> {
+export async function updateCollectionQuantity(cardId: string, condition: string, quantity: number, variant?: CardVariant): Promise<CollectionItem[]> {
   const collection = await getCollection();
+  const v = variant || "Non-Holo";
   const item = collection.find(
-    (c) => c.cardId === cardId && c.condition === condition
+    (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
   );
   if (item) {
     item.quantity = quantity;
     if (quantity <= 0) {
-      return removeFromCollection(cardId, condition);
+      return removeFromCollection(cardId, condition, variant);
     }
   }
   await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
