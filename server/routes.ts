@@ -31,9 +31,21 @@ import {
   pokescanFriendships,
   pokescanMessages,
   pokescanReports,
+  pokescanChatroomMessages,
 } from "@shared/schema";
-import { eq, desc, sql, ilike, or, and, ne, exists } from "drizzle-orm";
+import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
+
+async function cleanupOldChatroomMessages() {
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const result = await db.delete(pokescanChatroomMessages)
+      .where(lt(pokescanChatroomMessages.createdAt, sevenDaysAgo));
+    console.log("[Chatroom] Cleaned up old messages");
+  } catch (e) {
+    console.error("[Chatroom] Cleanup error:", e);
+  }
+}
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -2696,6 +2708,93 @@ Return ONLY valid JSON in exactly this format:
     } catch (err) {
       console.error("Grading error:", err);
       res.status(500).json({ error: "Grading failed" });
+    }
+  });
+
+  cleanupOldChatroomMessages();
+  setInterval(cleanupOldChatroomMessages, 60 * 60 * 1000);
+
+  app.get("/api/chatroom/messages", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!caller.isPremium && caller.role !== "admin") {
+        res.status(403).json({ error: "Premium membership required" });
+        return;
+      }
+
+      const msgs = await db.select().from(pokescanChatroomMessages)
+        .orderBy(desc(pokescanChatroomMessages.createdAt))
+        .limit(200);
+
+      res.json({ messages: msgs.reverse() });
+    } catch (error: any) {
+      console.error("Chatroom get error:", error);
+      res.status(500).json({ error: error.message || "Failed to load chatroom" });
+    }
+  });
+
+  app.post("/api/chatroom/messages", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!caller.isPremium && caller.role !== "admin") {
+        res.status(403).json({ error: "Premium membership required" });
+        return;
+      }
+
+      const { body } = req.body;
+      if (!body || typeof body !== "string" || !body.trim()) {
+        res.status(400).json({ error: "Message body is required" });
+        return;
+      }
+
+      const trimmed = body.trim().substring(0, 2000);
+
+      const [msg] = await db.insert(pokescanChatroomMessages).values({
+        senderId: caller.id,
+        senderUsername: caller.username,
+        senderDisplayName: caller.displayName || caller.username,
+        senderAvatarUrl: caller.avatarUrl || null,
+        body: trimmed,
+      }).returning();
+
+      res.json({ message: msg });
+    } catch (error: any) {
+      console.error("Chatroom send error:", error);
+      res.status(500).json({ error: error.message || "Failed to send message" });
+    }
+  });
+
+  app.delete("/api/chatroom/messages/:id", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!caller.isPremium && caller.role !== "admin") {
+        res.status(403).json({ error: "Premium membership required" });
+        return;
+      }
+
+      const msgId = req.params.id;
+      const [existing] = await db.select().from(pokescanChatroomMessages).where(eq(pokescanChatroomMessages.id, msgId));
+      if (!existing) { res.status(404).json({ error: "Message not found" }); return; }
+
+      if (existing.senderId !== caller.id && caller.role !== "admin") {
+        res.status(403).json({ error: "Not allowed" });
+        return;
+      }
+
+      await db.delete(pokescanChatroomMessages).where(eq(pokescanChatroomMessages.id, msgId));
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Chatroom delete error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete message" });
     }
   });
 

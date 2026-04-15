@@ -94,6 +94,16 @@ export interface AdminReport {
   reviewedByUsername: string | null;
 }
 
+export interface ChatroomMessage {
+  id: string;
+  senderId: string;
+  senderUsername: string;
+  senderDisplayName: string;
+  senderAvatarUrl?: string | null;
+  body: string;
+  createdAt: string;
+}
+
 export const socialApi = {
   getFriends: (): Promise<FriendsData> => get("api/social/friends"),
   sendFriendRequest: (targetUserId: string) => post("api/social/friend-request", { targetUserId }),
@@ -121,4 +131,9 @@ export const socialApi = {
   getAdminReports: (): Promise<{ reports: AdminReport[] }> => get("api/admin/reports"),
   updateReport: (id: string, status: "reviewed" | "dismissed", reviewNote?: string) =>
     patch(`api/admin/reports/${id}`, { status, reviewNote }),
+
+  getChatroomMessages: (): Promise<{ messages: ChatroomMessage[] }> => get("api/chatroom/messages"),
+  sendChatroomMessage: (body: string): Promise<{ message: ChatroomMessage }> =>
+    post("api/chatroom/messages", { body }),
+  deleteChatroomMessage: (id: string) => del(`api/chatroom/messages/${id}`),
 };

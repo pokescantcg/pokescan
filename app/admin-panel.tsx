@@ -316,6 +316,8 @@ function UserRow({
   onChangeRole,
   onEdit,
   onDelete,
+  onAddFriend,
+  friendStatus,
 }: {
   profile: UserProfile;
   colors: ReturnType<typeof useThemeColors>;
@@ -325,6 +327,8 @@ function UserRow({
   onChangeRole: (role: UserRole) => void;
   onEdit: () => void;
   onDelete: () => void;
+  onAddFriend?: () => void;
+  friendStatus?: "none" | "pending" | "friends";
 }) {
   const roleColor = profile.role === "admin" ? "#E74C3C" : profile.role === "moderator" ? "#E67E22" : colors.textMuted;
   const isSuperadminAccount = profile.username === "superadmin";
@@ -377,6 +381,24 @@ function UserRow({
       </View>
       {isSuperadmin && !isSuperadminAccount && (
         <View style={styles.userActions}>
+          {!isCurrentUser && onAddFriend && friendStatus === "none" && (
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: "rgba(46,204,113,0.15)" }]}
+              onPress={onAddFriend}
+            >
+              <Ionicons name="person-add-outline" size={15} color={colors.success} />
+            </Pressable>
+          )}
+          {friendStatus === "pending" && (
+            <View style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.05)" }]}>
+              <Ionicons name="hourglass-outline" size={15} color={colors.textMuted} />
+            </View>
+          )}
+          {friendStatus === "friends" && (
+            <View style={[styles.actionBtn, { backgroundColor: "rgba(46,204,113,0.15)" }]}>
+              <Ionicons name="people" size={15} color={colors.success} />
+            </View>
+          )}
           <Pressable
             style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
             onPress={onEdit}
@@ -678,6 +700,34 @@ export default function AdminPanelScreen() {
   const [expandedReport, setExpandedReport] = useState<string | null>(null);
   const [revenueData, setRevenueData] = useState<{ subscribers: any[]; stats: any } | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(false);
+  const [friendIds, setFriendIds] = useState<Record<string, "pending" | "friends">>({});
+  const [addingFriendId, setAddingFriendId] = useState<string | null>(null);
+
+  const loadFriends = useCallback(async () => {
+    try {
+      const data = await socialApi.getFriends();
+      const map: Record<string, "pending" | "friends"> = {};
+      data.friends.forEach(f => { map[f.id] = "friends"; });
+      data.pendingSent.forEach(f => { map[f.id] = "pending"; });
+      data.pendingReceived.forEach(f => { map[f.id] = "pending"; });
+      setFriendIds(map);
+    } catch { }
+  }, []);
+
+  React.useEffect(() => { loadFriends(); }, [loadFriends]);
+
+  const handleAddFriend = useCallback(async (targetUserId: string) => {
+    setAddingFriendId(targetUserId);
+    try {
+      await socialApi.sendFriendRequest(targetUserId);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setFriendIds(prev => ({ ...prev, [targetUserId]: "pending" }));
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Could not send friend request");
+    } finally {
+      setAddingFriendId(null);
+    }
+  }, []);
 
   const loadReports = useCallback(async () => {
     setReportsLoading(true);
@@ -1971,6 +2021,8 @@ export default function AdminPanelScreen() {
                   onChangeRole={(role) => handleChangeRole(u, role)}
                   onEdit={() => setEditingUser(u)}
                   onDelete={() => handleDeleteUser(u)}
+                  onAddFriend={() => handleAddFriend(u.id)}
+                  friendStatus={friendIds[u.id] || "none"}
                 />
               ))}
             </>
@@ -1991,6 +2043,8 @@ export default function AdminPanelScreen() {
                 onChangeRole={(role) => handleChangeRole(u, role)}
                 onEdit={() => setEditingUser(u)}
                 onDelete={() => handleDeleteUser(u)}
+                onAddFriend={() => handleAddFriend(u.id)}
+                friendStatus={friendIds[u.id] || "none"}
               />
             ))
           ) : (

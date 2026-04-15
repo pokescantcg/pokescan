@@ -22,9 +22,9 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
-import { socialApi, InboxMessage, SentMessage, SocialUser, FriendsData } from "@/lib/social-api";
+import { socialApi, InboxMessage, SentMessage, SocialUser, FriendsData, ChatroomMessage } from "@/lib/social-api";
 
-type Tab = "inbox" | "sent" | "friends";
+type Tab = "inbox" | "sent" | "friends" | "chat";
 
 function Avatar({ uri, name, size = 40, colors }: { uri?: string | null; name: string; size?: number; colors: any }) {
   if (uri) return <Image source={{ uri }} style={{ width: size, height: size, borderRadius: size / 2 }} contentFit="cover" />;
@@ -297,6 +297,13 @@ export default function MessagesScreen() {
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
   const friendSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [chatroomMessages, setChatroomMessages] = useState<ChatroomMessage[]>([]);
+  const [chatroomInput, setChatroomInput] = useState("");
+  const [chatroomSending, setChatroomSending] = useState(false);
+  const [chatroomLoading, setChatroomLoading] = useState(false);
+  const chatroomPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const chatListRef = useRef<FlatList>(null);
+
   const loadAll = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -317,6 +324,59 @@ export default function MessagesScreen() {
   }, [user]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  const loadChatroom = useCallback(async () => {
+    if (!user?.isPremium && user?.role !== "admin") return;
+    try {
+      const data = await socialApi.getChatroomMessages();
+      setChatroomMessages(data.messages);
+    } catch { }
+  }, [user]);
+
+  useEffect(() => {
+    if (activeTab === "chat") {
+      setChatroomLoading(true);
+      loadChatroom().finally(() => setChatroomLoading(false));
+      chatroomPollRef.current = setInterval(loadChatroom, 10000);
+    }
+    return () => {
+      if (chatroomPollRef.current) {
+        clearInterval(chatroomPollRef.current);
+        chatroomPollRef.current = null;
+      }
+    };
+  }, [activeTab, loadChatroom]);
+
+  const handleSendChatroom = useCallback(async () => {
+    if (!chatroomInput.trim() || chatroomSending) return;
+    setChatroomSending(true);
+    try {
+      const { message: newMsg } = await socialApi.sendChatroomMessage(chatroomInput.trim());
+      setChatroomMessages(prev => [...prev, newMsg]);
+      setChatroomInput("");
+      setTimeout(() => chatListRef.current?.scrollToEnd({ animated: true }), 100);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to send message");
+    } finally {
+      setChatroomSending(false);
+    }
+  }, [chatroomInput, chatroomSending]);
+
+  const handleDeleteChatroomMsg = useCallback((msgId: string) => {
+    Alert.alert("Delete message", "Remove this message?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete", style: "destructive",
+        onPress: async () => {
+          try {
+            await socialApi.deleteChatroomMessage(msgId);
+            setChatroomMessages(prev => prev.filter(m => m.id !== msgId));
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          } catch { }
+        },
+      },
+    ]);
+  }, []);
 
   // Handle deep link from market "Message Now"
   useEffect(() => {
@@ -456,10 +516,11 @@ export default function MessagesScreen() {
         </View>
         <View style={styles.tabRow}>
           {([
-            { key: "inbox", label: "Inbox", badge: unread },
-            { key: "sent", label: "Sent", badge: 0 },
-            { key: "friends", label: "Friends", badge: pendingCount },
-          ] as const).map(({ key, label, badge }) => (
+            { key: "inbox" as Tab, label: "Inbox", badge: unread },
+            { key: "sent" as Tab, label: "Sent", badge: 0 },
+            { key: "friends" as Tab, label: "Friends", badge: pendingCount },
+            { key: "chat" as Tab, label: "Chat", badge: 0 },
+          ]).map(({ key, label, badge }) => (
             <Pressable
               key={key}
               style={[styles.tab, activeTab === key && { backgroundColor: colors.pokemonRed }]}
@@ -688,6 +749,132 @@ export default function MessagesScreen() {
                 </View>
               )}
             </ScrollView>
+          )}
+
+          {activeTab === "chat" && (
+            user?.isPremium || user?.role === "admin" ? (
+              <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={0}>
+                {chatroomLoading ? (
+                  <View style={styles.emptyContainer}><ActivityIndicator size="large" color={colors.pokemonRed} /></View>
+                ) : (
+                  <>
+                    <View style={{ paddingHorizontal: 16, paddingVertical: 8, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Ionicons name="diamond" size={14} color={colors.gold} />
+                        <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text }}>Premium Chat</Text>
+                        <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted, flex: 1 }}>Messages kept for 7 days</Text>
+                      </View>
+                    </View>
+                    <FlatList
+                      ref={chatListRef}
+                      data={chatroomMessages}
+                      keyExtractor={m => m.id}
+                      contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 8, flexGrow: 1 }}
+                      showsVerticalScrollIndicator={false}
+                      onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: false })}
+                      ListEmptyComponent={
+                        <View style={styles.emptyContainer}>
+                          <Ionicons name="chatbubbles-outline" size={48} color={colors.textMuted} />
+                          <Text style={[styles.emptyTitle, { color: colors.textMuted }]}>No messages yet</Text>
+                          <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>Start the conversation with fellow collectors!</Text>
+                        </View>
+                      }
+                      renderItem={({ item }) => {
+                        const isOwn = item.senderId === user?.id;
+                        return (
+                          <Pressable
+                            style={{ flexDirection: "row", alignItems: isOwn ? "flex-end" : "flex-start", marginBottom: 10, justifyContent: isOwn ? "flex-end" : "flex-start" }}
+                            onLongPress={() => {
+                              if (isOwn || user?.role === "admin") handleDeleteChatroomMsg(item.id);
+                            }}
+                          >
+                            {!isOwn && (
+                              <Avatar uri={item.senderAvatarUrl} name={item.senderDisplayName} size={32} colors={colors} />
+                            )}
+                            <View style={{
+                              maxWidth: "75%",
+                              marginLeft: isOwn ? 0 : 8,
+                              marginRight: isOwn ? 8 : 0,
+                              backgroundColor: isOwn ? colors.pokemonRed : colors.card,
+                              borderRadius: 16,
+                              borderTopLeftRadius: isOwn ? 16 : 4,
+                              borderTopRightRadius: isOwn ? 4 : 16,
+                              padding: 10,
+                              paddingHorizontal: 14,
+                              borderWidth: isOwn ? 0 : 1,
+                              borderColor: colors.border,
+                            }}>
+                              {!isOwn && (
+                                <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.pokemonRed, marginBottom: 2 }}>
+                                  {item.senderDisplayName}
+                                </Text>
+                              )}
+                              <Text style={{ fontSize: 14, fontFamily: "Outfit_400Regular", color: isOwn ? "#FFF" : colors.text }}>
+                                {item.body}
+                              </Text>
+                              <Text style={{ fontSize: 10, fontFamily: "Outfit_400Regular", color: isOwn ? "rgba(255,255,255,0.6)" : colors.textMuted, marginTop: 4, alignSelf: "flex-end" }}>
+                                {timeAgo(item.createdAt)}
+                              </Text>
+                            </View>
+                            {isOwn && (
+                              <Avatar uri={user?.avatarUrl} name={user?.displayName || "?"} size={32} colors={colors} />
+                            )}
+                          </Pressable>
+                        );
+                      }}
+                    />
+                    <View style={{
+                      flexDirection: "row", alignItems: "center", gap: 8,
+                      paddingHorizontal: 16, paddingVertical: 10,
+                      backgroundColor: colors.card,
+                      borderTopWidth: 1, borderTopColor: colors.border,
+                      paddingBottom: Platform.OS === "web" ? 44 : Math.max(insets.bottom, 10),
+                    }}>
+                      <TextInput
+                        style={{
+                          flex: 1, backgroundColor: colors.background,
+                          borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10,
+                          fontSize: 14, fontFamily: "Outfit_400Regular", color: colors.text,
+                          borderWidth: 1, borderColor: colors.border,
+                        }}
+                        placeholder="Say something..."
+                        placeholderTextColor={colors.textMuted}
+                        value={chatroomInput}
+                        onChangeText={setChatroomInput}
+                        onSubmitEditing={handleSendChatroom}
+                        returnKeyType="send"
+                        maxLength={2000}
+                      />
+                      <Pressable
+                        style={{
+                          width: 40, height: 40, borderRadius: 20,
+                          backgroundColor: chatroomInput.trim() ? colors.pokemonRed : colors.border,
+                          alignItems: "center", justifyContent: "center",
+                        }}
+                        onPress={handleSendChatroom}
+                        disabled={!chatroomInput.trim() || chatroomSending}
+                      >
+                        {chatroomSending
+                          ? <ActivityIndicator size="small" color="#FFF" />
+                          : <Ionicons name="send" size={18} color="#FFF" />}
+                      </Pressable>
+                    </View>
+                  </>
+                )}
+              </KeyboardAvoidingView>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="lock-closed-outline" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textMuted }]}>Premium Only</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>Upgrade to Premium to join the chat room and discuss Pokémon with other collectors</Text>
+                <Pressable
+                  style={{ marginTop: 12, backgroundColor: colors.pokemonRed, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20 }}
+                  onPress={() => router.push("/premium")}
+                >
+                  <Text style={{ color: "#FFF", fontFamily: "Outfit_600SemiBold", fontSize: 14 }}>View Plans</Text>
+                </Pressable>
+              </View>
+            )
           )}
         </>
       )}

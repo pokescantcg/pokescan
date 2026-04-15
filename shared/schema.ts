@@ -200,6 +200,18 @@ export const pokescanCollections = pgTable("pokescan_collections", {
 
 export type PokescanCollection = typeof pokescanCollections.$inferSelect;
 
+export const pokescanChatroomMessages = pgTable("pokescan_chatroom_messages", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  senderId: varchar("sender_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  senderUsername: text("sender_username").notNull(),
+  senderDisplayName: text("sender_display_name").notNull(),
+  senderAvatarUrl: text("sender_avatar_url"),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type PokescanChatroomMessage = typeof pokescanChatroomMessages.$inferSelect;
+
 export const syncStatus = pgTable("sync_status", {
   id: serial("id").primaryKey(),
   totalSets: integer("total_sets").default(0),
