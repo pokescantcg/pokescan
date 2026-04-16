@@ -1080,6 +1080,31 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  app.delete("/api/auth/account", async (req: Request, res: Response) => {
+    try {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+      if (!token) {
+        res.status(401).json({ error: "Not authenticated" });
+        return;
+      }
+      const caller = await storage.validateSession(token);
+      if (!caller) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
+      if (caller.isPremium && caller.subscriptionStatus === "active") {
+        res.status(403).json({ error: "Please cancel your Premium subscription before deleting your account." });
+        return;
+      }
+      await storage.deleteUser(caller.id);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Delete account error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete account" });
+    }
+  });
+
   // Verify password only — used for the first step of 2FA.
   // Returns masked contact info so the client can show channel options.
   // Does NOT create a session.

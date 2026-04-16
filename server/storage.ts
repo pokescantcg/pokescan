@@ -49,6 +49,7 @@ export interface IStorage {
   validateSession(token: string): Promise<DbUser | null>;
   deleteSession(token: string): Promise<void>;
   deleteAllUserSessions(userId: string): Promise<void>;
+  deleteUser(id: string): Promise<void>;
 }
 
 export class PgStorage implements IStorage {
@@ -230,6 +231,10 @@ export class PgStorage implements IStorage {
 
   async deleteAllUserSessions(userId: string): Promise<void> {
     await pool.query("DELETE FROM pokescan_sessions WHERE user_id = $1", [userId]);
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    await pool.query("DELETE FROM pokescan_users WHERE id = $1", [id]);
   }
 }
 

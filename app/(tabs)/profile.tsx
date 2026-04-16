@@ -58,6 +58,12 @@ export default function ProfileScreen() {
   const [codeInput, setCodeInput] = useState("");
   const [cancelLoading, setCancelLoading] = useState(false);
 
+  // ── Delete account state ─────────────────────────────────────────────────────
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteCode, setDeleteCode] = useState("");
+  const [deleteCodeInput, setDeleteCodeInput] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
   useEffect(() => {
     if (!user) return;
     socialApi.getUnreadCount().then(d => setUnreadCount(d.count)).catch(() => {});
@@ -249,6 +255,57 @@ export default function ProfileScreen() {
       setCancelLoading(false);
     }
   }, [codeInput, cancelCode]);
+
+  // ── Delete account handlers ──────────────────────────────────────────────────
+  const handleOpenDeleteModal = useCallback(() => {
+    if (user?.isPremium && user?.subscriptionStatus === "active") {
+      Alert.alert(
+        "Active Subscription",
+        "You have an active Premium subscription. You must cancel it before deleting your account.",
+        [
+          { text: "Keep Account", style: "cancel" },
+          {
+            text: "Cancel Subscription",
+            style: "destructive",
+            onPress: handleOpenCancelModal,
+          },
+        ]
+      );
+      return;
+    }
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setDeleteCode(code);
+    setDeleteCodeInput("");
+    setShowDeleteModal(true);
+  }, [user]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (deleteCodeInput.trim() !== deleteCode) {
+      Alert.alert("Incorrect Code", "The code you entered does not match. Please try again.");
+      return;
+    }
+    setDeleteLoading(true);
+    try {
+      const token = await getSessionToken();
+      const url = new URL("/api/auth/account", getApiUrl()).toString();
+      const resp = await fetch(url, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        Alert.alert("Error", json.error || "Could not delete account. Please try again.");
+        return;
+      }
+      setShowDeleteModal(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      await logout();
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Network error. Please try again.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }, [deleteCodeInput, deleteCode, logout]);
 
   if (!user) {
     return (
@@ -562,6 +619,18 @@ export default function ProfileScreen() {
             <Text style={[styles.menuText, { color: colors.pokemonRed }]}>Sign Out</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
+
+          <Pressable
+            style={[styles.menuItem, { backgroundColor: "rgba(180,0,0,0.08)", borderColor: "rgba(180,0,0,0.25)" }]}
+            onPress={handleOpenDeleteModal}
+          >
+            <Ionicons name="trash-outline" size={22} color="#CC0000" />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.menuText, { color: "#CC0000" }]}>Delete Account</Text>
+              <Text style={[styles.menuSubtext, { color: colors.textMuted }]}>Permanently remove your data</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
         </View>
 
         <View style={styles.legalSection}>
@@ -645,6 +714,70 @@ export default function ProfileScreen() {
                 ) : (
                   <Text style={[styles.cancelModalConfirmText, { color: codeInput.length === 6 ? "#fff" : colors.textMuted }]}>
                     Confirm Cancel
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── Delete Account Modal ──────────────────────────────────────────── */}
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.modalOverlay}
+        >
+          <View style={[styles.cancelModalBox, { backgroundColor: colors.card, borderColor: "#CC0000" }]}>
+            <Ionicons name="warning-outline" size={36} color="#CC0000" style={{ marginBottom: 12 }} />
+            <Text style={[styles.cancelModalTitle, { color: "#CC0000" }]}>Delete Account</Text>
+            <Text style={[styles.cancelModalDesc, { color: colors.textSecondary }]}>
+              This will permanently delete your account and all associated data — collection, listings, messages, and profile. This cannot be undone.{"\n\n"}Enter the code below to confirm:
+            </Text>
+            <View style={[styles.cancelCodeBox, { backgroundColor: colors.surface, borderColor: "#CC000060" }]}>
+              <Text style={[styles.cancelCodeText, { color: "#CC0000" }]}>{deleteCode}</Text>
+            </View>
+            <TextInput
+              style={[
+                styles.cancelCodeInput,
+                { backgroundColor: colors.surface, color: colors.text, borderColor: "#CC000060" },
+              ]}
+              placeholder="Enter code"
+              placeholderTextColor={colors.textMuted}
+              value={deleteCodeInput}
+              onChangeText={setDeleteCodeInput}
+              keyboardType="number-pad"
+              maxLength={6}
+              autoFocus
+            />
+            <View style={styles.cancelModalBtns}>
+              <Pressable
+                style={[styles.cancelModalDismiss, { borderColor: colors.border }]}
+                onPress={() => setShowDeleteModal(false)}
+              >
+                <Text style={[styles.cancelModalDismissText, { color: colors.textSecondary }]}>Keep Account</Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.cancelModalConfirm,
+                  {
+                    backgroundColor: deleteCodeInput.length === 6 ? "#CC0000" : colors.surface,
+                    opacity: deleteLoading ? 0.6 : 1,
+                  },
+                ]}
+                onPress={handleConfirmDelete}
+                disabled={deleteLoading || deleteCodeInput.length < 6}
+              >
+                {deleteLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[styles.cancelModalConfirmText, { color: deleteCodeInput.length === 6 ? "#fff" : colors.textMuted }]}>
+                    Delete Forever
                   </Text>
                 )}
               </Pressable>
