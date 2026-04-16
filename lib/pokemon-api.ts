@@ -1,6 +1,8 @@
 import { getApiUrl } from "./query-client";
 import { getSessionToken } from "./storage";
 
+const API_URL = "https://pokemon-card-scan.replit.app";
+
 export interface PokemonSet {
   id: string;
   name: string;
@@ -121,16 +123,14 @@ function apiBase(): string {
 }
 
 export async function fetchSets(): Promise<PokemonSet[]> {
-  const base = apiBase();
-  const res = await fetch(`${base}api/pokemon/sets`);
+  const res = await fetch(`${API_URL}/api/pokemon/sets`);
   if (!res.ok) throw new Error("Failed to fetch sets");
   const json: ApiResponse<PokemonSet[]> = await res.json();
   return json.data;
 }
 
 export async function fetchSetCards(setId: string, page: number = 1): Promise<{ cards: PokemonCard[]; totalCount: number }> {
-  const base = apiBase();
-  const res = await fetch(`${base}api/pokemon/sets/${setId}/cards?page=${page}`);
+  const res = await fetch(`${API_URL}/api/pokemon/sets/${setId}/cards?page=${page}`);
   if (!res.ok) throw new Error("Failed to fetch cards");
   const json: ApiResponse<PokemonCard[]> = await res.json();
   return { cards: json.data, totalCount: json.totalCount };

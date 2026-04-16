@@ -1,6 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getApiUrl } from "./query-client";
 
+const API_URL = "https://pokemon-card-scan.replit.app";
+
 const KEYS = {
   META: "pokescan_cache_meta",
   SETS: "pokescan_cache_sets",
@@ -217,7 +219,7 @@ export async function syncDatabase(
 
   onProgress?.({ stage: "sets", current: 0, total: 1 });
 
-  const setsRes = await fetch(`${base}api/pokemon/sets`);
+  const setsRes = await fetch(`${API_URL}/api/pokemon/sets`);
   if (!setsRes.ok) throw new Error("Failed to fetch sets");
   const setsData = await setsRes.json();
   const allSets: Array<{ id: string; name: string; total: number }> = setsData.data || [];
@@ -240,7 +242,7 @@ export async function syncDatabase(
 
   async function downloadSet(set: { id: string; name: string; total: number }): Promise<void> {
     try {
-      const cardsRes = await fetch(`${base}api/pokemon/sets/${set.id}/all-cards`);
+      const cardsRes = await fetch(`${API_URL}/api/pokemon/sets/${set.id}/all-cards`);
       if (!cardsRes.ok) return;
       const cardsData = await cardsRes.json();
       const rawCards: any[] = cardsData.data || [];
