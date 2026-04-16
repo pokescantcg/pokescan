@@ -51,7 +51,7 @@ interface UserContextValue {
   collectionValue: number;
   allUsers: UserProfile[];
   register: (username: string, displayName: string, email: string, mobileNumber: string) => Promise<{ user: UserProfile }>;
-  registerWithPassword: (username: string, displayName: string, email: string, password: string, mobileNumber?: string) => Promise<void>;
+  registerWithPassword: (username: string, displayName: string, email: string, password: string, mobileNumber?: string) => Promise<{ userId: string; email: string }>;
   loginWithPassword: (credential: string, password: string) => Promise<void>;
   sendRegistrationOtp: (userId: string, channel: "email" | "sms") => Promise<void>;
   sendLoginOtp: (credential: string, channel: "email" | "sms") => Promise<{ userId: string }>;
@@ -152,11 +152,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const registerWithPassword = useCallback(async (username: string, displayName: string, email: string, password: string, mobileNumber?: string) => {
-    const { user: newUser } = await registerWithPasswordStorage(username, displayName, email, password, mobileNumber);
+    const { user: newUser, userId } = await registerWithPasswordStorage(username, displayName, email, password, mobileNumber);
     setUser(newUser);
     await upsertUserInRegistry(newUser);
     const users = await getAllUsers();
     setAllUsers(users);
+    return { userId, email };
   }, []);
 
   const loginWithPassword = useCallback(async (credential: string, password: string) => {

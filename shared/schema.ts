@@ -31,6 +31,7 @@ export const pokescanUsers = pgTable("pokescan_users", {
   chatMutedUntil: timestamp("chat_muted_until", { withTimezone: true }),
   chatBannedUntil: timestamp("chat_banned_until", { withTimezone: true }),
   collectionVisible: boolean("collection_visible").notNull().default(false),
+  emailVerified: boolean("email_verified").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
 });
 

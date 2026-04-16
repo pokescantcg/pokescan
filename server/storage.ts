@@ -32,6 +32,7 @@ export interface DbUser {
   chatMutedUntil?: Date | string | null;
   chatBannedUntil?: Date | string | null;
   collectionVisible?: boolean;
+  emailVerified?: boolean;
 }
 
 export interface IStorage {
@@ -181,6 +182,10 @@ export class PgStorage implements IStorage {
       sets.push(`collection_visible = $${idx++}`);
       values.push(fields.collectionVisible);
     }
+    if (fields.emailVerified !== undefined) {
+      sets.push(`email_verified = $${idx++}`);
+      values.push(fields.emailVerified);
+    }
 
     if (sets.length === 0) return this.getUserById(id);
 
@@ -254,6 +259,7 @@ function mapRow(row: any): DbUser {
     chatMutedUntil: row.chat_muted_until ?? null,
     chatBannedUntil: row.chat_banned_until ?? null,
     collectionVisible: row.collection_visible ?? false,
+    emailVerified: row.email_verified ?? false,
   };
 }
 

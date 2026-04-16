@@ -41,8 +41,8 @@ export default function RegisterScreen() {
     const p = password.trim();
     const cp = confirmPassword.trim();
 
-    if (!u || !d || !e || !p) {
-      Alert.alert("Missing Fields", "Username, display name, email, and password are required.");
+    if (!u || !d || !e || !p || !cp) {
+      Alert.alert("Missing Fields", "All fields marked with * are required.");
       return;
     }
     if (p.length < 6) {
@@ -62,7 +62,7 @@ export default function RegisterScreen() {
       setLoading(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await registerWithPassword(u, d, e, p, mobileNumber.trim() || undefined);
-      router.back();
+      router.replace({ pathname: "/verify-email", params: { email: e } });
     } catch (err: any) {
       const msg = err?.message || "Registration failed";
       const clean = msg.replace(/^Error:\s*/i, "").replace(/\{.*\}/s, "").trim();

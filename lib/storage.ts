@@ -25,6 +25,7 @@ export interface UserProfile {
   chatMutedUntil?: string | null;
   chatBannedUntil?: string | null;
   collectionVisible?: boolean;
+  emailVerified?: boolean;
 }
 
 export type CardVariant = "Non-Holo" | "Holo" | "Reverse Holo";
@@ -169,7 +170,7 @@ export async function registerWithPassword(
   email: string,
   password: string,
   mobileNumber?: string
-): Promise<{ user: UserProfile }> {
+): Promise<{ user: UserProfile; userId: string }> {
   const url = new URL("/api/auth/register", getApiUrl());
   const res = await fetch(url.toString(), {
     method: "POST",
@@ -183,7 +184,18 @@ export async function registerWithPassword(
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
   await saveLocalUser(user);
-  return { user };
+  return { user, userId: data.user.id };
+}
+
+export async function verifyEmailOtp(email: string, code: string): Promise<void> {
+  const url = new URL("/api/auth/verify-email", getApiUrl());
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Verification failed");
 }
 
 export async function loginWithPassword(
@@ -325,6 +337,7 @@ function dbUserToProfile(dbUser: any): UserProfile {
     chatMutedUntil: dbUser.chatMutedUntil ?? dbUser.chat_muted_until ?? null,
     chatBannedUntil: dbUser.chatBannedUntil ?? dbUser.chat_banned_until ?? null,
     collectionVisible: dbUser.collectionVisible ?? dbUser.collection_visible ?? false,
+    emailVerified: dbUser.emailVerified ?? dbUser.email_verified ?? false,
   };
 }
 

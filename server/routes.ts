@@ -1008,10 +1008,75 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       });
       const token = await storage.createSession(user.id);
       const { passwordHash: _ph, ...safeUser } = user as any;
+
+      // Auto-send email verification OTP
+      try {
+        const { code } = createOtp(user.email.toLowerCase().trim());
+        await sendOtpByEmail(user.email, code);
+      } catch (otpErr) {
+        console.error("Failed to send verification email:", otpErr);
+      }
+
       res.json({ token, user: safeUser });
     } catch (error: any) {
       console.error("Register error:", error);
       res.status(500).json({ error: error.message || "Registration failed" });
+    }
+  });
+
+  app.post("/api/auth/verify-email", async (req: Request, res: Response) => {
+    try {
+      const { email, code } = req.body;
+      if (!email || !code) {
+        res.status(400).json({ error: "email and code are required" });
+        return;
+      }
+      const normalised = email.toLowerCase().trim();
+      const result = verifyOtp(normalised, code);
+      if (!result.valid) {
+        if (result.tooManyAttempts) {
+          res.status(429).json({ error: "Too many incorrect attempts. Please request a new code." });
+          return;
+        }
+        res.status(401).json({ error: result.expired ? "Code expired. Please request a new one." : "Incorrect code. Please try again." });
+        return;
+      }
+      const user = await storage.getUserByEmail(normalised);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      await storage.updateUser(user.id, { emailVerified: true });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Verify email error:", error);
+      res.status(500).json({ error: error.message || "Verification failed" });
+    }
+  });
+
+  app.post("/api/auth/resend-email-verification", async (req: Request, res: Response) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        res.status(400).json({ error: "email is required" });
+        return;
+      }
+      const normalised = email.toLowerCase().trim();
+      const user = await storage.getUserByEmail(normalised);
+      if (!user) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      const { code, rateLimited } = createOtp(normalised);
+      if (rateLimited) {
+        res.status(429).json({ error: "Please wait before requesting another code." });
+        return;
+      }
+      await sendOtpByEmail(user.email, code);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Resend verification error:", error);
+      res.status(500).json({ error: error.message || "Failed to resend code" });
     }
   });
 
