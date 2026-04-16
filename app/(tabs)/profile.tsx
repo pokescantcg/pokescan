@@ -74,8 +74,8 @@ export default function ProfileScreen() {
           pathname: "/messages",
           params: {
             recipientId: data.admin.id,
-            recipientName: data.admin.displayName,
-            recipientUsername: data.admin.username,
+            recipientName: "Admin",
+            recipientUsername: "admin",
           },
         });
       } else {
