@@ -143,16 +143,19 @@ export default function RegisterScreen() {
               colors={colors}
             />
 
-            <FieldInput
-              label="Mobile Number (optional)"
-              icon="call-outline"
-              value={mobileNumber}
-              onChangeText={setMobileNumber}
-              placeholder="+447700900123"
-              keyboardType="phone-pad"
-              returnKeyType="next"
-              colors={colors}
-            />
+            <View style={{ opacity: 0.5 }}>
+              <FieldInput
+                label="Mobile Number"
+                icon="call-outline"
+                value=""
+                onChangeText={() => {}}
+                placeholder="SMS verification coming soon"
+                keyboardType="phone-pad"
+                returnKeyType="next"
+                colors={colors}
+                editable={false}
+              />
+            </View>
 
             <Text style={[styles.label, { color: colors.textSecondary }]}>Password *</Text>
             <View style={[styles.inputWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -233,6 +236,7 @@ function FieldInput({
   autoCapitalize,
   returnKeyType,
   colors,
+  editable,
 }: any) {
   return (
     <>
@@ -249,6 +253,7 @@ function FieldInput({
           autoCapitalize={autoCapitalize ?? "words"}
           autoCorrect={false}
           returnKeyType={returnKeyType}
+          editable={editable !== false}
         />
       </View>
     </>

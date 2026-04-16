@@ -287,30 +287,28 @@ export default function LoginScreen() {
                 )}
 
                 {channelInfo.hasMobile && (
-                  <Pressable
-                    onPress={() => handleSelectChannel("sms")}
+                  <View
                     style={[
                       styles.channelOption,
                       {
-                        borderColor: selectedChannel === "sms" ? colors.pokemonRed : colors.border,
-                        backgroundColor: selectedChannel === "sms"
-                          ? (colors.pokemonRed + "18")
-                          : colors.surface,
+                        borderColor: colors.borderLight,
+                        backgroundColor: colors.surface,
                         marginTop: channelInfo.hasEmail ? 12 : 0,
+                        opacity: 0.6,
                       },
                     ]}
                   >
-                    <View style={[styles.channelIcon, { backgroundColor: selectedChannel === "sms" ? colors.pokemonRed : colors.border }]}>
+                    <View style={[styles.channelIcon, { backgroundColor: colors.border }]}>
                       <Ionicons name="phone-portrait-outline" size={20} color="#FFF" />
                     </View>
                     <View style={styles.channelText}>
                       <Text style={[styles.channelTitle, { color: colors.text }]}>SMS</Text>
                       <Text style={[styles.channelSub, { color: colors.textMuted }]}>{channelInfo.maskedMobile}</Text>
                     </View>
-                    {selectedChannel === "sms" && (
-                      <Ionicons name="checkmark-circle" size={22} color={colors.pokemonRed} />
-                    )}
-                  </Pressable>
+                    <View style={[styles.comingSoonBadge, { backgroundColor: colors.pokemonYellow + "30", borderColor: colors.pokemonYellow + "60" }]}>
+                      <Text style={[styles.comingSoonText, { color: colors.pokemonYellow }]}>Soon</Text>
+                    </View>
+                  </View>
                 )}
 
                 {!channelInfo.hasEmail && !channelInfo.hasMobile && (
@@ -319,7 +317,13 @@ export default function LoginScreen() {
                   </Text>
                 )}
 
-                {(channelInfo.hasEmail || channelInfo.hasMobile) && (
+                {!channelInfo.hasEmail && channelInfo.hasMobile && (
+                  <Text style={[styles.noContactNote, { color: colors.textMuted }]}>
+                    SMS login is coming soon. Please add an email address to your account or contact support.
+                  </Text>
+                )}
+
+                {channelInfo.hasEmail && (
                   <Pressable
                     style={[styles.actionBtn, { marginTop: 20 }, loading && styles.btnDisabled]}
                     onPress={handleSendOtp}
@@ -449,6 +453,8 @@ const styles = StyleSheet.create({
   channelTitle: { fontSize: 16, fontFamily: "Outfit_600SemiBold", marginBottom: 2 },
   channelSub: { fontSize: 13, fontFamily: "Outfit_400Regular" },
   noContactNote: { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", lineHeight: 20 },
+  comingSoonBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
+  comingSoonText: { fontSize: 11, fontFamily: "Outfit_600SemiBold" },
   codeIconRow: { alignItems: "center", marginBottom: 20 },
   digitRow: { flexDirection: "row", justifyContent: "center", gap: 10 },
   digitBox: {
