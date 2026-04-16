@@ -564,6 +564,26 @@ export default function ProfileScreen() {
           </Pressable>
         </View>
 
+        <View style={styles.legalSection}>
+          <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>LEGAL</Text>
+          <Pressable
+            style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+            onPress={() => router.push("/privacy-policy")}
+          >
+            <Ionicons name="shield-outline" size={22} color={colors.textSecondary} />
+            <Text style={[styles.menuText, { color: colors.text }]}>Privacy Policy</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+          <Pressable
+            style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+            onPress={() => router.push("/terms")}
+          >
+            <Ionicons name="document-text-outline" size={22} color={colors.textSecondary} />
+            <Text style={[styles.menuText, { color: colors.text }]}>Terms & Conditions</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+        </View>
+
         <Text style={[styles.versionText, { color: colors.textMuted }]}>
           PokeScan TCG v1.0.0
         </Text>
@@ -1095,6 +1115,7 @@ const styles = StyleSheet.create({
   cancelModalConfirmText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
   dbSection: { paddingHorizontal: 20, marginBottom: 20 },
   helpSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
+  legalSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
   sectionLabel: { fontSize: 11, fontFamily: "Outfit_600SemiBold", letterSpacing: 0.8, marginBottom: 4 },
   menuSubtext: { fontSize: 12, fontFamily: "Outfit_400Regular" },
   menuSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
