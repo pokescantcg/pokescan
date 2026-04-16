@@ -6,3 +6,15 @@ id = "h2QoR-SinGght-uUsxxR_"
 uri = "file://pokescan-tcg.tar.gz"
 type = "unspecified"
 title = "PokeScan TCG — Source Code"
+
+[[outputs]]
+id = "wiqUWiUvKNSFwKHzAyqT6"
+uri = "file://exports/privacy-policy.md"
+type = "text"
+title = "Privacy Policy — PokeScan TCG"
+
+[[outputs]]
+id = "wVAwtQYrdmgN-xeVd_AmW"
+uri = "file://exports/terms-and-conditions.md"
+type = "text"
+title = "Terms & Conditions — PokeScan TCG"
