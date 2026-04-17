@@ -5,16 +5,16 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
  * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
  * @returns {string} The API base URL
  */
+const PRODUCTION_API_URL = "https://pokemon-card-scan.replit.app";
+
 export function getApiUrl(): string {
-  let host = process.env.EXPO_PUBLIC_DOMAIN;
+  const host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
+    return PRODUCTION_API_URL;
   }
 
-  let url = new URL(`https://${host}`);
-
-  return url.href;
+  return new URL(`https://${host}`).href;
 }
 
 async function throwIfResNotOk(res: Response) {
