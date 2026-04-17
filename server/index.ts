@@ -6,6 +6,9 @@ import * as fs from "fs";
 import * as path from "path";
 
 const app = express();
+app.get("/api/users", (req, res) => {
+  res.json([{ id: 1, email: "test@example.com" }]);
+});
 const log = console.log;
 
 declare module "http" {
