@@ -1,16 +1,10 @@
 import { fetch } from "expo/fetch";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-/**
- * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
- * @returns {string} The API base URL
- */
 const API_URL = "https://pokemon-card-scan.replit.app";
 
 export function getApiUrl(): string {
-  const host = process.env.EXPO_PUBLIC_DOMAIN;
-  if (!host) return API_URL;
-  return new URL(`https://${host}`).href;
+  return API_URL;
 }
 
 async function throwIfResNotOk(res: Response) {
