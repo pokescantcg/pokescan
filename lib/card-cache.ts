@@ -1,5 +1,4 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getApiUrl } from "./query-client";
 
 const API_URL = "https://pokemon-card-scan.replit.app";
 
@@ -215,8 +214,6 @@ export async function syncDatabase(
   concurrency = 3,
   languageFilter?: LangFilter[]
 ): Promise<CacheMeta> {
-  const base = getApiUrl();
-
   onProgress?.({ stage: "sets", current: 0, total: 1 });
 
   const setsRes = await fetch(`${API_URL}/api/pokemon/sets`);

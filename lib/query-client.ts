@@ -5,15 +5,11 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
  * Gets the base URL for the Express API server (e.g., "http://localhost:3000")
  * @returns {string} The API base URL
  */
-const PRODUCTION_API_URL = "https://pokemon-card-scan.replit.app";
+const API_URL = "https://pokemon-card-scan.replit.app";
 
 export function getApiUrl(): string {
   const host = process.env.EXPO_PUBLIC_DOMAIN;
-
-  if (!host) {
-    return PRODUCTION_API_URL;
-  }
-
+  if (!host) return API_URL;
   return new URL(`https://${host}`).href;
 }
 

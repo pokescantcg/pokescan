@@ -1,4 +1,3 @@
-import { getApiUrl } from "./query-client";
 import { getSessionToken } from "./storage";
 
 const API_URL = "https://pokemon-card-scan.replit.app";
@@ -116,10 +115,6 @@ export interface PCVTopCard {
   priceGBP: number;
   url: string;
   imageUrl: string;
-}
-
-function apiBase(): string {
-  return getApiUrl();
 }
 
 export async function fetchSets(): Promise<PokemonSet[]> {
