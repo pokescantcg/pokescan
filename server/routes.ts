@@ -1470,20 +1470,12 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         return;
       }
 
-      const { getUncachableStripeClient } = await import("./stripe-client");
+      const { getUncachableStripeClient, ensureStripeCustomer } = await import("./stripe-client");
       const stripe = await getUncachableStripeClient();
 
-      // Ensure / get Stripe customer for this user
-      let customerId = (user as any).stripeCustomerId as string | undefined;
-      if (!customerId) {
-        const customer = await stripe.customers.create({
-          email: user.email,
-          name: user.displayName,
-          metadata: { pokescanUserId: user.id },
-        });
-        customerId = customer.id;
-        await storage.updateUser(user.id, { stripeCustomerId: customerId } as any);
-      }
+      // Ensure a valid Stripe customer exists for this user.
+      // Auto-recreates if the stored ID is missing or invalid (e.g. test->live switch).
+      const customerId = await ensureStripeCustomer(stripe, user);
 
       const session = await stripe.checkout.sessions.create({
         customer: customerId,
@@ -1514,15 +1506,11 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       const user = await storage.validateSession(token);
       if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
 
-      const customerId = (user as any).stripeCustomerId as string | undefined;
-      if (!customerId) {
-        res.status(400).json({ error: "No Stripe customer found. Purchase a subscription first." });
-        return;
-      }
-
-      const { getUncachableStripeClient } = await import("./stripe-client");
+      const { getUncachableStripeClient, ensureStripeCustomer } = await import("./stripe-client");
       const stripe = await getUncachableStripeClient();
       const { returnUrl } = req.body as { returnUrl: string };
+
+      const customerId = await ensureStripeCustomer(stripe, user);
 
       const portalSession = await stripe.billingPortal.sessions.create({
         customer: customerId,
@@ -1551,15 +1539,24 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         return;
       }
 
-      const { getUncachableStripeClient } = await import("./stripe-client");
+      const { getUncachableStripeClient, ensureStripeCustomer } = await import("./stripe-client");
       const stripe = await getUncachableStripeClient();
 
-      const subscriptions = await stripe.subscriptions.list({
-        customer: customerId,
-        status: "all",
-        limit: 5,
-        expand: ["data.default_payment_method"],
-      });
+      let subscriptions;
+      try {
+        subscriptions = await stripe.subscriptions.list({
+          customer: customerId,
+          status: "all",
+          limit: 5,
+          expand: ["data.default_payment_method"],
+        });
+      } catch (e: any) {
+        // Stale customer (e.g. test->live mode switch) — clear it so the next purchase recreates one.
+        console.warn(`[Stripe] Sync failed for customer ${customerId}: ${e.message}. Clearing stored ID.`);
+        await storage.updateUser(user.id, { stripeCustomerId: null } as any);
+        res.json({ isPremium: false, subscriptionStatus: null });
+        return;
+      }
 
       const active = subscriptions.data.find(
         (s) => s.status === "active" || s.status === "trialing"
@@ -1618,7 +1615,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
       let event: any;
       try {
-        const { getUncachableStripeClient } = await import("./stripe-client");
+        const { getUncachableStripeClient, ensureStripeCustomer } = await import("./stripe-client");
         const stripe = await getUncachableStripeClient();
         if (webhookSecret && sig) {
           event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
@@ -1716,7 +1713,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       const subscriptionId = (user as any).stripeSubscriptionId as string | undefined;
       if (subscriptionId) {
         try {
-          const { getUncachableStripeClient } = await import("./stripe-client");
+          const { getUncachableStripeClient, ensureStripeCustomer } = await import("./stripe-client");
           const stripe = await getUncachableStripeClient();
           // Cancel at period end (not immediately) so user keeps access until paid period ends
           await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });

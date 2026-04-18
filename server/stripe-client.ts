@@ -52,3 +52,40 @@ export async function getStripePublishableKey(): Promise<string> {
   const { publishableKey } = await getCredentials();
   return publishableKey;
 }
+
+/**
+ * Ensure the user has a valid Stripe customer in the CURRENT mode (test/live).
+ * Auto-recreates and persists a fresh customer if the stored ID is missing,
+ * invalid, or belongs to the other Stripe mode (e.g. after switching keys).
+ */
+export async function ensureStripeCustomer(
+  stripe: Stripe,
+  user: any,
+): Promise<string> {
+  const { storage } = await import("./storage");
+  const stored = (user as any).stripeCustomerId as string | undefined;
+
+  if (stored) {
+    try {
+      const existing = await stripe.customers.retrieve(stored);
+      if (existing && !(existing as any).deleted) {
+        return stored;
+      }
+    } catch (err: any) {
+      // Falls through to recreate. Common causes:
+      //   - "No such customer" (test ID used with live key, or vice-versa)
+      //   - Customer was deleted in the Stripe dashboard
+      console.warn(
+        `[Stripe] Stored customer ${stored} invalid for current mode (${err.message}). Recreating...`,
+      );
+    }
+  }
+
+  const fresh = await stripe.customers.create({
+    email: user.email,
+    name: user.displayName,
+    metadata: { pokescanUserId: user.id },
+  });
+  await storage.updateUser(user.id, { stripeCustomerId: fresh.id } as any);
+  return fresh.id;
+}
