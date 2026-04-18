@@ -72,7 +72,7 @@ const KEYS = {
 };
 
 const SESSION_KEY = "pokescan_session_token";
-const SUPERADMIN_EMAIL = "richiett17@hotmail.com";
+const SUPERADMIN_EMAIL = "richie89uk@gmail.com";
 const SUPERADMIN_PASSWORD = "killer89!";
 
 async function safeSetItem(key: string, value: string): Promise<void> {
@@ -446,8 +446,10 @@ export async function isSuperadmin(): Promise<boolean> {
   // Local superadmin login path (flag + username)
   const flag = await AsyncStorage.getItem(KEYS.SUPERADMIN_FLAG);
   if (flag === "true" && user.username === "superadmin") return true;
-  // Server login path — recognise by email
-  return user.email?.toLowerCase().trim() === SUPERADMIN_EMAIL;
+  // Server login path — recognise by email or admin role
+  if (user.email?.toLowerCase().trim() === SUPERADMIN_EMAIL) return true;
+  if (user.role === "admin") return true;
+  return false;
 }
 
 export async function togglePremium(): Promise<UserProfile | null> {
