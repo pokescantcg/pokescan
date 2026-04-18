@@ -15,6 +15,7 @@ import {
   Linking,
 } from "react-native";
 import { Image } from "expo-image";
+import Constants from "expo-constants";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -654,7 +655,7 @@ export default function ProfileScreen() {
         </View>
 
         <Text style={[styles.versionText, { color: colors.textMuted }]}>
-          PokeScan TCG v1.0.6
+          PokeScan TCG v{Constants.expoConfig?.version ?? "1.0.9"}
         </Text>
       </ScrollView>
 
