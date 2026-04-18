@@ -40,6 +40,15 @@ export interface PokemonCard {
     small: string;
     large: string;
   };
+  priceGBP?: number | null;
+  ebayListings?: Array<{
+    title: string | null;
+    price: number | null;
+    currency: string | null;
+    soldDate: string | null;
+    listingUrl: string | null;
+    isSold: boolean | null;
+  }>;
   tcgplayer?: {
     url: string;
     updatedAt: string;
@@ -271,6 +280,17 @@ export function generateEbaySoldUrl(cardName: string, setName?: string, number?:
 }
 
 export function getUKPrice(card: PokemonCard): { price: number | null; source: string } {
+  if (card.ebayListings && card.ebayListings.length > 0) {
+    const soldPrices = card.ebayListings
+      .filter((l) => l.isSold && l.price !== null && l.price !== undefined && l.price > 0 && (l.currency === "GBP" || !l.currency))
+      .map((l) => l.price as number);
+    if (soldPrices.length > 0) {
+      const sorted = [...soldPrices].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+      return { price: Math.round(median * 100) / 100, source: "eBay UK (Sold)" };
+    }
+  }
   if (card.cardmarket?.prices) {
     const p = card.cardmarket.prices;
     const price = p.trendPrice ?? p.averageSellPrice ?? p.lowPrice;

@@ -749,6 +749,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  app.get("/api/ebay/sold-price", async (req: Request, res: Response) => {
+    const { cardName, setName, number, cardId } = req.query as Record<string, string>;
+    if (!cardName) {
+      res.status(400).json({ error: "cardName required" });
+      return;
+    }
+    try {
+      if (cardId) {
+        const cached = await db
+          .select()
+          .from(ebayPrices)
+          .where(eq(ebayPrices.cardId, cardId))
+          .orderBy(desc(ebayPrices.fetchedAt))
+          .limit(20);
+        if (cached.length > 0) {
+          const cacheAge = Date.now() - new Date(cached[0].fetchedAt!).getTime();
+          if (cacheAge < 24 * 60 * 60 * 1000) {
+            const prices = cached.map((r) => r.price).filter((p): p is number => p !== null && p > 0);
+            if (prices.length > 0) {
+              const sorted = [...prices].sort((a, b) => a - b);
+              const mid = Math.floor(sorted.length / 2);
+              const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+              res.json({ price: Math.round(median * 100) / 100, source: "eBay UK (Sold)", count: prices.length, cached: true });
+              return;
+            }
+          }
+        }
+      }
+
+      let query = `pokemon tcg ${cardName}`;
+      if (setName) query += ` ${setName}`;
+      if (number) query += ` ${number}`;
+
+      const searchParams = new URLSearchParams({
+        _nkw: query,
+        _sacat: "183454",
+        LH_Complete: "1",
+        LH_Sold: "1",
+        LH_PrefLoc: "1",
+        _sop: "13",
+      });
+
+      const ebayUrl = `https://www.ebay.co.uk/sch/i.html?${searchParams}`;
+      const html = await fetch(ebayUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-GB,en;q=0.9",
+        },
+      }).then((r) => r.text());
+
+      const priceMatches = [...html.matchAll(/s-card__price">\s*£([\d,]+\.?\d*)/g)];
+      const prices: number[] = [];
+      for (const match of priceMatches) {
+        const price = parseFloat(match[1].replace(/,/g, ""));
+        if (price >= 0.5 && price <= 5000) prices.push(price);
+      }
+
+      if (prices.length === 0) {
+        res.json({ price: null, source: "eBay UK (Sold)", count: 0 });
+        return;
+      }
+
+      const recentPrices = prices.slice(0, 20);
+      const sorted = [...recentPrices].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+      const roundedPrice = Math.round(median * 100) / 100;
+
+      if (cardId && recentPrices.length > 0) {
+        try {
+          await db.delete(ebayPrices).where(eq(ebayPrices.cardId, cardId));
+          await db.insert(ebayPrices).values(
+            recentPrices.map((price) => ({
+              cardId,
+              price,
+              currency: "GBP",
+              isSold: true,
+              fetchedAt: new Date(),
+            }))
+          );
+        } catch (_) {}
+      }
+
+      res.json({ price: roundedPrice, source: "eBay UK (Sold)", count: prices.length });
+    } catch (error: any) {
+      console.error("eBay price fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch eBay prices" });
+    }
+  });
+
   app.post("/api/identify-card", express.json({ limit: "10mb" }), async (req: Request, res: Response) => {
     try {
       const { imageBase64 } = req.body;

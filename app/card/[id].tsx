@@ -57,6 +57,9 @@ export default function CardDetailScreen() {
   const [selectedCondition, setSelectedCondition] = useState("Near Mint");
   const [selectedVariant, setSelectedVariant] = useState<CardVariant>("Non-Holo");
 
+  const [ebayFetchedPrice, setEbayFetchedPrice] = useState<{ price: number | null; source: string } | null>(null);
+  const [ebayPriceLoading, setEbayPriceLoading] = useState(false);
+
   // Listing modal state
   const [listingModalVisible, setListingModalVisible] = useState(false);
   const [listingType, setListingType] = useState<"sale" | "trade">("sale");
@@ -76,6 +79,25 @@ export default function CardDetailScreen() {
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   const inCollection = collection.some((c) => c.cardId === id);
+
+  React.useEffect(() => {
+    if (!card) return;
+    const built = getUKPrice(card);
+    if (built.price !== null) return;
+    setEbayFetchedPrice(null);
+    setEbayPriceLoading(true);
+    const params = new URLSearchParams({ cardName: card.name });
+    if (card.set?.name) params.set("setName", card.set.name);
+    if (card.number) params.set("number", card.number);
+    if (card.id) params.set("cardId", card.id);
+    fetch(`https://pokemon-card-scan.replit.app/api/ebay/sold-price?${params}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.price) setEbayFetchedPrice({ price: data.price, source: data.source || "eBay UK (Sold)" });
+      })
+      .catch(() => {})
+      .finally(() => setEbayPriceLoading(false));
+  }, [card?.id]);
 
   const handleAddToCollection = () => {
     if (!user) {
@@ -258,7 +280,8 @@ export default function CardDetailScreen() {
     );
   }
 
-  const priceData = getUKPrice(card);
+  const builtInPrice = getUKPrice(card);
+  const priceData = builtInPrice.price !== null ? builtInPrice : (ebayFetchedPrice ?? { price: null, source: "" });
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -336,11 +359,15 @@ export default function CardDetailScreen() {
               <Text style={[styles.mainPriceLabel, { color: colors.textSecondary }]}>
                 Market Price (GBP)
               </Text>
-              <Text style={[styles.mainPriceValue, { color: priceData.price ? colors.success : colors.textMuted }]}>
-                {formatGBP(priceData.price)}
-              </Text>
+              {ebayPriceLoading && !priceData.price ? (
+                <ActivityIndicator size="small" color={colors.pokemonRed} style={{ marginVertical: 8 }} />
+              ) : (
+                <Text style={[styles.mainPriceValue, { color: priceData.price ? colors.success : colors.textMuted }]}>
+                  {formatGBP(priceData.price)}
+                </Text>
+              )}
               <Text style={[styles.mainPriceSource, { color: colors.textMuted }]}>
-                via {priceData.source || "N/A"}
+                {ebayPriceLoading && !priceData.price ? "Checking eBay UK…" : `via ${priceData.source || "N/A"}`}
               </Text>
             </LinearGradient>
 
