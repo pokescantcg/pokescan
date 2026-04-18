@@ -2316,6 +2316,17 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  app.post("/api/admin/superadmin-login", async (req: Request, res: Response) => {
+    const { email, password } = req.body;
+    const validEmail = (process.env.SUPERADMIN_EMAIL || "richiett17@hotmail.com").toLowerCase().trim();
+    const validPassword = process.env.SUPERADMIN_PASSWORD || "killer89!";
+    if (!email || !password || email.toLowerCase().trim() !== validEmail || password !== validPassword) {
+      res.status(401).json({ error: "Invalid superadmin credentials." });
+      return;
+    }
+    res.json({ success: true });
+  });
+
   app.post("/api/admin/create-user", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, username, displayName, email, mobileNumber, password, isPremium, role } = req.body;

@@ -359,8 +359,18 @@ export async function fetchAllUsersFromServer(): Promise<UserProfile[]> {
 }
 
 export async function superadminLogin(email: string, password: string): Promise<boolean> {
-  if (email.toLowerCase().trim() !== SUPERADMIN_EMAIL || password !== SUPERADMIN_PASSWORD) {
-    return false;
+  try {
+    const url = new URL("/api/admin/superadmin-login", getApiUrl());
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) return false;
+  } catch {
+    if (email.toLowerCase().trim() !== SUPERADMIN_EMAIL || password !== SUPERADMIN_PASSWORD) {
+      return false;
+    }
   }
 
   const allUsers = await getAllUsers();
