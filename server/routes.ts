@@ -3095,12 +3095,4 @@ Return ONLY valid JSON in exactly this format:
 
   const httpServer = createServer(app);
   return httpServer;
-  app.get("/api/users", async (req, res) => {
-    try {
-      const users = await storage.getUsers(); // or your DB method
-      res.json(users);
-    } catch (err) {
-      res.status(500).json({ error: "Failed to fetch users" });
-    }
-  });
 }

@@ -764,6 +764,7 @@ export default function AdminPanelScreen() {
   React.useEffect(() => {
     if (activeTab === "reports") loadReports();
     if (activeTab === "revenue") loadRevenue();
+    if (activeTab === "users") handleRefreshUsers();
   }, [activeTab, loadReports, loadRevenue]);
 
   const handleUpdateReport = useCallback(async (id: string, status: "reviewed" | "dismissed") => {

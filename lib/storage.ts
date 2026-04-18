@@ -344,7 +344,7 @@ function dbUserToProfile(dbUser: any): UserProfile {
 export async function fetchAllUsersFromServer(): Promise<UserProfile[]> {
   try {
     const base = getApiUrl();
-    const res = await fetch(`${base}api/admin/users?superadminPassword=killer89!`);
+    const res = await fetch(`${base}/api/admin/users?superadminPassword=killer89!`);
     if (!res.ok) return [];
     const data = await res.json();
     const serverUsers: UserProfile[] = (data.users || []).map(dbUserToProfile);
@@ -718,7 +718,7 @@ export async function getAllUsers(): Promise<UserProfile[]> {
 async function serverAdminUpdateUser(userId: string, fields: { isPremium?: boolean; role?: string }): Promise<void> {
   try {
     const base = getApiUrl();
-    await fetch(`${base}api/admin/edit-user`, {
+    await fetch(`${base}/api/admin/edit-user`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ superadminPassword: "killer89!", userId, ...fields }),
@@ -821,7 +821,7 @@ export async function adminUpdateUser(
   // Also update in PostgreSQL (if user is server-registered)
   try {
     const base = getApiUrl();
-    await fetch(`${base}api/admin/edit-user`, {
+    await fetch(`${base}/api/admin/edit-user`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -844,7 +844,7 @@ export async function deleteUserFromRegistry(userId: string): Promise<UserProfil
   // Also delete from PostgreSQL
   try {
     const base = getApiUrl();
-    await fetch(`${base}api/admin/delete-user`, {
+    await fetch(`${base}/api/admin/delete-user`, {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ superadminPassword: "killer89!", userId }),
