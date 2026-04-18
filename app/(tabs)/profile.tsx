@@ -654,7 +654,7 @@ export default function ProfileScreen() {
         </View>
 
         <Text style={[styles.versionText, { color: colors.textMuted }]}>
-          PokeScan TCG v1.0.0
+          PokeScan TCG v1.0.6
         </Text>
       </ScrollView>
 
