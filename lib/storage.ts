@@ -359,19 +359,30 @@ export async function fetchAllUsersFromServer(): Promise<UserProfile[]> {
 }
 
 export async function superadminLogin(email: string, password: string): Promise<boolean> {
+  const normEmail = email.toLowerCase().trim();
+  const normPass = password.trim();
+  const localMatch = normEmail === SUPERADMIN_EMAIL && normPass === SUPERADMIN_PASSWORD;
+
+  let serverMatch = false;
   try {
     const url = new URL("/api/admin/superadmin-login", getApiUrl());
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
     const res = await fetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: normEmail, password: normPass }),
+      signal: ctrl.signal,
     });
-    if (!res.ok) return false;
+    clearTimeout(timer);
+    serverMatch = res.ok;
   } catch {
-    if (email.toLowerCase().trim() !== SUPERADMIN_EMAIL || password !== SUPERADMIN_PASSWORD) {
-      return false;
-    }
+    /* network/timeout: fall through to local check */
   }
+
+  // Accept if EITHER source confirms credentials.
+  // This makes login work whether or not the installed APK can reach the new endpoint.
+  if (!serverMatch && !localMatch) return false;
 
   const allUsers = await getAllUsers();
   const existing = allUsers.find((u) => u.username === "superadmin");
