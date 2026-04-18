@@ -384,25 +384,36 @@ export async function superadminLogin(email: string, password: string): Promise<
   // This makes login work whether or not the installed APK can reach the new endpoint.
   if (!serverMatch && !localMatch) return false;
 
-  const allUsers = await getAllUsers();
-  const existing = allUsers.find((u) => u.username === "superadmin");
-
-  if (existing) {
-    existing.role = "admin";
-    existing.isPremium = true;
-    await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(existing));
-    await upsertUserInRegistry(existing);
+  // PREFER keeping the currently logged-in user (so their server session stays valid
+  // for chat, friends, marketplace, etc.) and just grant the superadmin flag.
+  const currentUser = await getUser();
+  if (currentUser) {
+    currentUser.role = "admin";
+    currentUser.isPremium = true;
+    await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
+    await upsertUserInRegistry(currentUser);
   } else {
-    const user: UserProfile = {
-      id: Crypto.randomUUID(),
-      username: "superadmin",
-      displayName: "Super Admin",
-      isPremium: true,
-      role: "admin",
-      createdAt: new Date().toISOString(),
-    };
-    await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(user));
-    await upsertUserInRegistry(user);
+    // No one logged in — fall back to a local-only superadmin profile.
+    // (Chat / friend features won't work in this state since there's no server session.)
+    const allUsers = await getAllUsers();
+    const existing = allUsers.find((u) => u.username === "superadmin");
+    if (existing) {
+      existing.role = "admin";
+      existing.isPremium = true;
+      await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(existing));
+      await upsertUserInRegistry(existing);
+    } else {
+      const user: UserProfile = {
+        id: Crypto.randomUUID(),
+        username: "superadmin",
+        displayName: "Super Admin",
+        isPremium: true,
+        role: "admin",
+        createdAt: new Date().toISOString(),
+      };
+      await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(user));
+      await upsertUserInRegistry(user);
+    }
   }
 
   await safeSetItem(KEYS.SUPERADMIN_FLAG, "true");
@@ -464,10 +475,10 @@ export async function registerSocialUser(
 export async function isSuperadmin(): Promise<boolean> {
   const user = await getUser();
   if (!user) return false;
-  // Local superadmin login path (flag + username)
+  // Primary path — superadmin flag was granted via /admin-login.
   const flag = await AsyncStorage.getItem(KEYS.SUPERADMIN_FLAG);
-  if (flag === "true" && user.username === "superadmin") return true;
-  // Server login path — recognise by email or admin role
+  if (flag === "true") return true;
+  // Server login path — recognise by email or admin role.
   if (user.email?.toLowerCase().trim() === SUPERADMIN_EMAIL) return true;
   if (user.role === "admin") return true;
   return false;

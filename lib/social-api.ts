@@ -9,34 +9,49 @@ async function authHeaders(): Promise<HeadersInit> {
   };
 }
 
+function buildUrl(path: string): string {
+  const base = getApiUrl().replace(/\/+$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${p}`;
+}
+
+async function safeError(res: Response): Promise<string> {
+  try {
+    const j = await res.json();
+    return j?.error || `Request failed (${res.status})`;
+  } catch {
+    return `Request failed (${res.status})`;
+  }
+}
+
 async function get(path: string) {
   const headers = await authHeaders();
-  const res = await fetch(`${getApiUrl()}${path}`, { headers });
-  if (!res.ok) throw new Error((await res.json()).error || "Request failed");
+  const res = await fetch(buildUrl(path), { headers });
+  if (!res.ok) throw new Error(await safeError(res));
   return res.json();
 }
 
 async function post(path: string, body: object) {
   const headers = await authHeaders();
-  const res = await fetch(`${getApiUrl()}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error((await res.json()).error || "Request failed");
+  const res = await fetch(buildUrl(path), { method: "POST", headers, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(await safeError(res));
   return res.json();
 }
 
 async function patch(path: string, body: object = {}) {
   const headers = await authHeaders();
-  const res = await fetch(`${getApiUrl()}${path}`, { method: "PATCH", headers, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error((await res.json()).error || "Request failed");
+  const res = await fetch(buildUrl(path), { method: "PATCH", headers, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error(await safeError(res));
   return res.json();
 }
 
 async function del(path: string, body?: object) {
   const headers = await authHeaders();
-  const res = await fetch(`${getApiUrl()}${path}`, {
+  const res = await fetch(buildUrl(path), {
     method: "DELETE", headers,
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
-  if (!res.ok) throw new Error((await res.json()).error || "Request failed");
+  if (!res.ok) throw new Error(await safeError(res));
   return res.json();
 }
 
