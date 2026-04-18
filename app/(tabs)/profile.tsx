@@ -652,6 +652,14 @@ export default function ProfileScreen() {
             <Text style={[styles.menuText, { color: colors.text }]}>Terms & Conditions</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
+          <Pressable
+            style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+            onPress={() => router.push("/refund-policy")}
+          >
+            <Ionicons name="return-down-back-outline" size={22} color={colors.textSecondary} />
+            <Text style={[styles.menuText, { color: colors.text }]}>Refund Policy</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
         </View>
 
         <Text style={[styles.versionText, { color: colors.textMuted }]}>
