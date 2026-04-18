@@ -72,7 +72,7 @@ const KEYS = {
 };
 
 const SESSION_KEY = "pokescan_session_token";
-const SUPERADMIN_EMAIL = "richie89uk@gmail.com";
+const SUPERADMIN_EMAIL = "richiett17@hotmail.com";
 const SUPERADMIN_PASSWORD = "killer89!";
 
 async function safeSetItem(key: string, value: string): Promise<void> {
