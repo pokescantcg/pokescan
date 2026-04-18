@@ -164,8 +164,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const { user: newUser } = await loginWithPasswordStorage(credential, password);
     setUser(newUser);
     await upsertUserInRegistry(newUser);
-    const users = await getAllUsers();
+    const [users, saFlag] = await Promise.all([getAllUsers(), isSuperadmin()]);
     setAllUsers(users);
+    setSuperadminFlag(saFlag);
   }, []);
 
   const handleSendRegistrationOtp = useCallback(async (userId: string, channel: "email" | "sms") => {
@@ -180,8 +181,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const { user: newUser } = await verifyOtpAndLogin(credential, code);
     setUser(newUser);
     migrateLocalCollectionToServer().then(() => getCollection().then(setCollection)).catch(() => {});
-    const users = await getAllUsers();
+    const [users, saFlag] = await Promise.all([getAllUsers(), isSuperadmin()]);
     setAllUsers(users);
+    setSuperadminFlag(saFlag);
   }, []);
 
   const handleSocialRegister = useCallback(async (provider: AuthProvider, displayName: string, email?: string, avatarUrl?: string) => {

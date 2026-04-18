@@ -441,9 +441,13 @@ export async function registerSocialUser(
 }
 
 export async function isSuperadmin(): Promise<boolean> {
-  const flag = await AsyncStorage.getItem(KEYS.SUPERADMIN_FLAG);
   const user = await getUser();
-  return flag === "true" && user?.username === "superadmin";
+  if (!user) return false;
+  // Local superadmin login path (flag + username)
+  const flag = await AsyncStorage.getItem(KEYS.SUPERADMIN_FLAG);
+  if (flag === "true" && user.username === "superadmin") return true;
+  // Server login path — recognise by email
+  return user.email?.toLowerCase().trim() === SUPERADMIN_EMAIL;
 }
 
 export async function togglePremium(): Promise<UserProfile | null> {
