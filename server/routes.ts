@@ -213,8 +213,69 @@ function dbCardToApiFormat(
   return base;
 }
 
+// ---------- Superadmin auth helpers ----------
+const DEFAULT_SUPERADMIN_EMAIL = "richiett17@hotmail.com";
+function getSuperadminEmail(): string {
+  return (process.env.SUPERADMIN_EMAIL || DEFAULT_SUPERADMIN_EMAIL).toLowerCase().trim();
+}
+
+const SUPERADMIN_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const superadminTokens = new Map<string, number>(); // token -> expiresAt
+
+function issueSuperadminToken(): string {
+  const token = randomBytes(32).toString("hex");
+  superadminTokens.set(token, Date.now() + SUPERADMIN_TOKEN_TTL_MS);
+  return token;
+}
+
+function isSuperadminAuthorized(req: Request): boolean {
+  // 1. Bearer token from OTP flow
+  const auth = req.headers.authorization || "";
+  if (auth.startsWith("Bearer ")) {
+    const token = auth.slice(7).trim();
+    const exp = superadminTokens.get(token);
+    if (exp && exp > Date.now()) return true;
+    if (exp && exp <= Date.now()) superadminTokens.delete(token);
+  }
+  // 2. Legacy SUPERADMIN_PASSWORD env-var fallback (server-only, never hardcoded)
+  const legacyPw = process.env.SUPERADMIN_PASSWORD;
+  if (legacyPw) {
+    const provided =
+      (req.body && (req.body.superadminPassword as string)) ||
+      (req.query.superadminPassword as string) ||
+      "";
+    if (provided && provided === legacyPw) return true;
+  }
+  return false;
+}
+
+// ---------- Runtime app config (toggled from external admin panel) ----------
+let appConfig = {
+  maintenanceMode: false,
+  scannerEnabled: true,
+};
+
 export async function registerRoutes(app: Express): Promise<Server> {
   startSyncService();
+
+  app.get("/api/config", (_req: Request, res: Response) => {
+    res.json(appConfig);
+  });
+
+  app.patch("/api/admin/config", (req: Request, res: Response) => {
+    if (!isSuperadminAuthorized(req)) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+    const updates = req.body ?? {};
+    if (typeof updates.maintenanceMode === "boolean") {
+      appConfig.maintenanceMode = updates.maintenanceMode;
+    }
+    if (typeof updates.scannerEnabled === "boolean") {
+      appConfig.scannerEnabled = updates.scannerEnabled;
+    }
+    res.json({ success: true, config: appConfig });
+  });
 
   app.get("/api/pokemon/sets", async (_req: Request, res: Response) => {
     try {
