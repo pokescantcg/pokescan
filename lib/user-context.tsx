@@ -353,7 +353,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       isAdminUser,
       isSuperadminUser: superadminFlag,
     }),
-    [user, isLoading, collection, listings, collectionValue, allUsers, register, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleAdminLogin, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, handleRefreshUsers, isStaff, isAdminUser, superadminFlag]
+    [user, isLoading, collection, listings, collectionValue, allUsers, register, registerWithPassword, loginWithPassword, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleRequestAdminOtp, handleVerifyAdminOtp, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, handleRefreshUsers, isStaff, isAdminUser, superadminFlag]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

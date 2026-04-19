@@ -18,64 +18,43 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 
-type Step = "email" | "code";
-
 export default function AdminLoginScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { requestAdminOtp, verifyAdminOtp } = useUser();
+  const { loginWithPassword, logout } = useUser();
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState<Step>("email");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
-  const handleSendCode = async () => {
-    if (!email.trim()) {
-      Alert.alert("Missing Email", "Please enter the superadmin email address.");
+  const handleSignIn = async () => {
+    const e = email.trim();
+    const p = password.trim();
+    if (!e || !p) {
+      Alert.alert("Missing Details", "Enter both email and password.");
       return;
     }
     setIsSubmitting(true);
     try {
-      const result = await requestAdminOtp(email.trim());
-      if (result.ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setStep("code");
-        // Don't reveal whether the email is the right one — but tell the user where to look.
-        Alert.alert(
-          "Code Sent",
-          "If this email is registered as the superadmin, a 6-digit code has been sent. Check your inbox (and spam).",
-        );
-      } else {
+      await loginWithPassword(e, p);
+      // The user-context updates `user` after loginWithPassword resolves.
+      // Verify the account has admin privileges; if not, sign out and reject.
+      const { getUser } = await import("@/lib/storage");
+      const profile = await getUser();
+      if (!profile || profile.role !== "admin") {
+        await logout();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("Error", result.error || "Failed to send code.");
+        Alert.alert("Access Denied", "This account does not have admin privileges.");
+        return;
       }
-    } catch {
-      Alert.alert("Error", "Failed to send code. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleVerify = async () => {
-    if (!code.trim()) {
-      Alert.alert("Missing Code", "Please enter the 6-digit code from your email.");
-      return;
-    }
-    setIsSubmitting(true);
-    try {
-      const result = await verifyAdminOtp(email.trim(), code.trim());
-      if (result.ok) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.replace("/admin-panel");
-      } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert("Access Denied", result.error || "Invalid code.");
-      }
-    } catch {
-      Alert.alert("Error", "Verification failed. Please try again.");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.replace("/admin-panel");
+    } catch (err: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Sign-in Failed", err?.message || "Invalid email or password.");
     } finally {
       setIsSubmitting(false);
     }
@@ -101,68 +80,57 @@ export default function AdminLoginScreen() {
         >
           <Ionicons name="shield-checkmark" size={36} color="#FFF" />
         </LinearGradient>
-        <Text style={[styles.title, { color: colors.text }]}>Superadmin Login</Text>
+        <Text style={[styles.title, { color: colors.text }]}>Admin Sign In</Text>
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          {step === "email"
-            ? "Enter the superadmin email — we'll send a one-time code."
-            : "Enter the 6-digit code we sent to your email."}
+          Sign in with your admin email and password.
         </Text>
 
         <View style={styles.form}>
-          {step === "email" ? (
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Email</Text>
-              <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Ionicons name="mail-outline" size={18} color={colors.textMuted} />
-                <TextInput
-                  style={[styles.input, { color: colors.text }]}
-                  placeholder="superadmin email address"
-                  placeholderTextColor={colors.textMuted}
-                  value={email}
-                  onChangeText={setEmail}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  editable={!isSubmitting}
-                />
-              </View>
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Email</Text>
+            <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="mail-outline" size={18} color={colors.textMuted} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                placeholder="admin email address"
+                placeholderTextColor={colors.textMuted}
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                editable={!isSubmitting}
+              />
             </View>
-          ) : (
-            <>
-              <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Email</Text>
-                <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.border, opacity: 0.6 }]}>
-                  <Ionicons name="mail-outline" size={18} color={colors.textMuted} />
-                  <Text style={[styles.input, { color: colors.text }]} numberOfLines={1}>{email}</Text>
-                </View>
-              </View>
-              <View style={styles.inputGroup}>
-                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>6-Digit Code</Text>
-                <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <Ionicons name="key-outline" size={18} color={colors.textMuted} />
-                  <TextInput
-                    style={[styles.input, { color: colors.text, letterSpacing: 6, fontSize: 20 }]}
-                    placeholder="000000"
-                    placeholderTextColor={colors.textMuted}
-                    value={code}
-                    onChangeText={(t) => setCode(t.replace(/[^0-9]/g, "").slice(0, 6))}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="number-pad"
-                    maxLength={6}
-                    editable={!isSubmitting}
-                  />
-                </View>
-              </View>
-            </>
-          )}
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Password</Text>
+            <View style={[styles.inputBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} />
+              <TextInput
+                style={[styles.input, { color: colors.text }]}
+                placeholder="Enter password"
+                placeholderTextColor={colors.textMuted}
+                value={password}
+                onChangeText={setPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry={!showPassword}
+                editable={!isSubmitting}
+              />
+              <Pressable onPress={() => setShowPassword(!showPassword)} style={{ padding: 4 }}>
+                <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={18} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          </View>
 
           <Pressable
             style={({ pressed }) => [
               styles.submitBtn,
               { opacity: pressed || isSubmitting ? 0.8 : 1 },
             ]}
-            onPress={step === "email" ? handleSendCode : handleVerify}
+            onPress={handleSignIn}
             disabled={isSubmitting}
           >
             <LinearGradient
@@ -171,36 +139,18 @@ export default function AdminLoginScreen() {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
             >
-              <Ionicons
-                name={step === "email" ? "send-outline" : "shield-checkmark"}
-                size={18}
-                color="#FFF"
-              />
+              <Ionicons name="shield-checkmark" size={18} color="#FFF" />
               <Text style={styles.submitBtnText}>
-                {isSubmitting
-                  ? step === "email" ? "Sending..." : "Verifying..."
-                  : step === "email" ? "Send Code" : "Verify & Sign In"}
+                {isSubmitting ? "Signing in..." : "Sign In"}
               </Text>
             </LinearGradient>
           </Pressable>
-
-          {step === "code" && (
-            <Pressable
-              onPress={() => { setStep("email"); setCode(""); }}
-              disabled={isSubmitting}
-              style={styles.linkBtn}
-            >
-              <Text style={[styles.linkText, { color: colors.textSecondary }]}>
-                Use a different email
-              </Text>
-            </Pressable>
-          )}
         </View>
 
         <View style={[styles.infoBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
           <Text style={[styles.infoText, { color: colors.textMuted }]}>
-            This area is restricted to the app owner. Codes expire after 10 minutes. Unauthorised access attempts are logged.
+            This area is restricted to accounts with the Admin role. Unauthorised access attempts are logged.
           </Text>
         </View>
       </View>
@@ -246,8 +196,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   submitBtnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#FFF" },
-  linkBtn: { alignItems: "center", paddingVertical: 8 },
-  linkText: { fontSize: 14, fontFamily: "Outfit_500Medium", textDecorationLine: "underline" },
   infoBox: {
     flexDirection: "row",
     gap: 8,

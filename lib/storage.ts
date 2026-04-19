@@ -75,12 +75,13 @@ const KEYS = {
 const SESSION_KEY = "pokescan_session_token";
 const SUPERADMIN_EMAIL = "richiett17@hotmail.com";
 
+/**
+ * Returns the auth token used for admin API requests. The superadmin now logs
+ * in via the regular email+password flow, so the admin endpoints accept the
+ * regular session token (the server checks role === "admin").
+ */
 export async function getSuperadminToken(): Promise<string | null> {
-  return AsyncStorage.getItem(KEYS.SUPERADMIN_TOKEN);
-}
-
-async function setSuperadminToken(token: string): Promise<void> {
-  await safeSetItem(KEYS.SUPERADMIN_TOKEN, token);
+  return getSessionToken();
 }
 
 async function clearSuperadminToken(): Promise<void> {
@@ -375,11 +376,7 @@ export async function fetchAllUsersFromServer(): Promise<UserProfile[]> {
   }
 }
 
-/**
- * Request a one-time superadmin login code via email. The server only emails
- * the code if the address matches the configured superadmin email — but it
- * always returns success to prevent email enumeration.
- */
+/** @deprecated Admin login uses email+password now. Kept for backward import compat. */
 export async function requestSuperadminOtp(email: string): Promise<{ ok: boolean; error?: string }> {
   const normEmail = email.toLowerCase().trim();
   if (!normEmail) return { ok: false, error: "Email is required" };
@@ -405,11 +402,7 @@ export async function requestSuperadminOtp(email: string): Promise<{ ok: boolean
   }
 }
 
-/**
- * Verify the one-time code, store the issued superadmin token, and grant the
- * superadmin flag to the currently logged-in user (if any) so chat/social
- * features keep working with their existing server session.
- */
+/** @deprecated Admin login uses email+password now. Kept for backward import compat. */
 export async function verifySuperadminOtp(email: string, code: string): Promise<{ ok: boolean; error?: string }> {
   const normEmail = email.toLowerCase().trim();
   const normCode = code.trim();

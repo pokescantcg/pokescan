@@ -228,16 +228,21 @@ function issueSuperadminToken(): string {
   return token;
 }
 
-function isSuperadminAuthorized(req: Request): boolean {
-  // 1. Bearer token from OTP flow
+async function isSuperadminAuthorized(req: Request): Promise<boolean> {
   const auth = req.headers.authorization || "";
   if (auth.startsWith("Bearer ")) {
     const token = auth.slice(7).trim();
+    // 1. Regular user session token of an admin user (DB-backed)
+    try {
+      const user = await storage.validateSession(token);
+      if (user && user.role === "admin") return true;
+    } catch {}
+    // 2. Legacy bearer token from old OTP flow (kept for backwards compat)
     const exp = superadminTokens.get(token);
     if (exp && exp > Date.now()) return true;
     if (exp && exp <= Date.now()) superadminTokens.delete(token);
   }
-  // 2. Legacy SUPERADMIN_PASSWORD env-var fallback (server-only, never hardcoded)
+  // 3. Legacy SUPERADMIN_PASSWORD env-var fallback (external admin web panel)
   const legacyPw = process.env.SUPERADMIN_PASSWORD;
   if (legacyPw) {
     const provided =
@@ -249,6 +254,45 @@ function isSuperadminAuthorized(req: Request): boolean {
   return false;
 }
 
+async function seedSuperadmin(): Promise<void> {
+  try {
+    const email = getSuperadminEmail();
+    const initialPassword = process.env.SUPERADMIN_INITIAL_PASSWORD || process.env.SUPERADMIN_PASSWORD;
+    const existing = await storage.getUserByEmail(email);
+    if (!existing) {
+      if (!initialPassword) {
+        console.warn("[seedSuperadmin] SUPERADMIN_INITIAL_PASSWORD env var not set — cannot create initial superadmin.");
+        return;
+      }
+      const passwordHash = await bcrypt.hash(initialPassword, 10);
+      await storage.createUser({
+        username: "superadmin",
+        displayName: "Super Admin",
+        email,
+        mobileNumber: "",
+        passwordHash,
+        authProvider: "local",
+        isPremium: true,
+        role: "admin",
+      } as any);
+      console.log("[seedSuperadmin] Created superadmin user:", email);
+    } else {
+      const updates: any = {};
+      if (existing.role !== "admin") updates.role = "admin";
+      if (!existing.isPremium) updates.isPremium = true;
+      if (!existing.passwordHash && initialPassword) {
+        updates.passwordHash = await bcrypt.hash(initialPassword, 10);
+      }
+      if (Object.keys(updates).length > 0) {
+        await storage.updateUser(existing.id, updates);
+        console.log("[seedSuperadmin] Updated superadmin user:", email, Object.keys(updates));
+      }
+    }
+  } catch (err) {
+    console.error("[seedSuperadmin] error:", err);
+  }
+}
+
 // ---------- Runtime app config (toggled from external admin panel) ----------
 let appConfig = {
   maintenanceMode: false,
@@ -257,13 +301,14 @@ let appConfig = {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   startSyncService();
+  seedSuperadmin().catch((e) => console.error("[seedSuperadmin] failed:", e));
 
   app.get("/api/config", (_req: Request, res: Response) => {
     res.json(appConfig);
   });
 
-  app.patch("/api/admin/config", (req: Request, res: Response) => {
-    if (!isSuperadminAuthorized(req)) {
+  app.patch("/api/admin/config", async (req: Request, res: Response) => {
+    if (!await isSuperadminAuthorized(req)) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -2336,7 +2381,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.patch("/api/admin/edit-user", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, userId, displayName, email, mobileNumber, password, isPremium, role } = req.body;
-      if (!isSuperadminAuthorized(req)) {
+      if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2377,60 +2422,19 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
   // ---------------------------------------------------------------------
   // Superadmin auth — OTP via email
-  // ---------------------------------------------------------------------
-  // Step 1: Request a one-time code. Always returns success (to avoid
-  // revealing whether the email is the superadmin email), but only emails
-  // a code to the legitimate superadmin address.
-  app.post("/api/admin/request-otp", async (req: Request, res: Response) => {
-    try {
-      const email = ((req.body && req.body.email) || "").toString().toLowerCase().trim();
-      if (email === getSuperadminEmail()) {
-        const { code, rateLimited } = createOtp(`superadmin:${email}`);
-        if (rateLimited) {
-          res.status(429).json({ error: "Too many requests. Please wait a minute and try again." });
-          return;
-        }
-        await sendOtpByEmail(email, code);
-      }
-      // Always respond success to prevent email enumeration
-      res.json({ success: true });
-    } catch (err: any) {
-      console.error("[admin/request-otp] error:", err);
-      res.status(500).json({ error: "Failed to send code" });
-    }
+  // Legacy OTP-based admin login is removed. The admin/superadmin now logs in
+  // via the regular email+password flow (POST /api/auth/login). Stubs below
+  // return a clear error so older APKs prompt the user to update.
+  app.post("/api/admin/request-otp", (_req: Request, res: Response) => {
+    res.status(410).json({ error: "Admin code login has been removed. Please update the app and use the email + password login." });
   });
-
-  // Step 2: Verify the code and issue a superadmin session token.
-  app.post("/api/admin/verify-otp", async (req: Request, res: Response) => {
-    try {
-      const email = ((req.body && req.body.email) || "").toString().toLowerCase().trim();
-      const code = ((req.body && req.body.code) || "").toString().trim();
-      if (!email || !code || email !== getSuperadminEmail()) {
-        res.status(401).json({ error: "Invalid code" });
-        return;
-      }
-      const result = verifyOtp(`superadmin:${email}`, code);
-      if (!result.valid) {
-        if (result.tooManyAttempts) {
-          res.status(429).json({ error: "Too many attempts. Request a new code." });
-        } else if (result.expired) {
-          res.status(401).json({ error: "Code expired. Request a new one." });
-        } else {
-          res.status(401).json({ error: "Invalid code" });
-        }
-        return;
-      }
-      const token = issueSuperadminToken();
-      res.json({ success: true, token });
-    } catch (err: any) {
-      console.error("[admin/verify-otp] error:", err);
-      res.status(500).json({ error: "Verification failed" });
-    }
+  app.post("/api/admin/verify-otp", (_req: Request, res: Response) => {
+    res.status(410).json({ error: "Admin code login has been removed. Please update the app and use the email + password login." });
   });
 
   // Validate a stored superadmin token (used by client to check if it's still good).
-  app.get("/api/admin/validate-token", (req: Request, res: Response) => {
-    res.json({ valid: isSuperadminAuthorized(req) });
+  app.get("/api/admin/validate-token", async (req: Request, res: Response) => {
+    res.json({ valid: await isSuperadminAuthorized(req) });
   });
 
   // Legacy endpoint kept as a stub so older APKs get a clear error.
@@ -2443,7 +2447,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.post("/api/admin/create-user", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, username, displayName, email, mobileNumber, password, isPremium, role } = req.body;
-      if (!isSuperadminAuthorized(req)) {
+      if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2488,7 +2492,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.get("/api/admin/users", async (req: Request, res: Response) => {
     try {
       const pwd = req.query.superadminPassword as string;
-      if (!isSuperadminAuthorized(req)) {
+      if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2503,7 +2507,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.delete("/api/admin/delete-user", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, userId } = req.body;
-      if (!isSuperadminAuthorized(req)) {
+      if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2532,7 +2536,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.post("/api/admin/scrydex-sync", async (req: Request, res: Response) => {
     try {
       const { superadminPassword } = req.body;
-      if (!isSuperadminAuthorized(req)) {
+      if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2571,7 +2575,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.post("/api/admin/sync-asian-sets", async (req: Request, res: Response) => {
     try {
       const { superadminPassword } = req.body;
-      if (!isSuperadminAuthorized(req)) {
+      if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2609,7 +2613,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.get("/api/admin/sets", async (req: Request, res: Response) => {
     try {
       const pw = req.query.superadminPassword as string;
-      if (!isSuperadminAuthorized(req)) {
+      if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2642,7 +2646,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.patch("/api/admin/sets/visibility", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, setIds, hidden } = req.body;
-      if (!isSuperadminAuthorized(req)) {
+      if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2664,7 +2668,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.get("/api/admin/scrydex-preview", async (req: Request, res: Response) => {
     try {
       const pw = req.query.superadminPassword as string;
-      if (!isSuperadminAuthorized(req)) {
+      if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2715,7 +2719,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.post("/api/admin/import-users", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, users } = req.body;
-      if (!isSuperadminAuthorized(req)) {
+      if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2970,7 +2974,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     const pw = req.query.superadminPassword as string;
     const token = req.headers.authorization?.replace("Bearer ", "");
     // Allow superadmin password OR a logged-in staff user
-    let isAuthorized = isSuperadminAuthorized(req);
+    let isAuthorized = await isSuperadminAuthorized(req);
     if (!isAuthorized && token) {
       const user = await storage.validateSession(token);
       if (user && (user.role === "admin" || user.role === "moderator")) isAuthorized = true;
@@ -3004,7 +3008,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     const pw = req.body.superadminPassword as string;
     const token = req.headers.authorization?.replace("Bearer ", "");
     let reviewerId: string | null = null;
-    let isAuthorized = isSuperadminAuthorized(req);
+    let isAuthorized = await isSuperadminAuthorized(req);
     if (!isAuthorized && token) {
       const user = await storage.validateSession(token);
       if (user && (user.role === "admin" || user.role === "moderator")) {
@@ -3029,7 +3033,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   // Fire-and-forget: returns immediately and runs in the background.
   app.post("/api/admin/card-reseed", async (req: Request, res: Response) => {
     const { superadminPassword } = req.body;
-    if (!isSuperadminAuthorized(req)) {
+    if (!await isSuperadminAuthorized(req)) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
