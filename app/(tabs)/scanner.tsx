@@ -25,6 +25,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import PokeBackground from "@/components/PokeBackground";
 import { useUser } from "@/lib/user-context";
+import { useAppConfig } from "@/lib/app-config-context";
 import { getApiUrl } from "@/lib/query-client";
 import { getSessionToken } from "@/lib/storage";
 import {
@@ -946,6 +947,7 @@ export default function ScannerScreen() {
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
   const { user } = useUser();
+  const { scannerEnabled } = useAppConfig();
   const isPremium = user?.isPremium ?? false;
   const [mode, setMode] = useState<"identify" | "grade">("identify");
   const gradeDisclaimerShown = useRef(false);
@@ -1306,6 +1308,28 @@ export default function ScannerScreen() {
             >
               <Text style={[authGateStyles.secondaryBtnText, { color: colors.text }]}>Sign In</Text>
             </Pressable>
+          </LinearGradient>
+        </View>
+      </View>
+    );
+  }
+
+  if (!scannerEnabled) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <PokeBackground opacity={colorScheme === "dark" ? 0.18 : 0.12} />
+        <View style={[authGateStyles.wrapper, { paddingTop: insets.top + 20 }]}>
+          <LinearGradient
+            colors={colorScheme === "dark" ? ["#1A1A2E", "#0A1A2A"] : ["#EFF6FF", "#F5F5F5"]}
+            style={authGateStyles.inner}
+          >
+            <View style={[authGateStyles.iconRing, { backgroundColor: colors.pokemonYellow + "20", borderColor: colors.pokemonYellow + "40" }]}>
+              <MaterialCommunityIcons name="line-scan" size={48} color={colors.pokemonYellow} />
+            </View>
+            <Text style={[authGateStyles.title, { color: colors.text }]}>Scanner Temporarily Unavailable</Text>
+            <Text style={[authGateStyles.body, { color: colors.textMuted }]}>
+              Card scanning has been temporarily paused by the team. You can still browse sets, manage your collection, and use the marketplace. Please check back soon.
+            </Text>
           </LinearGradient>
         </View>
       </View>
