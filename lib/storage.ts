@@ -73,7 +73,15 @@ const KEYS = {
 
 const SESSION_KEY = "pokescan_session_token";
 const SUPERADMIN_EMAIL = "richiett17@hotmail.com";
-const SUPERADMIN_PASSWORD = "killer89!";
+
+// Helper: build standard auth headers with Bearer token (if any).
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getSessionToken();
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
 
 async function safeSetItem(key: string, value: string): Promise<void> {
   try {
@@ -344,7 +352,8 @@ function dbUserToProfile(dbUser: any): UserProfile {
 export async function fetchAllUsersFromServer(): Promise<UserProfile[]> {
   try {
     const base = getApiUrl();
-    const res = await fetch(`${base}/api/admin/users?superadminPassword=killer89!`);
+    const headers = await authHeaders();
+    const res = await fetch(`${base}/api/admin/users`, { headers });
     if (!res.ok) return [];
     const data = await res.json();
     const serverUsers: UserProfile[] = (data.users || []).map(dbUserToProfile);
@@ -361,63 +370,38 @@ export async function fetchAllUsersFromServer(): Promise<UserProfile[]> {
 export async function superadminLogin(email: string, password: string): Promise<boolean> {
   const normEmail = email.toLowerCase().trim();
   const normPass = password.trim();
-  const localMatch = normEmail === SUPERADMIN_EMAIL && normPass === SUPERADMIN_PASSWORD;
 
-  let serverMatch = false;
+  // Authenticate against the real /api/auth/login endpoint. The user must
+  // already exist in the DB and have role="admin" (or "moderator"). This
+  // replaces the previous hardcoded password check entirely — no secrets
+  // are stored in the client anymore.
   try {
-    const url = new URL("/api/admin/superadmin-login", getApiUrl());
+    const url = new URL("/api/auth/login", getApiUrl());
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const timer = setTimeout(() => ctrl.abort(), 10_000);
     const res = await fetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: normEmail, password: normPass }),
+      body: JSON.stringify({ credential: normEmail, password: normPass }),
       signal: ctrl.signal,
     });
     clearTimeout(timer);
-    serverMatch = res.ok;
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (!data?.token || !data?.user) return false;
+    if (data.user.role !== "admin" && data.user.role !== "moderator") return false;
+
+    // Save the real session token so admin endpoints accept the Bearer header.
+    await saveSessionToken(data.token);
+
+    const profile: UserProfile = dbUserToProfile(data.user);
+    await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(profile));
+    await upsertUserInRegistry(profile);
+    await safeSetItem(KEYS.SUPERADMIN_FLAG, "true");
+    return true;
   } catch {
-    /* network/timeout: fall through to local check */
+    return false;
   }
-
-  // Accept if EITHER source confirms credentials.
-  // This makes login work whether or not the installed APK can reach the new endpoint.
-  if (!serverMatch && !localMatch) return false;
-
-  // PREFER keeping the currently logged-in user (so their server session stays valid
-  // for chat, friends, marketplace, etc.) and just grant the superadmin flag.
-  const currentUser = await getUser();
-  if (currentUser) {
-    currentUser.role = "admin";
-    currentUser.isPremium = true;
-    await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
-    await upsertUserInRegistry(currentUser);
-  } else {
-    // No one logged in — fall back to a local-only superadmin profile.
-    // (Chat / friend features won't work in this state since there's no server session.)
-    const allUsers = await getAllUsers();
-    const existing = allUsers.find((u) => u.username === "superadmin");
-    if (existing) {
-      existing.role = "admin";
-      existing.isPremium = true;
-      await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(existing));
-      await upsertUserInRegistry(existing);
-    } else {
-      const user: UserProfile = {
-        id: Crypto.randomUUID(),
-        username: "superadmin",
-        displayName: "Super Admin",
-        isPremium: true,
-        role: "admin",
-        createdAt: new Date().toISOString(),
-      };
-      await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(user));
-      await upsertUserInRegistry(user);
-    }
-  }
-
-  await safeSetItem(KEYS.SUPERADMIN_FLAG, "true");
-  return true;
 }
 
 export async function getUser(): Promise<UserProfile | null> {
@@ -756,10 +740,11 @@ export async function getAllUsers(): Promise<UserProfile[]> {
 async function serverAdminUpdateUser(userId: string, fields: { isPremium?: boolean; role?: string }): Promise<void> {
   try {
     const base = getApiUrl();
+    const headers = await authHeaders();
     await fetch(`${base}/api/admin/edit-user`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ superadminPassword: "killer89!", userId, ...fields }),
+      headers,
+      body: JSON.stringify({ userId, ...fields }),
     });
   } catch {
     // Non-fatal: local update already applied
@@ -859,14 +844,11 @@ export async function adminUpdateUser(
   // Also update in PostgreSQL (if user is server-registered)
   try {
     const base = getApiUrl();
+    const headers = await authHeaders();
     await fetch(`${base}/api/admin/edit-user`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        superadminPassword: "killer89!",
-        userId,
-        ...updates,
-      }),
+      headers,
+      body: JSON.stringify({ userId, ...updates }),
     });
   } catch {
     // Non-critical — local update is source of truth for local users
@@ -882,10 +864,11 @@ export async function deleteUserFromRegistry(userId: string): Promise<UserProfil
   // Also delete from PostgreSQL
   try {
     const base = getApiUrl();
+    const headers = await authHeaders();
     await fetch(`${base}/api/admin/delete-user`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ superadminPassword: "killer89!", userId }),
+      headers,
+      body: JSON.stringify({ userId }),
     });
   } catch {
     // Non-critical
