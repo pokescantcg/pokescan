@@ -68,7 +68,9 @@ function ListingDetailModal({
   if (!listing) return null;
 
   const hasPhotos = listing.photos && listing.photos.length > 0;
+  const isRealOwner = listing.userId === currentUserId;
   const canMessage = listing.userId !== currentUserId;
+  const canReport = listing.userId !== currentUserId;
 
   const handleReport = () => {
     Alert.alert(
@@ -179,8 +181,8 @@ function ListingDetailModal({
             )}
           </View>
 
-          {/* Moderation status (owner only, non-approved) */}
-          {isOwner && listing.status !== "approved" && (
+          {/* Moderation status (real owner only, non-approved) */}
+          {isRealOwner && listing.status !== "approved" && (
             <View
               style={[
                 modalStyles.statusBanner,
@@ -268,7 +270,7 @@ function ListingDetailModal({
               <Text style={modalStyles.actionBtnText}>Message Seller</Text>
             </Pressable>
           )}
-          {!isOwner && (
+          {canReport && (
             <Pressable
               style={[modalStyles.actionBtn, { backgroundColor: colors.error + "CC", flex: canMessage ? 0 : 1 }]}
               onPress={handleReport}
