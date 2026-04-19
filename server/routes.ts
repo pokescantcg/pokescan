@@ -280,11 +280,15 @@ async function seedSuperadmin(): Promise<void> {
       const updates: any = {};
       if (existing.role !== "admin") updates.role = "admin";
       if (!existing.isPremium) updates.isPremium = true;
-      if (!existing.passwordHash && initialPassword) {
-        updates.passwordHash = await bcrypt.hash(initialPassword, 10);
-      }
       if (Object.keys(updates).length > 0) {
         await storage.updateUser(existing.id, updates);
+      }
+      if (!existing.passwordHash && initialPassword) {
+        const hash = await bcrypt.hash(initialPassword, 10);
+        await storage.setPassword(existing.id, hash);
+        console.log("[seedSuperadmin] Set initial password for superadmin:", email);
+      }
+      if (Object.keys(updates).length > 0) {
         console.log("[seedSuperadmin] Updated superadmin user:", email, Object.keys(updates));
       }
     }
