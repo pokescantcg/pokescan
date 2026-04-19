@@ -65,6 +65,7 @@ export default function CardDetailScreen() {
   const [listingType, setListingType] = useState<"sale" | "trade">("sale");
   const [listingPrice, setListingPrice] = useState("");
   const [listingDescription, setListingDescription] = useState("");
+  const [listingExternalUrl, setListingExternalUrl] = useState("");
   const [listingPhotos, setListingPhotos] = useState<string[]>([]);
   const [listingLoading, setListingLoading] = useState(false);
 
@@ -211,6 +212,7 @@ export default function CardDetailScreen() {
         condition: selectedCondition,
         description: listingDescription.trim(),
         photos: listingPhotos,
+        externalUrl: listingExternalUrl.trim() || null,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setListingModalVisible(false);
@@ -567,6 +569,23 @@ export default function CardDetailScreen() {
                 placeholderTextColor={colors.textMuted}
                 multiline
                 numberOfLines={3}
+              />
+            </View>
+
+            {/* External listing URL */}
+            <View>
+              <Text style={[listingStyles.label, { color: colors.textSecondary }]}>External Listing URL (optional)</Text>
+              <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: "Outfit_400Regular", marginBottom: 6 }}>
+                Link buyers to your eBay, Vinted, or other listing
+              </Text>
+              <TextInput
+                style={[listingStyles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.borderLight }]}
+                value={listingExternalUrl}
+                onChangeText={setListingExternalUrl}
+                placeholder="https://www.ebay.co.uk/itm/..."
+                placeholderTextColor={colors.textMuted}
+                autoCapitalize="none"
+                keyboardType="url"
               />
             </View>
 

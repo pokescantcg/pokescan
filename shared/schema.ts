@@ -185,6 +185,7 @@ export const pokescanMarketListings = pgTable("pokescan_market_listings", {
   reviewedBy: varchar("reviewed_by", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   reviewNote: text("review_note"),
+  externalUrl: text("external_url"),   // Optional link to eBay / external listing
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
 });
 

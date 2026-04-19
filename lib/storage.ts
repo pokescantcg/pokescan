@@ -63,6 +63,7 @@ export interface MarketListing {
   reviewedBy: string | null;
   reviewedAt: string | null;
   reviewNote: string | null;
+  externalUrl: string | null;
   createdAt: string;
 }
 
@@ -788,11 +789,20 @@ export function getCollectionValue(collection: CollectionItem[]): number {
 
 export async function upsertUserInRegistry(user: UserProfile): Promise<void> {
   const users = await getAllUsers();
-  const idx = users.findIndex((u) => u.id === user.id);
-  if (idx >= 0) {
-    users[idx] = user;
+  const byId = users.findIndex((u) => u.id === user.id);
+  if (byId >= 0) {
+    users[byId] = user;
   } else {
-    users.push(user);
+    // Also deduplicate by username — prevents a locally-generated phantom entry
+    // (e.g. a temp superadmin UUID) from coexisting with the server's real record.
+    const byUsername = users.findIndex(
+      (u) => u.username && u.username === user.username
+    );
+    if (byUsername >= 0) {
+      users[byUsername] = user;
+    } else {
+      users.push(user);
+    }
   }
   await safeSetItem(KEYS.ALL_USERS, JSON.stringify(users));
 }

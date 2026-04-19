@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   RefreshControl,
+  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -141,11 +142,59 @@ function ListingCard({
         )}
       </View>
 
+      {/* Own pending/rejected status badge */}
+      {isOwner && listing.status !== "approved" && (
+        <View style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          marginTop: 8,
+          backgroundColor: listing.status === "rejected" ? colors.error + "20" : "#E67E2220",
+          borderRadius: 8,
+          paddingHorizontal: 10,
+          paddingVertical: 6,
+        }}>
+          <Ionicons
+            name={listing.status === "rejected" ? "close-circle-outline" : "time-outline"}
+            size={14}
+            color={listing.status === "rejected" ? colors.error : "#E67E22"}
+          />
+          <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: listing.status === "rejected" ? colors.error : "#E67E22" }}>
+            {listing.status === "rejected" ? "Rejected by moderation" : "Awaiting moderation approval"}
+          </Text>
+        </View>
+      )}
+
       {/* Description */}
       {!!listing.description && (
         <Text style={[styles.listingDescription, { color: colors.textSecondary }]} numberOfLines={2}>
           {listing.description}
         </Text>
+      )}
+
+      {/* External listing link */}
+      {!!listing.externalUrl && (
+        <Pressable
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 8,
+            backgroundColor: colors.surface,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 7,
+            borderWidth: 1,
+            borderColor: colors.borderLight,
+            alignSelf: "flex-start",
+          }}
+          onPress={(e) => { e.stopPropagation(); Linking.openURL(listing.externalUrl!); }}
+        >
+          <Ionicons name="open-outline" size={14} color={colors.pokemonBlue} />
+          <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.pokemonBlue }}>
+            View External Listing
+          </Text>
+        </Pressable>
       )}
 
       {/* Photo strip */}

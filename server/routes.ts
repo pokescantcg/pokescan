@@ -1871,6 +1871,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       reviewedBy: row.reviewed_by ?? null,
       reviewedAt: row.reviewed_at ?? null,
       reviewNote: row.review_note ?? null,
+      externalUrl: row.external_url ?? null,
       createdAt: row.created_at,
     };
   }
@@ -1911,7 +1912,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
       if (!user.isPremium) { res.status(403).json({ error: "Premium required to list on the marketplace." }); return; }
 
-      const { cardId, cardName, cardImage, setName, rarity, type, priceGBP, condition, description, photos } = req.body;
+      const { cardId, cardName, cardImage, setName, rarity, type, priceGBP, condition, description, photos, externalUrl } = req.body;
       if (!cardId || !cardName || !cardImage || !setName || !type || !condition) {
         res.status(400).json({ error: "Missing required listing fields." });
         return;
@@ -1920,14 +1921,19 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       const rawPhotos: string[] = Array.isArray(photos) ? photos.slice(0, 6) : [];
       const photosJson = JSON.stringify(rawPhotos);
 
+      // Sanitise external URL — must be http/https or empty
+      const safeExternalUrl = (typeof externalUrl === "string" && /^https?:\/\//i.test(externalUrl.trim()))
+        ? externalUrl.trim()
+        : null;
+
       // Staff posts are auto-approved; everyone else starts pending review.
       const isStaff = user.role === "admin" || user.role === "moderator";
       const initialStatus = isStaff ? "approved" : "pending";
 
       const result = await pool.query(
         `INSERT INTO pokescan_market_listings
-           (user_id, user_name, card_id, card_name, card_image, set_name, rarity, type, price_gbp, condition, description, photos, status, reviewed_by, reviewed_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+           (user_id, user_name, card_id, card_name, card_image, set_name, rarity, type, price_gbp, condition, description, photos, status, reviewed_by, reviewed_at, external_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          RETURNING *`,
         [
           user.id, user.displayName,
@@ -1938,6 +1944,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
           initialStatus,
           isStaff ? user.id : null,
           isStaff ? new Date() : null,
+          safeExternalUrl,
         ]
       );
       res.status(201).json({ listing: rowToListing(result.rows[0]) });
