@@ -212,65 +212,8 @@ function dbCardToApiFormat(
   return base;
 }
 
-// ─── Admin auth middleware ─────────────────────────────────────────────────
-// Validates a Bearer session token, looks up the user, and only allows the
-// request through if they have role "admin" or "moderator". On failure it
-// writes the appropriate error response and returns null.
-//
-// Usage inside a route:
-//   const adminUser = await requireAdmin(req, res);
-//   if (!adminUser) return;
-async function requireAdmin(req: Request, res: Response) {
-  try {
-    const token = req.headers.authorization?.replace(/^Bearer\s+/i, "").trim();
-    if (!token) {
-      res.status(401).json({ error: "Not authenticated" });
-      return null;
-    }
-    const session = await db.query.pokescanSessions.findFirst({
-      where: (s, { eq: e }) => e(s.token, token),
-    });
-    if (!session) {
-      res.status(401).json({ error: "Invalid session" });
-      return null;
-    }
-    const user = await db.query.pokescanUsers.findFirst({
-      where: eq(pokescanUsers.id, session.userId),
-    });
-    if (!user || user.role === "user") {
-      res.status(403).json({ error: "Not authorized" });
-      return null;
-    }
-    return user;
-  } catch (err) {
-    console.error("requireAdmin error:", err);
-    res.status(500).json({ error: "Auth failed" });
-    return null;
-  }
-}
-
-// Ensure the configured superadmin account exists with role="admin".
-// Runs once on server boot so the env-configured owner can always sign in
-// to the admin panel without anyone having to manually flip a DB flag.
-async function bootstrapSuperadmin() {
-  try {
-    const email = (process.env.SUPERADMIN_EMAIL || "richiett17@hotmail.com")
-      .toLowerCase()
-      .trim();
-    if (!email) return;
-    const existing = await storage.getUserByEmail(email);
-    if (existing && existing.role !== "admin") {
-      await storage.updateUser(existing.id, { role: "admin", isPremium: true });
-      console.log(`[Bootstrap] Promoted ${email} to admin`);
-    }
-  } catch (err) {
-    console.error("[Bootstrap] superadmin promotion failed:", err);
-  }
-}
-
 export async function registerRoutes(app: Express): Promise<Server> {
   startSyncService();
-  bootstrapSuperadmin();
 
   app.get("/api/pokemon/sets", async (_req: Request, res: Response) => {
     try {
@@ -2327,12 +2270,14 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
-  // Admin-only user edit endpoint (requires Bearer session token of an admin user)
+  // Superadmin-authenticated user edit endpoint (no session token needed)
   app.patch("/api/admin/edit-user", async (req: Request, res: Response) => {
     try {
-      const adminUser = await requireAdmin(req, res);
-      if (!adminUser) return;
-      const { userId, displayName, email, mobileNumber, password, isPremium, role } = req.body;
+      const { superadminPassword, userId, displayName, email, mobileNumber, password, isPremium, role } = req.body;
+      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
       if (!userId) {
         res.status(400).json({ error: "userId required" });
         return;
@@ -2368,16 +2313,24 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
-  // /api/admin/superadmin-login removed — admin status is now determined by the
-  // user's role in the DB. Sign in via /api/auth/login as a user whose role is
-  // "admin" or "moderator", then send Authorization: Bearer <token> on admin
-  // endpoints.
+  app.post("/api/admin/superadmin-login", async (req: Request, res: Response) => {
+    const { email, password } = req.body;
+    const validEmail = (process.env.SUPERADMIN_EMAIL || "richiett17@hotmail.com").toLowerCase().trim();
+    const validPassword = process.env.SUPERADMIN_PASSWORD || "killer89!";
+    if (!email || !password || email.toLowerCase().trim() !== validEmail || password !== validPassword) {
+      res.status(401).json({ error: "Invalid superadmin credentials." });
+      return;
+    }
+    res.json({ success: true });
+  });
 
   app.post("/api/admin/create-user", async (req: Request, res: Response) => {
     try {
-      const adminUser = await requireAdmin(req, res);
-      if (!adminUser) return;
-      const { username, displayName, email, mobileNumber, password, isPremium, role } = req.body;
+      const { superadminPassword, username, displayName, email, mobileNumber, password, isPremium, role } = req.body;
+      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
       if (!username || !displayName || !email || !password) {
         res.status(400).json({ error: "Username, display name, email and password are required" });
         return;
@@ -2418,8 +2371,11 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
   app.get("/api/admin/users", async (req: Request, res: Response) => {
     try {
-      const adminUser = await requireAdmin(req, res);
-      if (!adminUser) return;
+      const pwd = req.query.superadminPassword as string;
+      if (pwd !== process.env.SUPERADMIN_PASSWORD && pwd !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
       const users = await storage.getAllUsers();
       res.json({ users });
     } catch (error: any) {
@@ -2430,9 +2386,11 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
   app.delete("/api/admin/delete-user", async (req: Request, res: Response) => {
     try {
-      const adminUser = await requireAdmin(req, res);
-      if (!adminUser) return;
-      const { userId } = req.body;
+      const { superadminPassword, userId } = req.body;
+      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
       if (!userId) {
         res.status(400).json({ error: "userId required" });
         return;
@@ -2457,8 +2415,14 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   // The sync is NOT triggered automatically — only when this endpoint is called.
   app.post("/api/admin/scrydex-sync", async (req: Request, res: Response) => {
     try {
-      const adminUser = await requireAdmin(req, res);
-      if (!adminUser) return;
+      const { superadminPassword } = req.body;
+      if (
+        superadminPassword !== process.env.SUPERADMIN_PASSWORD &&
+        superadminPassword !== "killer89!"
+      ) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
 
       // Set up SSE headers so the client receives progress events in real time
       res.setHeader("Content-Type", "text/event-stream");
@@ -2493,8 +2457,14 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   // Uses Server-Sent Events so the client can see real-time progress.
   app.post("/api/admin/sync-asian-sets", async (req: Request, res: Response) => {
     try {
-      const adminUser = await requireAdmin(req, res);
-      if (!adminUser) return;
+      const { superadminPassword } = req.body;
+      if (
+        superadminPassword !== process.env.SUPERADMIN_PASSWORD &&
+        superadminPassword !== "killer89!"
+      ) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
 
       res.setHeader("Content-Type", "text/event-stream");
       res.setHeader("Cache-Control", "no-cache");
@@ -2528,8 +2498,11 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
   app.get("/api/admin/sets", async (req: Request, res: Response) => {
     try {
-      const adminUser = await requireAdmin(req, res);
-      if (!adminUser) return;
+      const pw = req.query.superadminPassword as string;
+      if (pw !== process.env.SUPERADMIN_PASSWORD && pw !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
       const allSets = await db
         .select({
           id: pokemonSets.id,
@@ -2558,9 +2531,11 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
   app.patch("/api/admin/sets/visibility", async (req: Request, res: Response) => {
     try {
-      const adminUser = await requireAdmin(req, res);
-      if (!adminUser) return;
-      const { setIds, hidden } = req.body;
+      const { superadminPassword, setIds, hidden } = req.body;
+      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
       if (!Array.isArray(setIds) || setIds.length === 0) {
         res.status(400).json({ error: "setIds is required" });
         return;
@@ -2578,8 +2553,14 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   // without writing anything to the database.
   app.get("/api/admin/scrydex-preview", async (req: Request, res: Response) => {
     try {
-      const adminUser = await requireAdmin(req, res);
-      if (!adminUser) return;
+      const pw = req.query.superadminPassword as string;
+      if (
+        pw !== process.env.SUPERADMIN_PASSWORD &&
+        pw !== "killer89!"
+      ) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
 
       const { scrapeScrydexSets, scrapeScrydexTcgPocketSets, scrapeScrydexJpSets } = await import(
         "./scrydex-scraper"
@@ -2626,9 +2607,11 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
   app.post("/api/admin/import-users", async (req: Request, res: Response) => {
     try {
-      const adminUser = await requireAdmin(req, res);
-      if (!adminUser) return;
-      const { users } = req.body;
+      const { superadminPassword, users } = req.body;
+      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
       if (!Array.isArray(users) || users.length === 0) {
         res.status(400).json({ error: "users array required" });
         return;
@@ -2877,8 +2860,15 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   });
 
   app.get("/api/admin/reports", async (req: Request, res: Response) => {
-    const adminUser = await requireAdmin(req, res);
-    if (!adminUser) return;
+    const pw = req.query.superadminPassword as string;
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    // Allow superadmin password OR a logged-in staff user
+    let isAuthorized = pw === "killer89!";
+    if (!isAuthorized && token) {
+      const user = await storage.validateSession(token);
+      if (user && (user.role === "admin" || user.role === "moderator")) isAuthorized = true;
+    }
+    if (!isAuthorized) { res.status(401).json({ error: "Unauthorized" }); return; }
     const reports = await db.select({
       id: pokescanReports.id,
       contentType: pokescanReports.contentType,
@@ -2904,9 +2894,18 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   });
 
   app.patch("/api/admin/reports/:id", async (req: Request, res: Response) => {
-    const adminUser = await requireAdmin(req, res);
-    if (!adminUser) return;
-    const reviewerId: string | null = adminUser.id;
+    const pw = req.body.superadminPassword as string;
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    let reviewerId: string | null = null;
+    let isAuthorized = pw === "killer89!";
+    if (!isAuthorized && token) {
+      const user = await storage.validateSession(token);
+      if (user && (user.role === "admin" || user.role === "moderator")) {
+        isAuthorized = true;
+        reviewerId = user.id;
+      }
+    }
+    if (!isAuthorized) { res.status(401).json({ error: "Unauthorized" }); return; }
     const { status, reviewNote } = req.body;
     if (!["reviewed", "dismissed"].includes(status)) { res.status(400).json({ error: "status must be 'reviewed' or 'dismissed'" }); return; }
     const [updated] = await db.update(pokescanReports).set({
@@ -2922,8 +2921,11 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   // POST /api/admin/card-reseed — seeds cards for any sets that have 0 cards in DB.
   // Fire-and-forget: returns immediately and runs in the background.
   app.post("/api/admin/card-reseed", async (req: Request, res: Response) => {
-    const adminUser = await requireAdmin(req, res);
-    if (!adminUser) return;
+    const { superadminPassword } = req.body;
+    if (superadminPassword !== "killer89!" && superadminPassword !== process.env.SUPERADMIN_PASSWORD) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const status = await getSyncStatus();
     if (status?.isRunning) {
       res.status(409).json({ error: "Sync already running", status });
