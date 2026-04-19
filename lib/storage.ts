@@ -68,12 +68,24 @@ const KEYS = {
   LISTINGS: "pokescan_listings",
   ALL_USERS: "pokescan_all_users",
   SUPERADMIN_FLAG: "pokescan_superadmin",
+  SUPERADMIN_TOKEN: "pokescan_superadmin_token",
   LOCAL_USER: "pokescan_local_user",
 };
 
 const SESSION_KEY = "pokescan_session_token";
 const SUPERADMIN_EMAIL = "richiett17@hotmail.com";
-const SUPERADMIN_PASSWORD = "killer89!";
+
+export async function getSuperadminToken(): Promise<string | null> {
+  return AsyncStorage.getItem(KEYS.SUPERADMIN_TOKEN);
+}
+
+async function setSuperadminToken(token: string): Promise<void> {
+  await safeSetItem(KEYS.SUPERADMIN_TOKEN, token);
+}
+
+async function clearSuperadminToken(): Promise<void> {
+  try { await AsyncStorage.removeItem(KEYS.SUPERADMIN_TOKEN); } catch {}
+}
 
 async function safeSetItem(key: string, value: string): Promise<void> {
   try {
@@ -313,6 +325,7 @@ export async function logoutUser(): Promise<void> {
     } catch {}
   }
   await clearSessionToken();
+  await clearSuperadminToken();
   await AsyncStorage.removeItem(KEYS.SUPERADMIN_FLAG);
   await AsyncStorage.removeItem(KEYS.LOCAL_USER);
   await AsyncStorage.removeItem(KEYS.COLLECTION_CACHE);
@@ -343,8 +356,12 @@ function dbUserToProfile(dbUser: any): UserProfile {
 
 export async function fetchAllUsersFromServer(): Promise<UserProfile[]> {
   try {
+    const token = await getSuperadminToken();
+    if (!token) return [];
     const base = getApiUrl();
-    const res = await fetch(`${base}/api/admin/users?superadminPassword=killer89!`);
+    const res = await fetch(`${base}/api/admin/users`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (!res.ok) return [];
     const data = await res.json();
     const serverUsers: UserProfile[] = (data.users || []).map(dbUserToProfile);
@@ -358,34 +375,71 @@ export async function fetchAllUsersFromServer(): Promise<UserProfile[]> {
   }
 }
 
-export async function superadminLogin(email: string, password: string): Promise<boolean> {
+/**
+ * Request a one-time superadmin login code via email. The server only emails
+ * the code if the address matches the configured superadmin email — but it
+ * always returns success to prevent email enumeration.
+ */
+export async function requestSuperadminOtp(email: string): Promise<{ ok: boolean; error?: string }> {
   const normEmail = email.toLowerCase().trim();
-  const normPass = password.trim();
-  const localMatch = normEmail === SUPERADMIN_EMAIL && normPass === SUPERADMIN_PASSWORD;
-
-  let serverMatch = false;
+  if (!normEmail) return { ok: false, error: "Email is required" };
   try {
-    const url = new URL("/api/admin/superadmin-login", getApiUrl());
+    const url = new URL("/api/admin/request-otp", getApiUrl());
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const timer = setTimeout(() => ctrl.abort(), 10000);
     const res = await fetch(url.toString(), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: normEmail, password: normPass }),
+      body: JSON.stringify({ email: normEmail }),
       signal: ctrl.signal,
     });
     clearTimeout(timer);
-    serverMatch = res.ok;
+    if (!res.ok) {
+      let msg = "Failed to send code";
+      try { msg = (await res.json())?.error || msg; } catch {}
+      return { ok: false, error: msg };
+    }
+    return { ok: true };
   } catch {
-    /* network/timeout: fall through to local check */
+    return { ok: false, error: "Network error. Please check your connection." };
+  }
+}
+
+/**
+ * Verify the one-time code, store the issued superadmin token, and grant the
+ * superadmin flag to the currently logged-in user (if any) so chat/social
+ * features keep working with their existing server session.
+ */
+export async function verifySuperadminOtp(email: string, code: string): Promise<{ ok: boolean; error?: string }> {
+  const normEmail = email.toLowerCase().trim();
+  const normCode = code.trim();
+  if (!normEmail || !normCode) return { ok: false, error: "Email and code are required" };
+
+  let token: string | undefined;
+  try {
+    const url = new URL("/api/admin/verify-otp", getApiUrl());
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: normEmail, code: normCode }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data?.token) {
+      return { ok: false, error: data?.error || "Invalid code" };
+    }
+    token = data.token as string;
+  } catch {
+    return { ok: false, error: "Network error. Please check your connection." };
   }
 
-  // Accept if EITHER source confirms credentials.
-  // This makes login work whether or not the installed APK can reach the new endpoint.
-  if (!serverMatch && !localMatch) return false;
+  await setSuperadminToken(token);
 
-  // PREFER keeping the currently logged-in user (so their server session stays valid
-  // for chat, friends, marketplace, etc.) and just grant the superadmin flag.
+  // Keep the currently logged-in user (so their server session stays valid for
+  // chat, friends, marketplace, etc.) and just grant the superadmin flag on top.
   const currentUser = await getUser();
   if (currentUser) {
     currentUser.role = "admin";
@@ -393,8 +447,8 @@ export async function superadminLogin(email: string, password: string): Promise<
     await safeSetItem(KEYS.LOCAL_USER, JSON.stringify(currentUser));
     await upsertUserInRegistry(currentUser);
   } else {
-    // No one logged in — fall back to a local-only superadmin profile.
-    // (Chat / friend features won't work in this state since there's no server session.)
+    // No one logged in — create a local-only superadmin profile so the admin
+    // panel works. (Chat/friend features need a real account to function.)
     const allUsers = await getAllUsers();
     const existing = allUsers.find((u) => u.username === "superadmin");
     if (existing) {
@@ -417,7 +471,7 @@ export async function superadminLogin(email: string, password: string): Promise<
   }
 
   await safeSetItem(KEYS.SUPERADMIN_FLAG, "true");
-  return true;
+  return { ok: true };
 }
 
 export async function getUser(): Promise<UserProfile | null> {
@@ -755,11 +809,13 @@ export async function getAllUsers(): Promise<UserProfile[]> {
 
 async function serverAdminUpdateUser(userId: string, fields: { isPremium?: boolean; role?: string }): Promise<void> {
   try {
+    const token = await getSuperadminToken();
+    if (!token) return; // No superadmin session — silently skip server sync
     const base = getApiUrl();
     await fetch(`${base}/api/admin/edit-user`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ superadminPassword: "killer89!", userId, ...fields }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ userId, ...fields }),
     });
   } catch {
     // Non-fatal: local update already applied
@@ -858,16 +914,15 @@ export async function adminUpdateUser(
   }
   // Also update in PostgreSQL (if user is server-registered)
   try {
-    const base = getApiUrl();
-    await fetch(`${base}/api/admin/edit-user`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        superadminPassword: "killer89!",
-        userId,
-        ...updates,
-      }),
-    });
+    const token = await getSuperadminToken();
+    if (token) {
+      const base = getApiUrl();
+      await fetch(`${base}/api/admin/edit-user`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId, ...updates }),
+      });
+    }
   } catch {
     // Non-critical — local update is source of truth for local users
   }
@@ -881,12 +936,15 @@ export async function deleteUserFromRegistry(userId: string): Promise<UserProfil
   await safeSetItem(KEYS.ALL_USERS, JSON.stringify(filtered));
   // Also delete from PostgreSQL
   try {
-    const base = getApiUrl();
-    await fetch(`${base}/api/admin/delete-user`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ superadminPassword: "killer89!", userId }),
-    });
+    const token = await getSuperadminToken();
+    if (token) {
+      const base = getApiUrl();
+      await fetch(`${base}/api/admin/delete-user`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ userId }),
+      });
+    }
   } catch {
     // Non-critical
   }

@@ -9,7 +9,8 @@ import {
   getUser,
   saveLocalUser,
   registerSocialUser,
-  superadminLogin,
+  requestSuperadminOtp,
+  verifySuperadminOtp,
   isSuperadmin,
   togglePremium as togglePremiumStorage,
   logoutUser,
@@ -57,7 +58,8 @@ interface UserContextValue {
   sendLoginOtp: (credential: string, channel: "email" | "sms") => Promise<{ userId: string }>;
   verifyOtp: (credential: string, code: string) => Promise<void>;
   socialRegister: (provider: AuthProvider, displayName: string, email?: string, avatarUrl?: string) => Promise<void>;
-  adminLogin: (email: string, password: string) => Promise<boolean>;
+  requestAdminOtp: (email: string) => Promise<{ ok: boolean; error?: string }>;
+  verifyAdminOtp: (email: string, code: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => Promise<void>;
   togglePremium: () => Promise<void>;
   addCard: (item: Omit<CollectionItem, "id" | "addedAt">) => Promise<void>;
@@ -194,17 +196,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setAllUsers(users);
   }, []);
 
-  const handleAdminLogin = useCallback(async (email: string, password: string): Promise<boolean> => {
-    const success = await superadminLogin(email, password);
-    if (success) {
+  const handleRequestAdminOtp = useCallback(async (email: string) => {
+    return requestSuperadminOtp(email);
+  }, []);
+
+  const handleVerifyAdminOtp = useCallback(async (email: string, code: string) => {
+    const result = await verifySuperadminOtp(email, code);
+    if (result.ok) {
       const userData = await getUser();
       setUser(userData);
       setSuperadminFlag(true);
       const users = await getAllUsers();
       setAllUsers(users);
-      return true;
     }
-    return false;
+    return result;
   }, []);
 
   const logout = useCallback(async () => {
@@ -327,7 +332,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       sendLoginOtp: handleSendLoginOtp,
       verifyOtp: handleVerifyOtp,
       socialRegister: handleSocialRegister,
-      adminLogin: handleAdminLogin,
+      requestAdminOtp: handleRequestAdminOtp,
+      verifyAdminOtp: handleVerifyAdminOtp,
       logout,
       togglePremium: handleTogglePremium,
       addCard,

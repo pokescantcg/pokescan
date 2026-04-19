@@ -20,6 +20,7 @@ import {
   sendOtpByEmail,
   sendOtpBySms,
 } from "./otp-service";
+import { randomBytes } from "crypto";
 import { db, pool } from "./db";
 import {
   pokemonSets,
@@ -2274,7 +2275,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.patch("/api/admin/edit-user", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, userId, displayName, email, mobileNumber, password, isPremium, role } = req.body;
-      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+      if (!isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2313,21 +2314,75 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
-  app.post("/api/admin/superadmin-login", async (req: Request, res: Response) => {
-    const { email, password } = req.body;
-    const validEmail = (process.env.SUPERADMIN_EMAIL || "richiett17@hotmail.com").toLowerCase().trim();
-    const validPassword = process.env.SUPERADMIN_PASSWORD || "killer89!";
-    if (!email || !password || email.toLowerCase().trim() !== validEmail || password !== validPassword) {
-      res.status(401).json({ error: "Invalid superadmin credentials." });
-      return;
+  // ---------------------------------------------------------------------
+  // Superadmin auth — OTP via email
+  // ---------------------------------------------------------------------
+  // Step 1: Request a one-time code. Always returns success (to avoid
+  // revealing whether the email is the superadmin email), but only emails
+  // a code to the legitimate superadmin address.
+  app.post("/api/admin/request-otp", async (req: Request, res: Response) => {
+    try {
+      const email = ((req.body && req.body.email) || "").toString().toLowerCase().trim();
+      if (email === getSuperadminEmail()) {
+        const { code, rateLimited } = createOtp(`superadmin:${email}`);
+        if (rateLimited) {
+          res.status(429).json({ error: "Too many requests. Please wait a minute and try again." });
+          return;
+        }
+        await sendOtpByEmail(email, code);
+      }
+      // Always respond success to prevent email enumeration
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[admin/request-otp] error:", err);
+      res.status(500).json({ error: "Failed to send code" });
     }
-    res.json({ success: true });
+  });
+
+  // Step 2: Verify the code and issue a superadmin session token.
+  app.post("/api/admin/verify-otp", async (req: Request, res: Response) => {
+    try {
+      const email = ((req.body && req.body.email) || "").toString().toLowerCase().trim();
+      const code = ((req.body && req.body.code) || "").toString().trim();
+      if (!email || !code || email !== getSuperadminEmail()) {
+        res.status(401).json({ error: "Invalid code" });
+        return;
+      }
+      const result = verifyOtp(`superadmin:${email}`, code);
+      if (!result.valid) {
+        if (result.tooManyAttempts) {
+          res.status(429).json({ error: "Too many attempts. Request a new code." });
+        } else if (result.expired) {
+          res.status(401).json({ error: "Code expired. Request a new one." });
+        } else {
+          res.status(401).json({ error: "Invalid code" });
+        }
+        return;
+      }
+      const token = issueSuperadminToken();
+      res.json({ success: true, token });
+    } catch (err: any) {
+      console.error("[admin/verify-otp] error:", err);
+      res.status(500).json({ error: "Verification failed" });
+    }
+  });
+
+  // Validate a stored superadmin token (used by client to check if it's still good).
+  app.get("/api/admin/validate-token", (req: Request, res: Response) => {
+    res.json({ valid: isSuperadminAuthorized(req) });
+  });
+
+  // Legacy endpoint kept as a stub so older APKs get a clear error.
+  app.post("/api/admin/superadmin-login", (_req: Request, res: Response) => {
+    res.status(410).json({
+      error: "This sign-in method has been disabled. Please update the app and use the email code login.",
+    });
   });
 
   app.post("/api/admin/create-user", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, username, displayName, email, mobileNumber, password, isPremium, role } = req.body;
-      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+      if (!isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2372,7 +2427,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.get("/api/admin/users", async (req: Request, res: Response) => {
     try {
       const pwd = req.query.superadminPassword as string;
-      if (pwd !== process.env.SUPERADMIN_PASSWORD && pwd !== "killer89!") {
+      if (!isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2387,7 +2442,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.delete("/api/admin/delete-user", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, userId } = req.body;
-      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+      if (!isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2416,10 +2471,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.post("/api/admin/scrydex-sync", async (req: Request, res: Response) => {
     try {
       const { superadminPassword } = req.body;
-      if (
-        superadminPassword !== process.env.SUPERADMIN_PASSWORD &&
-        superadminPassword !== "killer89!"
-      ) {
+      if (!isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2458,10 +2510,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.post("/api/admin/sync-asian-sets", async (req: Request, res: Response) => {
     try {
       const { superadminPassword } = req.body;
-      if (
-        superadminPassword !== process.env.SUPERADMIN_PASSWORD &&
-        superadminPassword !== "killer89!"
-      ) {
+      if (!isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2499,7 +2548,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.get("/api/admin/sets", async (req: Request, res: Response) => {
     try {
       const pw = req.query.superadminPassword as string;
-      if (pw !== process.env.SUPERADMIN_PASSWORD && pw !== "killer89!") {
+      if (!isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2532,7 +2581,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.patch("/api/admin/sets/visibility", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, setIds, hidden } = req.body;
-      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+      if (!isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2554,10 +2603,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.get("/api/admin/scrydex-preview", async (req: Request, res: Response) => {
     try {
       const pw = req.query.superadminPassword as string;
-      if (
-        pw !== process.env.SUPERADMIN_PASSWORD &&
-        pw !== "killer89!"
-      ) {
+      if (!isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2608,7 +2654,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   app.post("/api/admin/import-users", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, users } = req.body;
-      if (superadminPassword !== process.env.SUPERADMIN_PASSWORD && superadminPassword !== "killer89!") {
+      if (!isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -2863,7 +2909,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     const pw = req.query.superadminPassword as string;
     const token = req.headers.authorization?.replace("Bearer ", "");
     // Allow superadmin password OR a logged-in staff user
-    let isAuthorized = pw === "killer89!";
+    let isAuthorized = isSuperadminAuthorized(req);
     if (!isAuthorized && token) {
       const user = await storage.validateSession(token);
       if (user && (user.role === "admin" || user.role === "moderator")) isAuthorized = true;
@@ -2897,7 +2943,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     const pw = req.body.superadminPassword as string;
     const token = req.headers.authorization?.replace("Bearer ", "");
     let reviewerId: string | null = null;
-    let isAuthorized = pw === "killer89!";
+    let isAuthorized = isSuperadminAuthorized(req);
     if (!isAuthorized && token) {
       const user = await storage.validateSession(token);
       if (user && (user.role === "admin" || user.role === "moderator")) {
@@ -2922,7 +2968,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   // Fire-and-forget: returns immediately and runs in the background.
   app.post("/api/admin/card-reseed", async (req: Request, res: Response) => {
     const { superadminPassword } = req.body;
-    if (superadminPassword !== "killer89!" && superadminPassword !== process.env.SUPERADMIN_PASSWORD) {
+    if (!isSuperadminAuthorized(req)) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }

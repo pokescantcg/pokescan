@@ -24,9 +24,25 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
-import { MarketListing, UserProfile, UserRole } from "@/lib/storage";
+import { MarketListing, UserProfile, UserRole, getSuperadminToken } from "@/lib/storage";
 import { socialApi, AdminReport } from "@/lib/social-api";
 import { getApiUrl } from "@/lib/query-client";
+
+/** Build standard auth header for superadmin endpoints. Returns null when no token. */
+async function adminAuthHeader(): Promise<Record<string, string> | null> {
+  const token = await getSuperadminToken();
+  if (!token) return null;
+  return { Authorization: `Bearer ${token}` };
+}
+
+/** Throws a friendly error if the user has no superadmin session. */
+async function requireAdminAuthHeader(): Promise<Record<string, string>> {
+  const headers = await adminAuthHeader();
+  if (!headers) {
+    throw new Error("Superadmin session expired. Please sign in again.");
+  }
+  return headers;
+}
 
 function EditUserModal({
   profile,
@@ -531,9 +547,8 @@ function CreateUserModal({
       const base = getApiUrl();
       const res = await fetch(new URL("/api/admin/create-user", base).href, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(await requireAdminAuthHeader()) },
         body: JSON.stringify({
-          superadminPassword: "killer89!",
           username: u,
           displayName: d,
           email: e,
@@ -816,8 +831,7 @@ export default function AdminPanelScreen() {
     setDbPreview(null);
     try {
       const url = new URL("/api/admin/scrydex-preview", getApiUrl());
-      url.searchParams.set("superadminPassword", "killer89!");
-      const res = await fetch(url.toString());
+      const res = await fetch(url.toString(), { headers: await requireAdminAuthHeader() });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       setDbPreview(data);
@@ -839,7 +853,7 @@ export default function AdminPanelScreen() {
         {
           text: "Start Sync",
           style: "default",
-          onPress: () => {
+          onPress: async () => {
             setSyncRunning(true);
             setSyncProgress(null);
             setSyncLog(["Starting sync…"]);
@@ -903,7 +917,9 @@ export default function AdminPanelScreen() {
             xhr.timeout = 600_000; // 10 min max
             xhr.open("POST", url.toString());
             xhr.setRequestHeader("Content-Type", "application/json");
-            xhr.send(JSON.stringify({ superadminPassword: "killer89!" }));
+            const _adminToken = await getSuperadminToken();
+            if (_adminToken) xhr.setRequestHeader("Authorization", `Bearer ${_adminToken}`);
+            xhr.send(JSON.stringify({}));
           },
         },
       ]
@@ -930,7 +946,7 @@ export default function AdminPanelScreen() {
         {
           text: "Start",
           style: "default",
-          onPress: () => {
+          onPress: async () => {
             setAsianSyncRunning(true);
             setAsianSyncLog(["Starting Asian set sync…"]);
 
@@ -981,7 +997,9 @@ export default function AdminPanelScreen() {
             xhr.timeout = 120_000;
             xhr.open("POST", url.toString());
             xhr.setRequestHeader("Content-Type", "application/json");
-            xhr.send(JSON.stringify({ superadminPassword: "killer89!" }));
+            const _adminToken = await getSuperadminToken();
+            if (_adminToken) xhr.setRequestHeader("Authorization", `Bearer ${_adminToken}`);
+            xhr.send(JSON.stringify({}));
           },
         },
       ]
@@ -1006,8 +1024,7 @@ export default function AdminPanelScreen() {
     setAdminSetsLoading(true);
     try {
       const url = new URL("/api/admin/sets", getApiUrl());
-      url.searchParams.set("superadminPassword", "killer89!");
-      const res = await fetch(url.toString());
+      const res = await fetch(url.toString(), { headers: await requireAdminAuthHeader() });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       setAdminSets(data.sets || []);
@@ -1023,8 +1040,8 @@ export default function AdminPanelScreen() {
       const url = new URL("/api/admin/sets/visibility", getApiUrl());
       const res = await fetch(url.toString(), {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ superadminPassword: "killer89!", setIds, hidden }),
+        headers: { "Content-Type": "application/json", ...(await requireAdminAuthHeader()) },
+        body: JSON.stringify({ setIds, hidden }),
       });
       if (!res.ok) throw new Error("Failed to update");
       setAdminSets(prev => prev.map(s => setIds.includes(s.id) ? { ...s, hidden } : s));
@@ -1100,9 +1117,8 @@ export default function AdminPanelScreen() {
         const base = getApiUrl();
         const res = await fetch(new URL("/api/admin/edit-user", base).href, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            superadminPassword: "killer89!",
+          headers: { "Content-Type": "application/json", ...(await requireAdminAuthHeader()) },
+        body: JSON.stringify({
             userId: editingUser.id,
             displayName: updates.displayName,
             email: updates.email,
