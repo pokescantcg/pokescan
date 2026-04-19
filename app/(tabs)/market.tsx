@@ -12,7 +12,6 @@ import {
   Alert,
   RefreshControl,
   Linking,
-  ActivityIndicator,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -23,7 +22,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useQuery } from "@tanstack/react-query";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
-import { formatGBP, fetchCard } from "@/lib/pokemon-api";
+import { formatGBP, fetchCard, PokemonCard } from "@/lib/pokemon-api";
 import { MarketListing } from "@/lib/storage";
 import PokeBackground from "@/components/PokeBackground";
 import { socialApi } from "@/lib/social-api";
@@ -60,12 +59,11 @@ function ListingDetailModal({
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
-  const { data: cardData } = useQuery({
+  const { data: card } = useQuery<PokemonCard>({
     queryKey: ["/api/pokemon/cards", listing?.cardId],
+    queryFn: () => fetchCard(listing!.cardId),
     enabled: !!listing?.cardId && visible,
   });
-
-  const card = (cardData as any)?.data ?? (cardData as any);
 
   if (!listing) return null;
 
