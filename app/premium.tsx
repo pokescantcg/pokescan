@@ -80,7 +80,9 @@ export default function PremiumScreen() {
       const priceId      = plan === "monthly" ? STRIPE_PRICE_MONTHLY : STRIPE_PRICE_ANNUAL;
       const domain       = getApiUrl();
       const successUrl   = `${domain}/api/stripe/success?plan=${plan}`;
-      const cancelUrl    = `${domain}/api/stripe/cancel`;
+      // Use the same /api/stripe/success path with a canceled flag so the in-app
+      // browser detects the redirect and dismisses cleanly (same prefix as redirect URL).
+      const cancelUrl    = `${domain}/api/stripe/success?canceled=1`;
 
       const checkoutUrl = new URL("/api/stripe/create-checkout", domain).href;
       const res = await fetch(checkoutUrl, {
@@ -93,12 +95,28 @@ export default function PremiumScreen() {
 
       if (!data.url) throw new Error(data.error ?? "Checkout URL not returned");
 
-      // Open Stripe Checkout in in-app browser
+      // Open Stripe Checkout in in-app browser. Both success and cancel
+      // redirects share the /api/stripe/success prefix so the browser closes
+      // cleanly without showing a 404/white screen on cancel.
       const result = await WebBrowser.openAuthSessionAsync(data.url, successUrl);
 
-      if (result.type === "success" || result.type === "dismiss") {
-        // Sync subscription status regardless — user may have completed payment
+      // Detect a user-initiated cancel: Stripe redirected to ?canceled=1, or
+      // the user dismissed the in-app browser themselves.
+      const wasCanceled =
+        (result.type === "success" && result.url?.includes("canceled=1")) ||
+        result.type === "cancel" ||
+        result.type === "dismiss";
+
+      if (wasCanceled) {
+        // Return to profile so we don't leave the user on a stale checkout screen.
+        router.replace("/(tabs)/profile");
+        return;
+      }
+
+      if (result.type === "success") {
+        // Sync subscription status — user may have completed payment
         try {
+          const { apiRequest } = await import("@/lib/query-client");
           await apiRequest("POST", "/api/stripe/sync", {});
           await refreshData();
         } catch { /* ignore sync errors — user can re-open the screen */ }

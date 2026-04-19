@@ -122,9 +122,7 @@ function ComposeModal({
               <Ionicons name="close" size={24} color={colors.text} />
             </Pressable>
             <Text style={[styles.composeTitle, { color: colors.text }]}>New Message</Text>
-            <Pressable onPress={handleSend} disabled={sending} style={styles.composeSendBtn}>
-              {sending ? <ActivityIndicator size="small" color={colors.pokemonRed} /> : <Ionicons name="send" size={20} color={colors.pokemonRed} />}
-            </Pressable>
+            <View style={styles.composeSendBtn} />
           </View>
 
           <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
@@ -177,15 +175,34 @@ function ComposeModal({
               />
             </View>
 
-            <TextInput
-              style={[styles.composeBody, { color: colors.text, backgroundColor: colors.card }]}
-              placeholder="Write your message..."
-              placeholderTextColor={colors.textMuted}
-              value={body}
-              onChangeText={setBody}
-              multiline
-              textAlignVertical="top"
-            />
+            <View style={[styles.composeBodyWrap, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.composeBody, { color: colors.text }]}
+                placeholder="Write your message..."
+                placeholderTextColor={colors.textMuted}
+                value={body}
+                onChangeText={setBody}
+                multiline
+                textAlignVertical="top"
+              />
+              <Pressable
+                onPress={handleSend}
+                disabled={sending || !body.trim() || !recipient}
+                style={[
+                  styles.composeBodySendBtn,
+                  { backgroundColor: (sending || !body.trim() || !recipient) ? colors.border : colors.pokemonRed },
+                ]}
+              >
+                {sending ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="send" size={16} color="#FFF" />
+                    <Text style={styles.composeBodySendText}>Send</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
@@ -1122,7 +1139,10 @@ const styles = StyleSheet.create({
   composeField: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, gap: 8 },
   composeLabel: { fontSize: 13, fontFamily: "Outfit_600SemiBold", width: 52 },
   composeInput: { flex: 1, fontSize: 14, fontFamily: "Outfit_400Regular" },
-  composeBody: { margin: 16, padding: 14, borderRadius: 12, fontSize: 15, fontFamily: "Outfit_400Regular", minHeight: 180 },
+  composeBodyWrap: { margin: 16, borderRadius: 12, borderWidth: 1, overflow: "hidden" },
+  composeBody: { padding: 14, fontSize: 15, fontFamily: "Outfit_400Regular", minHeight: 180 },
+  composeBodySendBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 12, margin: 10, borderRadius: 10 },
+  composeBodySendText: { color: "#FFF", fontSize: 14, fontFamily: "Outfit_700Bold" },
   recipientChip: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   recipientChipText: { flex: 1, fontSize: 14, fontFamily: "Outfit_500Medium" },
   searchDropdown: { marginHorizontal: 16, marginTop: -4, borderRadius: 10, borderWidth: 1, overflow: "hidden" },
