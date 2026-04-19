@@ -230,6 +230,7 @@ function MessageDetailModal({
   onReport?: (reason: string) => void;
   colors: any;
 }) {
+  const insets = useSafeAreaInsets();
   if (!message) return null;
   const name = isSent ? (message as SentMessage).recipientDisplayName : (message as InboxMessage).senderDisplayName;
   const username = isSent ? (message as SentMessage).recipientUsername : (message as InboxMessage).senderUsername;
@@ -253,7 +254,7 @@ function MessageDetailModal({
   return (
     <Modal visible={!!message} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <View style={[styles.composeHeader, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+        <View style={[styles.composeHeader, { backgroundColor: colors.card, borderBottomColor: colors.border, paddingTop: insets.top + 14 }]}>
           <Pressable onPress={onClose} style={styles.composeClose}>
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </Pressable>

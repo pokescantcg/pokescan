@@ -18,7 +18,7 @@ import { Image } from "expo-image";
 import Constants from "expo-constants";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
@@ -67,9 +67,15 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     if (!user) return;
-    socialApi.getUnreadCount().then(d => setUnreadCount(d.count)).catch(() => {});
     setCollectionVisible(user.collectionVisible ?? false);
   }, [user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      socialApi.getUnreadCount().then(d => setUnreadCount(d.count)).catch(() => {});
+    }, [user])
+  );
 
   const handleMessageSupport = useCallback(async () => {
     try {
