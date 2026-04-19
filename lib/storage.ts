@@ -59,6 +59,10 @@ export interface MarketListing {
   condition: string;
   description: string;
   photos: string[];
+  status: "pending" | "approved" | "rejected";
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  reviewNote: string | null;
   createdAt: string;
 }
 

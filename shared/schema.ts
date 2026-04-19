@@ -181,6 +181,10 @@ export const pokescanMarketListings = pgTable("pokescan_market_listings", {
   condition: text("condition").notNull(),
   description: text("description").notNull().default(""),
   photos: text("photos").notNull().default("[]"),  // JSON array of base64 strings (max 6)
+  status: text("status").notNull().default("pending"), // "pending" | "approved" | "rejected"
+  reviewedBy: varchar("reviewed_by", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  reviewNote: text("review_note"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
 });
 

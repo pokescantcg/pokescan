@@ -271,15 +271,31 @@ function ListingRow({
   listing,
   colors,
   onRemove,
+  onApprove,
+  onReject,
+  onMessage,
+  onView,
 }: {
   listing: MarketListing;
   colors: ReturnType<typeof useThemeColors>;
   onRemove: () => void;
+  onApprove?: () => void;
+  onReject?: () => void;
+  onMessage?: () => void;
+  onView?: () => void;
 }) {
   const timeAgo = getTimeAgo(listing.createdAt);
+  const status = listing.status ?? "approved";
+  const statusColor =
+    status === "approved" ? colors.success :
+    status === "rejected" ? colors.error :
+    "#E67E22"; // pending → orange
 
   return (
-    <View style={[styles.listingRow, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+    <Pressable
+      onPress={onView}
+      style={[styles.listingRow, { backgroundColor: colors.card, borderColor: status === "pending" ? statusColor : colors.borderLight, borderWidth: status === "pending" ? 1.5 : 1 }]}
+    >
       <Image source={{ uri: listing.cardImage }} style={styles.listingImg} contentFit="contain" />
       <View style={styles.listingDetails}>
         <View style={styles.listingTopRow}>
@@ -293,7 +309,10 @@ function ListingRow({
               {listing.type === "sale" ? "SALE" : "TRADE"}
             </Text>
           </View>
-          <Text style={[styles.timeText, { color: colors.textMuted }]}>{timeAgo}</Text>
+          <View style={[styles.typeBadge, { backgroundColor: statusColor + "30", marginLeft: 6 }]}>
+            <Text style={[styles.typeBadgeText, { color: statusColor }]}>{status.toUpperCase()}</Text>
+          </View>
+          <Text style={[styles.timeText, { color: colors.textMuted, marginLeft: "auto" }]}>{timeAgo}</Text>
         </View>
         <Text style={[styles.listingTitle, { color: colors.text }]} numberOfLines={1}>
           {listing.cardName}
@@ -312,6 +331,27 @@ function ListingRow({
             </Text>
           )}
         </View>
+
+        <View style={{ flexDirection: "row", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+          {status === "pending" && onApprove && (
+            <Pressable onPress={onApprove} style={[styles.adminActionBtn, { backgroundColor: colors.success }]}>
+              <Ionicons name="checkmark-circle-outline" size={14} color="#FFF" />
+              <Text style={styles.adminActionBtnText}>Approve</Text>
+            </Pressable>
+          )}
+          {status === "pending" && onReject && (
+            <Pressable onPress={onReject} style={[styles.adminActionBtn, { backgroundColor: colors.error }]}>
+              <Ionicons name="close-circle-outline" size={14} color="#FFF" />
+              <Text style={styles.adminActionBtnText}>Reject</Text>
+            </Pressable>
+          )}
+          {onMessage && (
+            <Pressable onPress={onMessage} style={[styles.adminActionBtn, { backgroundColor: colors.pokemonBlue }]}>
+              <Ionicons name="chatbubble-outline" size={14} color="#FFF" />
+              <Text style={styles.adminActionBtnText}>Message</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
       <Pressable
         style={[styles.removeBtn, { backgroundColor: "rgba(231, 76, 60, 0.15)" }]}
@@ -319,7 +359,125 @@ function ListingRow({
       >
         <Ionicons name="trash-outline" size={18} color={colors.error} />
       </Pressable>
-    </View>
+    </Pressable>
+  );
+}
+
+function ListingDetailModal({
+  listing,
+  colors,
+  onClose,
+  onApprove,
+  onReject,
+  onMessage,
+  onRemove,
+}: {
+  listing: MarketListing | null;
+  colors: ReturnType<typeof useThemeColors>;
+  onClose: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+  onMessage: () => void;
+  onRemove: () => void;
+}) {
+  if (!listing) return null;
+  const status = listing.status ?? "approved";
+  const statusColor =
+    status === "approved" ? colors.success :
+    status === "rejected" ? colors.error :
+    "#E67E22";
+  return (
+    <Modal visible={!!listing} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <View style={{ flexDirection: "row", alignItems: "center", padding: 14, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Pressable onPress={onClose} style={{ width: 36 }}>
+            <Ionicons name="close" size={24} color={colors.text} />
+          </Pressable>
+          <Text style={{ flex: 1, textAlign: "center", fontSize: 16, fontFamily: "Outfit_700Bold", color: colors.text }} numberOfLines={1}>
+            Listing Details
+          </Text>
+          <View style={{ width: 36 }} />
+        </View>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
+          <View style={{ flexDirection: "row", gap: 12 }}>
+            <Image source={{ uri: listing.cardImage }} style={{ width: 100, height: 140, borderRadius: 8 }} contentFit="contain" />
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={{ fontSize: 18, fontFamily: "Outfit_700Bold", color: colors.text }}>{listing.cardName}</Text>
+              <Text style={{ fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.textSecondary }}>{listing.setName}</Text>
+              <Text style={{ fontSize: 13, fontFamily: "Outfit_500Medium", color: colors.textMuted }}>{listing.rarity}</Text>
+              <View style={{ flexDirection: "row", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                <View style={[styles.typeBadge, { backgroundColor: listing.type === "sale" ? colors.success : colors.accent }]}>
+                  <Text style={styles.typeBadgeText}>{listing.type === "sale" ? "SALE" : "TRADE"}</Text>
+                </View>
+                <View style={[styles.typeBadge, { backgroundColor: statusColor + "30" }]}>
+                  <Text style={[styles.typeBadgeText, { color: statusColor }]}>{status.toUpperCase()}</Text>
+                </View>
+              </View>
+              {listing.priceGBP != null && (
+                <Text style={{ fontSize: 18, fontFamily: "Outfit_700Bold", color: colors.success, marginTop: 4 }}>
+                  {formatGBP(listing.priceGBP)}
+                </Text>
+              )}
+            </View>
+          </View>
+
+          <View style={{ backgroundColor: colors.card, padding: 12, borderRadius: 10, gap: 4 }}>
+            <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textMuted, letterSpacing: 1 }}>SELLER</Text>
+            <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.text }}>{listing.userName}</Text>
+            <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>Condition: {listing.condition}</Text>
+            <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>Posted: {new Date(listing.createdAt).toLocaleString("en-GB")}</Text>
+          </View>
+
+          {listing.description ? (
+            <View style={{ backgroundColor: colors.card, padding: 12, borderRadius: 10, gap: 4 }}>
+              <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textMuted, letterSpacing: 1 }}>DESCRIPTION</Text>
+              <Text style={{ fontSize: 14, fontFamily: "Outfit_400Regular", color: colors.text, lineHeight: 20 }}>{listing.description}</Text>
+            </View>
+          ) : null}
+
+          {listing.photos && listing.photos.length > 0 && (
+            <View style={{ gap: 8 }}>
+              <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textMuted, letterSpacing: 1 }}>SELLER PHOTOS ({listing.photos.length})</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {listing.photos.map((p, i) => (
+                  <Image key={i} source={{ uri: p }} style={{ width: 140, height: 140, borderRadius: 10, backgroundColor: colors.surface }} contentFit="cover" />
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
+          {listing.reviewNote ? (
+            <View style={{ backgroundColor: statusColor + "15", borderColor: statusColor, borderWidth: 1, padding: 12, borderRadius: 10, gap: 4 }}>
+              <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: statusColor, letterSpacing: 1 }}>REVIEW NOTE</Text>
+              <Text style={{ fontSize: 14, fontFamily: "Outfit_400Regular", color: colors.text }}>{listing.reviewNote}</Text>
+            </View>
+          ) : null}
+
+          <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+            {status === "pending" && (
+              <>
+                <Pressable onPress={onApprove} style={[styles.adminActionBtn, { backgroundColor: colors.success, flex: 1 }]}>
+                  <Ionicons name="checkmark-circle-outline" size={16} color="#FFF" />
+                  <Text style={styles.adminActionBtnText}>Approve</Text>
+                </Pressable>
+                <Pressable onPress={onReject} style={[styles.adminActionBtn, { backgroundColor: colors.error, flex: 1 }]}>
+                  <Ionicons name="close-circle-outline" size={16} color="#FFF" />
+                  <Text style={styles.adminActionBtnText}>Reject</Text>
+                </Pressable>
+              </>
+            )}
+            <Pressable onPress={onMessage} style={[styles.adminActionBtn, { backgroundColor: colors.pokemonBlue, flex: 1 }]}>
+              <Ionicons name="chatbubble-outline" size={16} color="#FFF" />
+              <Text style={styles.adminActionBtnText}>Message Seller</Text>
+            </Pressable>
+            <Pressable onPress={onRemove} style={[styles.adminActionBtn, { backgroundColor: colors.error + "20", flex: 1 }]}>
+              <Ionicons name="trash-outline" size={16} color={colors.error} />
+              <Text style={[styles.adminActionBtnText, { color: colors.error }]}>Remove</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </View>
+    </Modal>
   );
 }
 
@@ -715,6 +873,79 @@ export default function AdminPanelScreen() {
   const [expandedReport, setExpandedReport] = useState<string | null>(null);
   const [revenueData, setRevenueData] = useState<{ subscribers: any[]; stats: any } | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(false);
+
+  // Admin marketplace listings (separate from the user-facing `listings` array
+  // so admins can see pending + rejected as well as approved).
+  const [adminListings, setAdminListings] = useState<MarketListing[]>([]);
+  const [adminListingsLoading, setAdminListingsLoading] = useState(false);
+  const [listingFilter, setListingFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
+  const [selectedListing, setSelectedListing] = useState<MarketListing | null>(null);
+
+  const loadAdminListings = useCallback(async () => {
+    setAdminListingsLoading(true);
+    try {
+      const url = new URL("/api/admin/listings", getApiUrl());
+      url.searchParams.set("status", listingFilter);
+      const res = await fetch(url.toString(), { headers: await requireAdminAuthHeader() });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json();
+      setAdminListings(data.listings || []);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to load listings");
+    } finally {
+      setAdminListingsLoading(false);
+    }
+  }, [listingFilter]);
+
+  const handleModerateListing = useCallback(
+    async (listing: MarketListing, status: "approved" | "rejected") => {
+      const verb = status === "approved" ? "Approve" : "Reject";
+      const proceed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          `${verb} Listing`,
+          `${verb} "${listing.cardName}" by ${listing.userName}?`,
+          [
+            { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+            { text: verb, style: status === "rejected" ? "destructive" : "default", onPress: () => resolve(true) },
+          ]
+        );
+      });
+      if (!proceed) return;
+      try {
+        const url = new URL(`/api/admin/listings/${listing.id}`, getApiUrl());
+        const res = await fetch(url.toString(), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...(await requireAdminAuthHeader()) },
+          body: JSON.stringify({ status }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Server error ${res.status}`);
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setAdminListings((prev) =>
+          listingFilter === "all"
+            ? prev.map((l) => (l.id === listing.id ? { ...l, status } : l))
+            : prev.filter((l) => l.id !== listing.id)
+        );
+        setSelectedListing((prev) => (prev && prev.id === listing.id ? { ...prev, status } : prev));
+      } catch (e: any) {
+        Alert.alert("Error", e.message || "Could not update listing");
+      }
+    },
+    [listingFilter]
+  );
+
+  const handleMessageSeller = useCallback((listing: MarketListing) => {
+    router.push({
+      pathname: "/messages",
+      params: {
+        recipientId: listing.userId,
+        recipientName: listing.userName,
+        recipientUsername: "",
+      },
+    });
+  }, []);
   const [friendIds, setFriendIds] = useState<Record<string, "pending" | "friends">>({});
   const [addingFriendId, setAddingFriendId] = useState<string | null>(null);
 
@@ -730,6 +961,24 @@ export default function AdminPanelScreen() {
   }, []);
 
   React.useEffect(() => { loadFriends(); }, [loadFriends]);
+  React.useEffect(() => {
+    if (activeTab === "listings") loadAdminListings();
+  }, [activeTab, loadAdminListings]);
+
+  // Lightweight pending count for the tab badge (independent of the
+  // currently-selected filter so mods always see how many need review).
+  const [pendingListingCount, setPendingListingCount] = useState<number>(0);
+  const loadPendingListingCount = useCallback(async () => {
+    try {
+      const url = new URL("/api/admin/listings", getApiUrl());
+      url.searchParams.set("status", "pending");
+      const res = await fetch(url.toString(), { headers: await requireAdminAuthHeader() });
+      if (!res.ok) return;
+      const data = await res.json();
+      setPendingListingCount((data.listings || []).length);
+    } catch { /* non-critical */ }
+  }, []);
+  React.useEffect(() => { loadPendingListingCount(); }, [loadPendingListingCount, adminListings]);
 
   const handleAddFriend = useCallback(async (targetUserId: string) => {
     setAddingFriendId(targetUserId);
@@ -1247,7 +1496,7 @@ export default function AdminPanelScreen() {
               { color: activeTab === "listings" ? "#FFF" : colors.textMuted },
             ]}
           >
-            Listings ({listings.length})
+            Listings{pendingListingCount > 0 ? ` (${pendingListingCount})` : ""}
           </Text>
         </Pressable>
         {(isSuperadminUser || isAdminUser) && (
@@ -1332,54 +1581,119 @@ export default function AdminPanelScreen() {
 
       {activeTab === "listings" && (
         <FlatList
-          data={listings}
+          data={adminListings}
+          refreshing={adminListingsLoading}
+          onRefresh={loadAdminListings}
           renderItem={({ item }) => (
             <ListingRow
               listing={item}
               colors={colors}
+              onView={() => setSelectedListing(item)}
               onRemove={() => handleRemoveListing(item)}
+              onApprove={() => handleModerateListing(item, "approved")}
+              onReject={() => handleModerateListing(item, "rejected")}
+              onMessage={() => handleMessageSeller(item)}
             />
           )}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
-            listings.length > 0 ? (
-              <View style={[styles.summaryBar, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryValue, { color: colors.text }]}>
-                    {listings.filter((l) => l.type === "sale").length}
-                  </Text>
-                  <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>For Sale</Text>
-                </View>
-                <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryValue, { color: colors.text }]}>
-                    {listings.filter((l) => l.type === "trade").length}
-                  </Text>
-                  <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Trades</Text>
-                </View>
-                <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryValue, { color: colors.text }]}>{listings.length}</Text>
-                  <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Total</Text>
-                </View>
+            <View style={{ gap: 10 }}>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                {(["pending", "approved", "rejected", "all"] as const).map((f) => {
+                  const active = listingFilter === f;
+                  return (
+                    <Pressable
+                      key={f}
+                      onPress={() => setListingFilter(f)}
+                      style={{
+                        flex: 1,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        alignItems: "center",
+                        backgroundColor: active ? colors.pokemonBlue : colors.surface,
+                        borderWidth: 1,
+                        borderColor: active ? colors.pokemonBlue : colors.borderLight,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          fontFamily: "Outfit_700Bold",
+                          color: active ? "#FFF" : colors.textSecondary,
+                          textTransform: "uppercase",
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        {f}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
-            ) : null
+              {adminListings.length > 0 && (
+                <View style={[styles.summaryBar, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
+                  <View style={styles.summaryItem}>
+                    <Text style={[styles.summaryValue, { color: colors.text }]}>
+                      {adminListings.filter((l) => l.type === "sale").length}
+                    </Text>
+                    <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>For Sale</Text>
+                  </View>
+                  <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.summaryItem}>
+                    <Text style={[styles.summaryValue, { color: colors.text }]}>
+                      {adminListings.filter((l) => l.type === "trade").length}
+                    </Text>
+                    <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Trades</Text>
+                  </View>
+                  <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.summaryItem}>
+                    <Text style={[styles.summaryValue, { color: colors.text }]}>{adminListings.length}</Text>
+                    <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Total</Text>
+                  </View>
+                </View>
+              )}
+            </View>
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <MaterialCommunityIcons name="store-check-outline" size={56} color={colors.textMuted} />
               <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
-                No Active Listings
+                {listingFilter === "pending" ? "No Pending Listings" : "No Listings"}
               </Text>
               <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
-                All clear - no marketplace listings to review
+                {listingFilter === "pending"
+                  ? "All caught up - no listings awaiting review"
+                  : `No ${listingFilter} listings to display`}
               </Text>
             </View>
           }
         />
       )}
+
+      <ListingDetailModal
+        listing={selectedListing}
+        colors={colors}
+        onClose={() => setSelectedListing(null)}
+        onApprove={() => selectedListing && handleModerateListing(selectedListing, "approved")}
+        onReject={() => selectedListing && handleModerateListing(selectedListing, "rejected")}
+        onMessage={() => {
+          if (selectedListing) {
+            const l = selectedListing;
+            setSelectedListing(null);
+            handleMessageSeller(l);
+          }
+        }}
+        onRemove={() => {
+          if (selectedListing) {
+            const l = selectedListing;
+            setSelectedListing(null);
+            handleRemoveListing(l);
+          }
+        }}
+      />
+
 
       {activeTab === "reports" && (
         <FlatList
@@ -2156,6 +2470,20 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+  },
+  adminActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  adminActionBtnText: {
+    color: "#FFF",
+    fontSize: 11,
+    fontFamily: "Outfit_700Bold",
   },
   sectionHeader: {
     fontSize: 12,

@@ -65,7 +65,7 @@ interface UserContextValue {
   addCard: (item: Omit<CollectionItem, "id" | "addedAt">) => Promise<void>;
   removeCard: (cardId: string, condition: string, variant?: CardVariant) => Promise<void>;
   updateQuantity: (cardId: string, condition: string, quantity: number, variant?: CardVariant) => Promise<void>;
-  createListing: (listing: Omit<MarketListing, "id" | "createdAt">) => Promise<void>;
+  createListing: (listing: Omit<MarketListing, "id" | "createdAt" | "status" | "reviewedBy" | "reviewedAt" | "reviewNote">) => Promise<void>;
   deleteListing: (listingId: string) => Promise<void>;
   grantPremium: (userId: string) => Promise<void>;
   revokePremium: (userId: string) => Promise<void>;

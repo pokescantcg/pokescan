@@ -1867,11 +1867,15 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       condition: row.condition,
       description: row.description ?? "",
       photos: (() => { try { return JSON.parse(row.photos ?? "[]"); } catch { return []; } })(),
+      status: row.status ?? "approved",
+      reviewedBy: row.reviewed_by ?? null,
+      reviewedAt: row.reviewed_at ?? null,
+      reviewNote: row.review_note ?? null,
       createdAt: row.created_at,
     };
   }
 
-  // GET /api/listings — all active listings (premium required)
+  // GET /api/listings — approved listings only (premium required)
   app.get("/api/listings", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -1880,8 +1884,15 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
       if (!user.isPremium) { res.status(403).json({ error: "Premium required to access the marketplace." }); return; }
 
+      // Public marketplace shows only approved listings.
+      // The owner additionally sees their own pending/rejected listings so they
+      // know the moderation status of their own posts.
       const result = await pool.query(
-        `SELECT * FROM pokescan_market_listings ORDER BY created_at DESC LIMIT 200`
+        `SELECT * FROM pokescan_market_listings
+           WHERE status = 'approved' OR user_id = $1
+           ORDER BY created_at DESC
+           LIMIT 200`,
+        [user.id]
       );
       res.json({ listings: result.rows.map(rowToListing) });
     } catch (err: any) {
@@ -1890,7 +1901,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
-  // POST /api/listings — create a listing (premium required)
+  // POST /api/listings — create a listing (premium required). New listings are
+  // pending until an admin/moderator approves them, to limit fake/scam posts.
   app.post("/api/listings", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -1908,10 +1920,14 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       const rawPhotos: string[] = Array.isArray(photos) ? photos.slice(0, 6) : [];
       const photosJson = JSON.stringify(rawPhotos);
 
+      // Staff posts are auto-approved; everyone else starts pending review.
+      const isStaff = user.role === "admin" || user.role === "moderator";
+      const initialStatus = isStaff ? "approved" : "pending";
+
       const result = await pool.query(
         `INSERT INTO pokescan_market_listings
-           (user_id, user_name, card_id, card_name, card_image, set_name, rarity, type, price_gbp, condition, description, photos)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           (user_id, user_name, card_id, card_name, card_image, set_name, rarity, type, price_gbp, condition, description, photos, status, reviewed_by, reviewed_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          RETURNING *`,
         [
           user.id, user.displayName,
@@ -1919,6 +1935,9 @@ If you cannot identify the card, set confidence to "low" and provide your best g
           type, priceGBP ?? null,
           condition, description ?? "",
           photosJson,
+          initialStatus,
+          isStaff ? user.id : null,
+          isStaff ? new Date() : null,
         ]
       );
       res.status(201).json({ listing: rowToListing(result.rows[0]) });
@@ -1949,6 +1968,67 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     } catch (err: any) {
       console.error("[Listings] DELETE error:", err.message);
       res.status(500).json({ error: "Could not delete listing" });
+    }
+  });
+
+  // ─── Admin: market listing moderation ─────────────────────────────────────
+  // GET /api/admin/listings?status=pending|approved|rejected|all (default: all)
+  app.get("/api/admin/listings", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (user.role !== "admin" && user.role !== "moderator") {
+        res.status(403).json({ error: "Staff access required" }); return;
+      }
+
+      const status = String(req.query.status ?? "all").toLowerCase();
+      const allowed = ["pending", "approved", "rejected"];
+      const result = allowed.includes(status)
+        ? await pool.query(
+            `SELECT * FROM pokescan_market_listings WHERE status = $1 ORDER BY created_at DESC LIMIT 500`,
+            [status]
+          )
+        : await pool.query(
+            `SELECT * FROM pokescan_market_listings ORDER BY created_at DESC LIMIT 500`
+          );
+      res.json({ listings: result.rows.map(rowToListing) });
+    } catch (err: any) {
+      console.error("[Admin Listings] GET error:", err.message);
+      res.status(500).json({ error: "Could not fetch admin listings" });
+    }
+  });
+
+  // PATCH /api/admin/listings/:id — set status to approved or rejected
+  app.patch("/api/admin/listings/:id", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (user.role !== "admin" && user.role !== "moderator") {
+        res.status(403).json({ error: "Staff access required" }); return;
+      }
+
+      const { id } = req.params;
+      const { status, reviewNote } = req.body ?? {};
+      if (status !== "approved" && status !== "rejected") {
+        res.status(400).json({ error: "status must be 'approved' or 'rejected'" }); return;
+      }
+
+      const result = await pool.query(
+        `UPDATE pokescan_market_listings
+            SET status = $1, reviewed_by = $2, reviewed_at = NOW(), review_note = $3
+          WHERE id = $4
+          RETURNING *`,
+        [status, user.id, reviewNote ?? null, id]
+      );
+      if (result.rows.length === 0) { res.status(404).json({ error: "Listing not found" }); return; }
+      res.json({ listing: rowToListing(result.rows[0]) });
+    } catch (err: any) {
+      console.error("[Admin Listings] PATCH error:", err.message);
+      res.status(500).json({ error: "Could not update listing" });
     }
   });
 
