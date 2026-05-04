@@ -2,7 +2,7 @@
   "expo": {
     "name": "PokeScan TCG",
     "slug": "pokescan-tcg",
-    "version": "1.1.2",
+    "version": "1.1.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "pokescantcg",
@@ -59,14 +59,8 @@
       },
       "eas": {
         "projectId": "cd413641-f209-410e-84dc-d3c166607cac"
-      }
-    }
-  }
-}
-{
-  "expo": {
-    "extra": {
-      "apiUrl": process.env.EXPO_PUBLIC_API_URL
+      },
+      "apiUrl": "https://pokescantcg.onrender.com"
     }
   }
 }

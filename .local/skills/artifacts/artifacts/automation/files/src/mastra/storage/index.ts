@@ -4,5 +4,5 @@ import { PostgresStore } from "@mastra/pg";
 export const sharedPostgresStorage = new PostgresStore({
   id: "main-postgres-store",
   connectionString:
-    process.env.DATABASE_URL || "postgresql://localhost:5432/mastra",
+    process.env.DATABASE_URL || "postgresql://localhost:5433/mastra",
 });
