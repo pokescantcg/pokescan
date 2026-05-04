@@ -1,7 +1,7 @@
 {
   "name": "expo-app",
   "main": "expo-router/entry",
-  "version": "1.1.2",
+  "version": "1.1.5",
   "scripts": {
     "postinstall": "patch-package",
     "expo:dev": "npx expo start --localhost",
@@ -83,6 +83,7 @@
     "babel-plugin-react-compiler": "^19.0.0-beta-e993439-20250117",
     "cross-env": "^10.1.0",
     "drizzle-kit": "^0.31.10",
+    "esbuild": "^0.28.0",
     "eslint": "^9.31.0",
     "eslint-config-expo": "~10.0.0",
     "patch-package": "^8.0.0",
