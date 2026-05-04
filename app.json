@@ -1,0 +1,72 @@
+{
+  "expo": {
+    "name": "PokeScan TCG",
+    "slug": "pokescan-tcg",
+    "version": "1.1.2",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "pokescantcg",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B1426"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.pokescantcg"
+    },
+    "android": {
+      "package": "pokescan.tcg1",
+      "adaptiveIcon": {
+        "backgroundColor": "#0B1426",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "origin": "https://replit.com/"
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow PokeScan TCG to access your camera to scan Pokemon cards."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "origin": "https://replit.com/"
+      },
+      "eas": {
+        "projectId": "cd413641-f209-410e-84dc-d3c166607cac"
+      }
+    }
+  }
+}
+{
+  "expo": {
+    "extra": {
+      "apiUrl": process.env.EXPO_PUBLIC_API_URL
+    }
+  }
+}

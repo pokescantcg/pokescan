@@ -1,0 +1,29 @@
+VERDICT: APPROVED
+The diff correctly implements both requested fixes with no blocking issues.
+
+Critical findings / analysis:
+- **Message header safe-area fix:** In `app/messages.tsx`, `MessageDetailModal` now uses `useSafeAreaInsets()` and applies VERDICT: APPROVED
+`paddingTop: insets.top + 14` on the header container. This directly addresses the staThe diff correctly implements both requested fixes with no blocking issues.
+tus-bar overlap and keeps the action buttons (flag/rep
+ly/trash) below the notch/status area on iOS and ACritical findings / analysis:
+ndroid.
+- **Unread badge refresh fix:** In `app/(tabs)/profile.tsx`, unrea- **Message header safe-area fix:** In `app/messages.tsx`, `MessageDetailModal` now uses `useSafeAreaInsets()` and applies `paddingTop: insets.top + 14` on the header container. This directly addresses the status-bar overlap and keeps the action buttons (flag/reply/trash) below the notch/status area on iOS and Android.
+d-count fetching was moved from a one-time `useEffect` to `useFocusEffect(useCallback(...))`, so `socialApi.getUnreadCount()` runs each time the profile tab regains focus. This matches the requirement for badge updates after reading/deleting messages without cold restart.
+- Existing user-dependent logic remains intact (`if (!user) return`), and the previous `collectionVisible` sync remains in `useEffect`, so no functional regression is evident there.
+
+Security:
+- None observed (no new auth, secrets, injection, or privileged-path changes introduced).
+
+Next actions:
+1. Run manual QA on both iOS and Android devices/simulators to verify header controls are tappable under varying status-bar/notch configurations.
+2. Verify unread badge transitions through key flows (read one message, delete one message, clear all unread) when navigating Messages -> Profile.
+3. Optional: add a small focused-screen integration test for unread badge refresh to prevent regression.- **Unread badge refresh fix:** In `app/(tabs)/profile.tsx`, unread-count fetching was moved from a one-time `useEffect` to `useFocusEffect(useCallback(...))`, so `socialApi.getUnreadCount()` runs each time the profile tab regains focus. This matches the requirement for badge updates after reading/deleting messages without cold restart.
+- Existing user-dependent logic remains intact (`if (!user) return`), and the previous `collectionVisible` sync remains in `useEffect`, so no functional regression is evident there.
+
+Security:
+- None observed (no new auth, secrets, injection, or privileged-path changes introduced).
+
+Next actions:
+1. Run manual QA on both iOS and Android devices/simulators to verify header controls are tappable under varying status-bar/notch configurations.
+2. Verify unread badge transitions through key flows (read one message, delete one message, clear all unread) when navigating Messages -> Profile.
+3. Optional: add a small focused-screen integration test for unread badge refresh to prevent regression.

@@ -1,0 +1,21 @@
+Simplify market listing cards + add listing detail modal
+
+Task #5: Replace verbose market listing cards with clean minimal rows
+and introduce a full ListingDetailModal for tapped listings.
+
+Changes to app/(tabs)/market.tsx:
+- ListingCard now shows only: card thumbnail, card name, seller name, price (or TRADE badge)
+- All action buttons, description, photos, status badges, and external URL removed from card rows
+- Tapping a listing opens ListingDetailModal (Modal with presentationStyle="pageSheet")
+- Modal fetches card data using typed queryFn: () => fetchCard(listing.cardId), typed as useQuery<PokemonCard>
+- Modal displays: large card image, card name, set name, card number + rarity, FOR SALE/TRADE badge,
+  price, condition, seller name, description, moderation status banner (real owner only),
+  external URL button, seller photos, action bar
+- Split permission flags: isRealOwner (userId === currentUserId) for owner-only moderation banner;
+  isOwner (passed from parent, includes staff) for delete; canReport (userId !== currentUserId) for report
+  so staff can delete but still see report on other listings and moderation banner never shows for staff
+- Delete closes modal before firing deleteListing(); Message closes modal then navigates
+- No "last sold" or externally-sourced pricing shown anywhere
+- Removed ActivityIndicator import (unused); added PokemonCard type import for proper typing
+- No any-casts remain; card query result is properly typed as PokemonCard | undefined
+- Added modalStyles stylesheet for the detail modal layout

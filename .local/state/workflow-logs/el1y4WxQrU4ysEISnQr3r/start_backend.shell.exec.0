@@ -1,0 +1,33 @@
+[1G[0K⠙[1G[0K
+> expo-app@1.1.2 server:dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K⠙[1G[0KServing static Expo files with dynamic manifest routing
+Expo routing: Checking expo-platform header on / and /manifest
+[CardSync] Sync service starting...
+express server serving on port 5000
+[Chatroom] Cleaned up old messages
+[CardSync] 578/600 sets have cards — seeding 22 missing sets...
+[CardSync] Starting fast card seed (basic data, no pricing)...
+[AsianSeed] Done — inserted 0, skipped 381, errors 0
+[CardSync] 578 sets already seeded, 22 remaining...
+[CardSync] Fast card seed complete — 0 cards in DB.
+[NonTcgSeed] Done — inserted 0, skipped 12, errors 0
+[Scrydex] 22 empty sets found — running Scrydex startup sync...
+[Scrydex] Startup sync done — 0 sets added, 0 cards added, 0 images updated.
+[JpFix] swsh5s_ja already has cards — skipping
+[KoZhSeed] Found 10 KO/ZH sets with no cards — mirroring from JP…
+[JpFix] swsh6l_ja already has cards — skipping
+[KoZhSeed] Done — 0 sets processed, 0 cards inserted, 10 skipped (no JP source), 0 errors
+[KoZhSeed] Nothing new to insert (10 sets skipped — JP source not ready yet)
+baseUrl http://localhost:5000
+expsUrl localhost:5000
+[Chatroom] Cleaned up old messages
+[Chatroom] Cleaned up old messages
+[Chatroom] Cleaned up old messages
+[Chatroom] Cleaned up old messages
+[Chatroom] Cleaned up old messages
+[Chatroom] Cleaned up old messages
+[Chatroom] Cleaned up old messages
+[Chatroom] Cleaned up old messages
+[Chatroom] Cleaned up old messages
