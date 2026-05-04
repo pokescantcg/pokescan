@@ -8,6 +8,13 @@
       "when": 1777882650373,
       "tag": "0000_sad_fenris",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777926430416,
+      "tag": "0001_rare_tusk",
+      "breakpoints": true
     }
   ]
 }

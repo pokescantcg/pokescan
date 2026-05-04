@@ -35,13 +35,14 @@ async function adminAuthHeader(): Promise<Record<string, string> | null> {
   return { Authorization: `Bearer ${token}` };
 }
 
-/** Throws a friendly error if the user has no superadmin session. */
-async function requireAdminAuthHeader(): Promise<Record<string, string>> {
-  const headers = await adminAuthHeader();
-  if (!headers) {
-    throw new Error("Superadmin session expired. Please sign in again.");
+/** Returns auth header or null if no token. */
+async function requireAdminAuthHeader(): Promise<Record<string, string> | null> {
+  const token = await getSuperadminToken();
+  if (!token) {
+    console.warn("Missing admin token");
+    return null;
   }
-  return headers;
+  return { Authorization: `Bearer ${token}` };
 }
 
 function EditUserModal({
@@ -69,7 +70,7 @@ function EditUserModal({
     setEmail(profile.email || "");
     setMobileNumber(profile.mobileNumber || "");
     setPassword("");
-  }, [profile.id]);
+  }, [profile]);
 
   const handleSave = async () => {
     const trimmedName = displayName.trim();
@@ -267,7 +268,7 @@ function formatRenewalDate(dateStr?: string | null): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function ListingRow({
+const ListingRow = React.memo(function ListingRow({
   listing,
   colors,
   onRemove,
@@ -361,7 +362,7 @@ function ListingRow({
       </Pressable>
     </Pressable>
   );
-}
+});
 
 function ListingDetailModal({
   listing,
@@ -481,7 +482,7 @@ function ListingDetailModal({
   );
 }
 
-function UserRow({
+const UserRow = React.memo(function UserRow({
   profile,
   colors,
   isCurrentUser,
@@ -643,7 +644,7 @@ function UserRow({
       )}
     </View>
   );
-}
+});
 
 function getTimeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -699,13 +700,15 @@ function CreateUserModal({
       Alert.alert("Validation", "Password must be at least 6 characters.");
       return;
     }
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
     setSaving(true);
     try {
       const { getApiUrl } = await import("@/lib/query-client");
       const base = getApiUrl();
       const res = await fetch(new URL("/api/admin/create-user", base).href, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(await requireAdminAuthHeader()) },
+        headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({
           username: u,
           displayName: d,
@@ -716,7 +719,12 @@ function CreateUserModal({
           role: "user",
         }),
       });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
       if (!res.ok) throw new Error(data.error || "Failed to create account");
       Alert.alert("Success", `Account created for @${u}`);
       reset();
@@ -874,6 +882,13 @@ export default function AdminPanelScreen() {
   const [revenueData, setRevenueData] = useState<{ subscribers: any[]; stats: any } | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(false);
 
+  React.useEffect(() => {
+    return () => {
+      syncXhrRef.current?.abort();
+      asianXhrRef.current?.abort();
+    };
+  }, []);
+
   // Admin marketplace listings (separate from the user-facing `listings` array
   // so admins can see pending + rejected as well as approved).
   const [adminListings, setAdminListings] = useState<MarketListing[]>([]);
@@ -883,12 +898,19 @@ export default function AdminPanelScreen() {
 
   const loadAdminListings = useCallback(async () => {
     setAdminListingsLoading(true);
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
     try {
       const url = new URL("/api/admin/listings", getApiUrl());
       url.searchParams.set("status", listingFilter);
-      const res = await fetch(url.toString(), { headers: await requireAdminAuthHeader() });
+      const res = await fetch(url.toString(), { headers });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
       setAdminListings(data.listings || []);
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to load listings");
@@ -911,11 +933,13 @@ export default function AdminPanelScreen() {
         );
       });
       if (!proceed) return;
+      const headers = await requireAdminAuthHeader();
+      if (!headers) return;
       try {
         const url = new URL(`/api/admin/listings/${listing.id}`, getApiUrl());
         const res = await fetch(url.toString(), {
           method: "PATCH",
-          headers: { "Content-Type": "application/json", ...(await requireAdminAuthHeader()) },
+          headers: { "Content-Type": "application/json", ...headers },
           body: JSON.stringify({ status }),
         });
         if (!res.ok) {
@@ -969,16 +993,20 @@ export default function AdminPanelScreen() {
   // currently-selected filter so mods always see how many need review).
   const [pendingListingCount, setPendingListingCount] = useState<number>(0);
   const loadPendingListingCount = useCallback(async () => {
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
     try {
       const url = new URL("/api/admin/listings", getApiUrl());
       url.searchParams.set("status", "pending");
-      const res = await fetch(url.toString(), { headers: await requireAdminAuthHeader() });
+      const res = await fetch(url.toString(), { headers });
       if (!res.ok) return;
       const data = await res.json();
       setPendingListingCount((data.listings || []).length);
     } catch { /* non-critical */ }
   }, []);
-  React.useEffect(() => { loadPendingListingCount(); }, [loadPendingListingCount, adminListings]);
+  React.useEffect(() => {
+    loadPendingListingCount();
+  }, [loadPendingListingCount]);
 
   const handleAddFriend = useCallback(async (targetUserId: string) => {
     setAddingFriendId(targetUserId);
@@ -995,9 +1023,22 @@ export default function AdminPanelScreen() {
 
   const loadReports = useCallback(async () => {
     setReportsLoading(true);
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
     try {
-      const data = await socialApi.getAdminReports();
-      setReports(data.reports);
+      const base = getApiUrl();
+      const res = await fetch(new URL("/api/admin/reports", base).href, {
+        headers,
+      });
+      if (res.ok) {
+        let data: any = {};
+        try {
+          data = await res.json();
+        } catch {
+          console.warn("Invalid JSON response");
+        }
+        setReports(data.reports);
+      }
     } catch (e) {
       console.error("Failed to load reports:", e);
     } finally {
@@ -1007,15 +1048,20 @@ export default function AdminPanelScreen() {
 
   const loadRevenue = useCallback(async () => {
     setRevenueLoading(true);
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
     try {
-      const { getSessionToken } = await import("@/lib/storage");
-      const token = await getSessionToken();
       const base = getApiUrl();
       const res = await fetch(new URL("/api/admin/subscription-stats", base).href, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
       });
       if (res.ok) {
-        const data = await res.json();
+        let data: any = {};
+        try {
+          data = await res.json();
+        } catch {
+          console.warn("Invalid JSON response");
+        }
         setRevenueData(data);
       }
     } catch (e) {
@@ -1078,9 +1124,11 @@ export default function AdminPanelScreen() {
   const handleDbPreview = useCallback(async () => {
     setDbPreviewLoading(true);
     setDbPreview(null);
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
     try {
       const url = new URL("/api/admin/scrydex-preview", getApiUrl());
-      const res = await fetch(url.toString(), { headers: await requireAdminAuthHeader() });
+      const res = await fetch(url.toString(), { headers });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       setDbPreview(data);
@@ -1271,9 +1319,11 @@ export default function AdminPanelScreen() {
 
   const loadAdminSets = useCallback(async () => {
     setAdminSetsLoading(true);
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
     try {
       const url = new URL("/api/admin/sets", getApiUrl());
-      const res = await fetch(url.toString(), { headers: await requireAdminAuthHeader() });
+      const res = await fetch(url.toString(), { headers });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const data = await res.json();
       setAdminSets(data.sets || []);
@@ -1285,11 +1335,13 @@ export default function AdminPanelScreen() {
   }, []);
 
   const toggleSetVisibility = useCallback(async (setIds: string[], hidden: boolean) => {
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
     try {
       const url = new URL("/api/admin/sets/visibility", getApiUrl());
       const res = await fetch(url.toString(), {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...(await requireAdminAuthHeader()) },
+        headers: { "Content-Type": "application/json", ...headers },
         body: JSON.stringify({ setIds, hidden }),
       });
       if (!res.ok) throw new Error("Failed to update");
@@ -1360,14 +1412,19 @@ export default function AdminPanelScreen() {
   const handleEditUser = useCallback(
     async (updates: { displayName?: string; email?: string; mobileNumber?: string; password?: string }) => {
       if (!editingUser) return;
+      const headers = await requireAdminAuthHeader();
+      if (!headers) return;
       // If password provided, push to backend directly
       if (updates.password) {
         const { getApiUrl } = await import("@/lib/query-client");
         const base = getApiUrl();
         const res = await fetch(new URL("/api/admin/edit-user", base).href, {
           method: "PATCH",
-          headers: { "Content-Type": "application/json", ...(await requireAdminAuthHeader()) },
-        body: JSON.stringify({
+          headers: {
+            "Content-Type": "application/json",
+            ...headers,
+          },
+          body: JSON.stringify({
             userId: editingUser.id,
             displayName: updates.displayName,
             email: updates.email,
@@ -1598,6 +1655,8 @@ export default function AdminPanelScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
           ListHeaderComponent={
             <View style={{ gap: 10 }}>
               <View style={{ flexDirection: "row", gap: 6 }}>
@@ -1703,6 +1762,8 @@ export default function AdminPanelScreen() {
           showsVerticalScrollIndicator={false}
           onRefresh={loadReports}
           refreshing={reportsLoading}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
           ListHeaderComponent={
             reports.length > 0 ? (
               <View style={[styles.summaryBar, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>

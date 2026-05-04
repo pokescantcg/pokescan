@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import BASE_URL from "../app/services/api";
+import { BASE_URL } from "../app/services/api";
 
 const API_URL = BASE_URL;
 
@@ -8,7 +8,7 @@ const KEYS = {
   SETS: "pokescan_cache_sets",
   CARDS_PREFIX: "pokescan_cache_cards_",
 };
-
+console.log("API URL USED:", API_URL);
 // ── Language classification ───────────────────────────────────────────────────
 
 export type LangFilter = "english" | "chinese";
@@ -219,7 +219,12 @@ export async function syncDatabase(
 
   const setsRes = await fetch(`${API_URL}/api/pokemon/sets`);
   if (!setsRes.ok) throw new Error("Failed to fetch sets");
-  const setsData = await setsRes.json();
+  let setsData: any = { data: [] };
+  try {
+    setsData = await setsRes.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
   const allSets: Array<{ id: string; name: string; total: number }> = setsData.data || [];
 
   await safeSet(KEYS.SETS, JSON.stringify(allSets));
@@ -242,7 +247,13 @@ export async function syncDatabase(
     try {
       const cardsRes = await fetch(`${API_URL}/api/pokemon/sets/${set.id}/all-cards`);
       if (!cardsRes.ok) return;
-      const cardsData = await cardsRes.json();
+      let cardsData: any = { data: [] };
+      try {
+        cardsData = await cardsRes.json();
+      } catch {
+        console.warn("Invalid JSON response");
+        return;
+      }
       const rawCards: any[] = cardsData.data || [];
 
       const cached: CachedCard[] = rawCards.map((c: any) => ({

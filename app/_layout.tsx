@@ -125,6 +125,15 @@ export default function RootLayout() {
     }
   }, [fontsLoaded]);
 
+  useEffect(() => {
+    const globalAny = global as any;
+    if (typeof globalAny.ErrorUtils?.setGlobalHandler === "function") {
+      globalAny.ErrorUtils.setGlobalHandler((error: any, isFatal: boolean) => {
+        console.log("GLOBAL ERROR:", error);
+      });
+    }
+  }, []);
+
   if (!fontsLoaded) return null;
 
   return (

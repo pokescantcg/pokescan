@@ -3,6 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
 import { Platform } from "react-native";
 import { apiRequest, getApiUrl } from "./query-client";
+import { apiFetch } from "../app/services/api";
 
 export type UserRole = "user" | "moderator" | "admin";
 
@@ -173,7 +174,12 @@ export async function restoreSession(): Promise<UserProfile | null> {
       const localUser = await getUser();
       return localUser;
     }
-    const data = await res.json();
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+    }
     if (data.user) {
       const user = dbUserToProfile(data.user);
       await saveLocalUser(user);
@@ -194,16 +200,10 @@ export async function registerWithPassword(
   password: string,
   mobileNumber?: string
 ): Promise<{ user: UserProfile; userId: string }> {
-  const url = new URL("/api/auth/register", getApiUrl());
-  const res = await fetch(url.toString(), {
+  const data = await apiFetch<{ token: string; user: any }>("/api/auth/register", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, displayName, email, password, mobileNumber: mobileNumber || "" }),
+    body: { username, displayName, email, password, mobileNumber: mobileNumber || "" },
   });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || "Registration failed");
-  }
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
   await saveLocalUser(user);
@@ -211,30 +211,20 @@ export async function registerWithPassword(
 }
 
 export async function verifyEmailOtp(email: string, code: string): Promise<void> {
-  const url = new URL("/api/auth/verify-email", getApiUrl());
-  const res = await fetch(url.toString(), {
+  await apiFetch("/api/auth/verify-email", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, code }),
+    body: { email, code },
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Verification failed");
 }
 
 export async function loginWithPassword(
   credential: string,
   password: string
 ): Promise<{ user: UserProfile }> {
-  const url = new URL("/api/auth/login", getApiUrl());
-  const res = await fetch(url.toString(), {
+  const data = await apiFetch<{ token: string; user: any }>("/api/auth/login", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ credential, password }),
+    body: { credential, password },
   });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || "Login failed");
-  }
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
   await saveLocalUser(user);
@@ -253,17 +243,10 @@ export async function verifyPasswordOnly(
   emailCredential: string | null;
   mobileCredential: string | null;
 }> {
-  const url = new URL("/api/auth/verify-password", getApiUrl());
-  const res = await fetch(url.toString(), {
+  return await apiFetch("/api/auth/verify-password", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ credential, password }),
+    body: { credential, password },
   });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || "Password verification failed");
-  }
-  return data;
 }
 
 export async function registerUserWithOtp(
@@ -279,49 +262,30 @@ export async function sendOtpForRegistration(
   userId: string,
   channel: "email" | "sms"
 ): Promise<void> {
-  const url = new URL("/api/auth/send-otp-register", getApiUrl());
-  const res = await fetch(url.toString(), {
+  await apiFetch("/api/auth/send-otp-register", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId, channel }),
+    body: { userId, channel },
   });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || "Failed to send verification code");
-  }
 }
 
 export async function sendOtpForLogin(
   credential: string,
   channel: "email" | "sms"
 ): Promise<{ userId: string }> {
-  const url = new URL("/api/auth/send-otp", getApiUrl());
-  const res = await fetch(url.toString(), {
+  return await apiFetch("/api/auth/send-otp", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ credential, channel }),
+    body: { credential, channel },
   });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || "Failed to send verification code");
-  }
-  return data;
 }
 
 export async function verifyOtpAndLogin(
   credential: string,
   code: string
 ): Promise<{ token: string; user: UserProfile }> {
-  const url = new URL("/api/auth/verify-otp", getApiUrl());
-  const res = await fetch(url.toString(), {
+  const data = await apiFetch<{ token: string; user: any }>("/api/auth/verify-otp", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ credential, code }),
+    body: { credential, code },
   });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || "Verification failed");
-  }
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
   await saveLocalUser(user);
@@ -374,7 +338,13 @@ export async function fetchAllUsersFromServer(): Promise<UserProfile[]> {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return [];
-    const data = await res.json();
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+      return [];
+    }
     const serverUsers: UserProfile[] = (data.users || []).map(dbUserToProfile);
     // Merge into local registry so future reads include them
     for (const u of serverUsers) {
@@ -439,7 +409,7 @@ export async function verifySuperadminOtp(email: string, code: string): Promise<
     return { ok: false, error: "Network error. Please check your connection." };
   }
 
-  await setSuperadminToken(token);
+  await saveSessionToken(token);
 
   // Keep the currently logged-in user (so their server session stays valid for
   // chat, friends, marketplace, etc.) and just grant the superadmin flag on top.
@@ -582,7 +552,13 @@ export async function getCollection(): Promise<CollectionItem[]> {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return await loadCollectionCache();
-    const data = await res.json();
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+      return await loadCollectionCache();
+    }
     const items = (data.collection ?? []) as CollectionItem[];
     saveCollectionCache(items);
     return items;
@@ -602,10 +578,20 @@ export async function addToCollection(item: Omit<CollectionItem, "id" | "addedAt
       body: JSON.stringify(item),
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
+      let err: any = {};
+      try {
+        err = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
       throw new Error(err.error || "Failed to add card");
     }
-    const data = await res.json();
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+    }
     const items = (data.collection ?? []) as CollectionItem[];
     saveCollectionCache(items);
     return items;
@@ -745,7 +731,13 @@ export async function getListings(): Promise<MarketListing[]> {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return [];
-    const data = await res.json();
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+      return [];
+    }
     return (data.listings ?? []) as MarketListing[];
   } catch {
     return [];
@@ -762,7 +754,12 @@ export async function addListing(listing: Omit<MarketListing, "id" | "createdAt"
     body: JSON.stringify(listing),
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
+    let err: any = {};
+    try {
+      err = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+    }
     throw new Error((err as any).error ?? "Failed to create listing");
   }
   return getListings();
@@ -777,7 +774,12 @@ export async function removeListing(listingId: string): Promise<MarketListing[]>
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
+    let err: any = {};
+    try {
+      err = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+    }
     throw new Error((err as any).error ?? "Failed to delete listing");
   }
   return getListings();

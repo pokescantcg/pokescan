@@ -81,7 +81,12 @@ export default function ProfileScreen() {
     try {
       const url = new URL("/api/support/admin", getApiUrl()).href;
       const res = await fetch(url);
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
       if (data.admin) {
         router.push({
           pathname: "/messages",

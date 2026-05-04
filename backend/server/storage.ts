@@ -24,6 +24,9 @@ export interface DbUser {
   stripePriceId?: string | null;
   subscriptionStatus?: string | null;
   subscriptionPeriodEnd?: Date | string | null;
+  isBanned?: boolean;
+  bannedReason?: string | null;
+  bannedAt?: Date | string | null;
   // Scan quota & streak fields
   scansUsedToday?: number;
   scanDate?: string | null;
@@ -266,6 +269,9 @@ function mapRow(row: any): DbUser {
     chatBannedUntil: row.chat_banned_until ?? null,
     collectionVisible: row.collection_visible ?? false,
     emailVerified: row.email_verified ?? false,
+    isBanned: row.is_banned ?? false,
+    bannedReason: row.banned_reason ?? null,
+    bannedAt: row.banned_at ?? null,
   };
 }
 

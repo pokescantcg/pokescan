@@ -69,8 +69,12 @@ export const users = pgTable("users", {
     .default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  isBanned: boolean("is_banned").default(false),
+bannedReason: text("banned_reason"),
+bannedAt: timestamp("banned_at"),
 });
 export type User = typeof users.$inferSelect;
+
 
 export const pokescanSets = pgTable("pokescan_sets", {
   id: varchar("id").primaryKey(),

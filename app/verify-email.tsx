@@ -19,18 +19,27 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { verifyEmailOtp } from "@/lib/storage";
 import { getApiUrl } from "@/lib/query-client";
+import { useUser } from "@/lib/user-context";
 
 const CODE_LENGTH = 6;
 
 export default function VerifyEmailScreen() {
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
+  const { user } = useUser();
   const { email } = useLocalSearchParams<{ email: string }>();
 
-  const [digits, setDigits] = useState<string[]>(Array(CODE_LENGTH).fill(""));
+  const [digits, setDigits] = useState(Array(CODE_LENGTH).fill(""));
+  const [justVerified, setJustVerified] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (justVerified && user && user.id) {
+      router.replace("/(tabs)");
+    }
+  }, [justVerified, user]);
 
   const inputRefs = useRef<Array<TextInput | null>>(Array(CODE_LENGTH).fill(null));
 
@@ -74,7 +83,7 @@ export default function VerifyEmailScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await verifyEmailOtp(email, code);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace("/(tabs)");
+      setJustVerified(true);
     } catch (err: any) {
       const msg = err?.message || "Verification failed";
       Alert.alert("Verification Failed", msg);
@@ -95,7 +104,12 @@ export default function VerifyEmailScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
       if (!res.ok) throw new Error(data.error || "Failed to resend");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Code Sent", "A new verification code has been sent to your email.");

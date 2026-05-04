@@ -2,7 +2,7 @@ import { defineConfig } from "drizzle-kit";
 
 const DATABASE_URL =
   process.env.DATABASE_URL ||
-  "postgres://postgres:killer89!@127.0.0.1:5433/pokescan";
+  "postgresql://postgres:ThePokemonKing26!@db.iaugjjkbmydlroifpdho.supabase.co:5432/postgres";
 
 export default defineConfig({
   out: "./migrations",

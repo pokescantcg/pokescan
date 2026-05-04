@@ -1,17 +1,10 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import * as schema from "@shared/schema";
-
-// ✅ Safety check (VERY important)
-if (process.env.NODE_ENV === "production" && !process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is required in production");
-}
+import * as schema from "../shared/schema";
+import { DATABASE_POOL_CONFIG } from "./db-config";
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false,
-  },
+  ...DATABASE_POOL_CONFIG,
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,

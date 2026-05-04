@@ -1,5 +1,5 @@
 import { getSessionToken } from "./storage";
-import BASE_URL from "../app/services/api";
+import { BASE_URL } from "../app/services/api";
 
 export interface PokemonSet {
   id: string;
@@ -128,14 +128,24 @@ export interface PCVTopCard {
 export async function fetchSets(): Promise<PokemonSet[]> {
   const res = await fetch(`${BASE_URL}/api/pokemon/sets`);
   if (!res.ok) throw new Error("Failed to fetch sets");
-  const json: ApiResponse<PokemonSet[]> = await res.json();
+  let json: any = { data: [] };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
   return json.data;
 }
 
 export async function fetchSetCards(setId: string, page: number = 1): Promise<{ cards: PokemonCard[]; totalCount: number }> {
   const res = await fetch(`${BASE_URL}/api/pokemon/sets/${setId}/cards?page=${page}`);
   if (!res.ok) throw new Error("Failed to fetch cards");
-  const json: ApiResponse<PokemonCard[]> = await res.json();
+  let json: any = { data: [], totalCount: 0 };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
   return { cards: json.data, totalCount: json.totalCount };
 }
 
@@ -178,14 +188,24 @@ export async function searchCards(query: string, page: number = 1): Promise<{ ca
   }
   const res = await fetch(`${BASE_URL}/api/pokemon/cards/search?q=${encodeURIComponent(query)}&page=${page}`);
   if (!res.ok) throw new Error("Failed to search cards");
-  const json: ApiResponse<PokemonCard[]> = await res.json();
+  let json: any = { data: [], totalCount: 0 };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
   return { cards: json.data, totalCount: json.totalCount };
 }
 
 export async function fetchCard(cardId: string): Promise<PokemonCard> {
   const res = await fetch(`${BASE_URL}/api/pokemon/cards/${cardId}`);
   if (!res.ok) throw new Error("Failed to fetch card");
-  const json = await res.json();
+  let json: any = { data: {} };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
   return json.data;
 }
 
@@ -223,35 +243,60 @@ export async function findCard(name: string, number?: string, setId?: string): P
   if (setId) params.set("setId", setId);
   const res = await fetch(`${BASE_URL}/api/pokemon/cards/find?${params.toString()}`);
   if (!res.ok) return null;
-  const json = await res.json();
+  let json: any = { data: null };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
   return json.data || null;
 }
 
 export async function fetchPCVSets(): Promise<PCVSet[]> {
   const res = await fetch(`${BASE_URL}/api/pcv/sets`);
   if (!res.ok) throw new Error("Failed to fetch UK sets");
-  const json = await res.json();
+  let json: any = { data: [] };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
   return json.data;
 }
 
 export async function fetchPCVSetCards(setId: string, slug: string): Promise<PCVCard[]> {
   const res = await fetch(`${BASE_URL}/api/pcv/sets/${setId}/${slug}/cards`);
   if (!res.ok) throw new Error("Failed to fetch UK card data");
-  const json = await res.json();
+  let json: any = { data: [] };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
   return json.data;
 }
 
 export async function fetchPCVTopCards(condition: string = "ungraded"): Promise<PCVTopCard[]> {
   const res = await fetch(`${BASE_URL}/api/pcv/top/${condition}`);
   if (!res.ok) throw new Error("Failed to fetch top UK cards");
-  const json = await res.json();
+  let json: any = { data: [] };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
   return json.data;
 }
 
 export async function fetchPCVSearch(query: string): Promise<PCVCard[]> {
   const res = await fetch(`${BASE_URL}/api/pcv/search?q=${encodeURIComponent(query)}`);
   if (!res.ok) throw new Error("Failed to search UK cards");
-  const json = await res.json();
+  let json: any = { data: [] };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
   return json.data;
 }
 
@@ -261,7 +306,13 @@ export async function fetchEbayUrls(cardName: string, setName?: string, number?:
   if (number) params.set("number", number);
   const res = await fetch(`${BASE_URL}/api/ebay/search-url?${params.toString()}`);
   if (!res.ok) throw new Error("Failed to get eBay URLs");
-  return res.json();
+  let json: any = { searchUrl: "", soldUrl: "" };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
+  return json;
 }
 
 export function generateEbaySearchUrl(cardName: string, setName?: string, number?: string): string {

@@ -644,7 +644,12 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageBase64: base64 }),
       });
-      const data: GradingResult = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
       setResult(data);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
@@ -691,7 +696,12 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ centering, cornerDamage, edgeDamage, surfaceDamage }),
       });
-      const data: GradingResult = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
       setResult(data);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch {
@@ -967,7 +977,13 @@ export default function ScannerScreen() {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) return;
-        const data: ScanQuota & { streakReset?: boolean } = await res.json();
+        let data: any = {};
+        try {
+          data = await res.json();
+        } catch {
+          console.warn("Invalid JSON response");
+          return;
+        }
         if ((data as any).unlimited) return;
         setScanQuota(data);
         if (!data.alreadyCheckedInToday && data.bonusEarnedToday > 0) {
@@ -991,7 +1007,13 @@ export default function ScannerScreen() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+        return;
+      }
       if ((data as any).unlimited) return;
       setScanQuota(data);
       if (data.totalRemaining <= 0) setIsQuotaExceeded(true);

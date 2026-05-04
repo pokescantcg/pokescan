@@ -1,6 +1,6 @@
 import { fetch } from "expo/fetch";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
-import BASE_URL from "../app/services/api";
+import { BASE_URL } from "../app/services/api";
 
 export function getApiUrl(): string {
   return BASE_URL;

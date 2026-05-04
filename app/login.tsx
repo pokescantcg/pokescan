@@ -35,9 +35,10 @@ interface ChannelInfo {
 export default function LoginScreen() {
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
-  const { sendLoginOtp, verifyOtp } = useUser();
+  const { sendLoginOtp, verifyOtp, user } = useUser();
 
   const [step, setStep] = useState<Step>("password");
+  const [justLoggedIn, setJustLoggedIn] = useState(false);
 
   // Step 1 — password
   const [credential, setCredential] = useState("");
@@ -60,6 +61,12 @@ export default function LoginScreen() {
 
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
+
+  useEffect(() => {
+    if (justLoggedIn && user && user.id) {
+      router.replace("/(tabs)");
+    }
+  }, [justLoggedIn, user]);
 
   // ── Step 1: verify password ────────────────────────────────────────────────
   const handleVerifyPassword = async () => {
@@ -142,7 +149,7 @@ export default function LoginScreen() {
       setLoading(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await verifyOtp(otpCredential.trim(), finalCode);
-      router.back();
+      setJustLoggedIn(true);
     } catch (err: any) {
       const msg = err?.message || "Invalid or expired code";
       Alert.alert("Verification Failed", msg.replace(/^Error:\s*/i, "").replace(/\{.*\}/s, "").trim() || msg);
@@ -468,3 +475,4 @@ const styles = StyleSheet.create({
   registerText: { fontSize: 14, fontFamily: "Outfit_400Regular" },
   registerLink: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFDE00" },
 });
+console.log("ACTUAL BASE URL:", BASE_URL);

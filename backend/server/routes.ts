@@ -1,6 +1,6 @@
 import { calculateGrade } from "./services/grading";
 import { getUserQuota, dailyCheckin, consumeScan } from "./scan-quota";
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "node:http";
 import express from "express";
 import OpenAI from "openai";
@@ -13,7 +13,7 @@ import {
   generateEbaySearchUrl,
   generateEbaySoldUrl,
 } from "./pokecardvalues-scraper";
-import { storage } from "./storage";
+import { storage, type DbUser } from "./storage";
 import {
   createOtp,
   verifyOtp,
@@ -346,6 +346,45 @@ async function isSuperadminAuthorized(req: Request): Promise<boolean> {
   return false;
 }
 
+declare global {
+  namespace Express {
+    interface Request {
+      user?: DbUser;
+    }
+  }
+}
+
+function getBearerToken(req: Request): string | null {
+  const auth = req.headers.authorization || "";
+  if (!auth.startsWith("Bearer ")) return null;
+  return auth.slice(7).trim();
+}
+
+async function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const token = getBearerToken(req);
+  if (!token) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  const user = await storage.validateSession(token);
+  if (!user) {
+    res.status(401).json({ error: "Unauthorized" });
+    return;
+  }
+
+  if (user.isBanned) {
+    res.status(403).json({
+      error: "Account banned",
+      reason: user.bannedReason || "No reason provided",
+    });
+    return;
+  }
+
+  req.user = user;
+  next();
+}
+
 async function seedSuperadmin(): Promise<void> {
   try {
     const email = getSuperadminEmail();
@@ -402,6 +441,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/config", (_req: Request, res: Response) => {
     res.json(appConfig);
   });
+
+  app.use("/api/auth/account", requireAuth);
+  app.use("/api/auth/users", requireAuth);
+  app.use("/api/admin/subscription-stats", requireAuth);
+  app.use("/api/admin/listings", requireAuth);
+  app.use("/api/admin/ban-user", requireAuth);
+  app.use("/api/admin/unban-user", requireAuth);
+  app.use("/api/user", requireAuth);
+  app.use("/api/collection", requireAuth);
+  app.use("/api/listings", requireAuth);
+  app.use("/api/chatroom", requireAuth);
 
   app.patch("/api/admin/config", async (req: Request, res: Response) => {
     if (!await isSuperadminAuthorized(req)) {
@@ -1308,6 +1358,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         trialPromptedDay6: false,
         trialPromptedFinal: false,
       });
+
+
       const token = await storage.createSession(user.id);
       const { passwordHash: _ph, ...safeUser } = user as any;
 
@@ -1664,12 +1716,9 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
   // ─── Stripe — create checkout session ─────────────────────────────────────────
   // POST /api/stripe/create-checkout  body: { priceId, successUrl, cancelUrl }
-  app.post("/api/stripe/create-checkout", async (req: Request, res: Response) => {
+  app.post("/api/stripe/create-checkout", requireAuth, async (req: Request, res: Response) => {
     try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      const user = req.user!;
 
       const { priceId, successUrl, cancelUrl } = req.body as {
         priceId: string;
@@ -1710,12 +1759,9 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
   // ─── Stripe — create billing portal session ────────────────────────────────────
   // POST /api/stripe/portal  body: { returnUrl }
-  app.post("/api/stripe/portal", async (req: Request, res: Response) => {
+  app.post("/api/stripe/portal", requireAuth, async (req: Request, res: Response) => {
     try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      const user = req.user!;
 
       const { getUncachableStripeClient, ensureStripeCustomer } = await import("./stripe-client");
       const stripe = await getUncachableStripeClient();
@@ -1737,14 +1783,11 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
   // ─── Stripe — sync subscription status for current user ───────────────────────
   // POST /api/stripe/sync  — call after returning from Stripe Checkout success
-  app.post("/api/stripe/sync", async (req: Request, res: Response) => {
+  app.post("/api/stripe/sync", requireAuth, async (req: Request, res: Response) => {
     try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      const user = req.user!;
 
-      const customerId = (user as any).stripeCustomerId as string | undefined;
+      const customerId = user.stripeCustomerId as string | undefined;
       if (!customerId) {
         res.json({ isPremium: false, subscriptionStatus: null });
         return;
@@ -2951,7 +2994,9 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     if (!token) return null;
     const user = await storage.validateSession(token);
     if (!user) return null;
-    return { id: user.id, username: user.username, displayName: user.displayName };
+    if ((user as any).isBanned) return null;
+
+return { id: user.id, username: user.username, displayName: user.displayName };
   }
 
   // ─── Friends ─────────────────────────────────────────────────────────────────
@@ -3219,6 +3264,108 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     if (!updated) { res.status(404).json({ error: "Report not found" }); return; }
     res.json({ report: updated });
   });
+// 🔨 GLOBAL ACCOUNT BAN
+app.post("/api/admin/ban-user", async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const caller = token ? await storage.validateSession(token) : null;
+
+    if (!caller || (caller.role !== "admin" && caller.role !== "moderator")) {
+      res.status(403).json({ error: "Staff only" });
+      return;
+    }
+
+    const { userId, reason } = req.body;
+
+    if (!userId) {
+      res.status(400).json({ error: "userId required" });
+      return;
+    }
+
+    const target = await storage.getUserById(userId);
+    if (!target) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    if (target.role === "admin") {
+      res.status(403).json({ error: "Cannot ban admin" });
+      return;
+    }
+
+    // 🚫 Mark user banned
+    await pool.query(
+      `UPDATE pokescan_users 
+       SET is_banned = true, banned_reason = $1, banned_at = NOW() 
+       WHERE id = $2`,
+      [reason || "No reason provided", userId]
+    );
+
+    // 🔒 Kill sessions
+    await db.delete(pokescanSessions).where(eq(pokescanSessions.userId, userId));
+
+    // 💳 Cancel Stripe subscription
+    try {
+      if ((target as any).stripeSubscriptionId) {
+        const { getUncachableStripeClient } = await import("./stripe-client");
+        const stripe = await getUncachableStripeClient();
+        await stripe.subscriptions.cancel((target as any).stripeSubscriptionId);
+      }
+    } catch (e) {
+      console.error("Stripe cancel failed:", e);
+    }
+
+    // 📩 Send email
+    try {
+      await sendOtpByEmail(
+        target.email,
+        `Your account has been banned.\n\nReason: ${reason || "No reason provided"}\n\nYour premium has been cancelled.`
+      );
+    } catch (e) {
+      console.error("Email send failed:", e);
+    }
+
+    res.json({ success: true });
+
+  } catch (error: any) {
+    console.error("Ban user error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+app.post("/api/admin/unban-user", async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const caller = token ? await storage.validateSession(token) : null;
+
+    if (!caller || caller.role !== "admin") {
+      res.status(403).json({ error: "Admin only" });
+      return;
+    }
+
+    const { userId } = req.body;
+
+    await pool.query(
+      `UPDATE pokescan_users 
+       SET is_banned = false, banned_reason = NULL, banned_at = NULL 
+       WHERE id = $1`,
+      [userId]
+    );
+
+    res.json({ success: true });
+
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+const { actionUserId, actionType } = req.body;
+
+// 🔨 Optional action
+if (actionUserId && actionType === "ban") {
+  await pool.query(
+    `UPDATE pokescan_users SET is_banned = true WHERE id = $1`,
+    [actionUserId]
+  );
+}
 
   // POST /api/admin/card-reseed — seeds cards for any sets that have 0 cards in DB.
   // Fire-and-forget: returns immediately and runs in the background.

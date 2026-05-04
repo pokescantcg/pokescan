@@ -5,20 +5,20 @@ if (process.env.NODE_ENV === "production" && !process.env.DATABASE_URL) {
   throw new Error("❌ DATABASE_URL is required in production");
 }
 
-// ✅ Use Supabase / Render DB in production
-// ✅ Fallback ONLY for local development
 const DATABASE_URL =
   process.env.DATABASE_URL ||
   `postgres://postgres:killer89!@127.0.0.1:5433/pokescan`;
 
-// ✅ Enable SSL automatically for hosted DBs
-const isProduction = process.env.NODE_ENV === "production";
+const isLocalDb =
+  DATABASE_URL.includes("127.0.0.1") ||
+  DATABASE_URL.includes("localhost") ||
+  DATABASE_URL.includes("::1");
+
+const useSsl = !isLocalDb;
 
 export const DATABASE_POOL_CONFIG: PoolConfig = {
   connectionString: DATABASE_URL,
-  ssl: isProduction
-    ? { rejectUnauthorized: false }
-    : undefined,
+  ...(useSsl ? { ssl: { rejectUnauthorized: false } } : {}),
 };
 
 // ✅ Safe debug log (won’t expose password)
@@ -26,7 +26,7 @@ console.log(
   "DB connected to:",
   DATABASE_URL?.includes("supabase")
     ? "Supabase"
-    : DATABASE_URL?.includes("127.0.0.1")
+    : isLocalDb
     ? "Localhost"
-    : "Unknown"
+    : "Remote DB"
 );
