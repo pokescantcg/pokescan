@@ -1558,12 +1558,15 @@ If you cannot identify the card, set confidence to "low" and provide your best g
   });
 
   app.post("/api/auth/login", async (req: Request, res: Response) => {
-    try {
-      const { credential, password } = req.body;
-      if (!credential || !password) {
-        res.status(400).json({ error: "Email/username and password are required" });
-        return;
-      }
+  try {
+    const { credential, password } = req.body;
+
+    console.log("LOGIN ATTEMPT:", credential); // ✅ ADD HERE
+
+    if (!credential || !password) {
+      res.status(400).json({ error: "Email/username and password are required" });
+      return;
+    }
 
       // Try email first
       let user = await pool.query(
@@ -1571,41 +1574,59 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         [credential.toLowerCase().trim()]
       );
 
-      // If not found by email, try username
-      if (!user.rows.length) {
-        user = await pool.query(
-          "SELECT * FROM pokescan_users WHERE username = $1",
-          [credential.toLowerCase().trim()]
-        );
-      }
+       // Try email first
+    let user = await pool.query(
+      "SELECT * FROM pokescan_users WHERE email = $1",
+      [credential.toLowerCase().trim()]
+    );
 
-      if (!user.rows.length) {
-        res.status(401).json({ error: "Invalid credentials" });
-        return;
-      }
+    console.log("EMAIL MATCH:", user.rows.length); // ✅ ADD HERE
 
+       // If not found by email, try username
+    if (!user.rows.length) {
+      user = await pool.query(
+        "SELECT * FROM pokescan_users WHERE username = $1",
+        [credential.toLowerCase().trim()]
+      );
+
+      console.log("USERNAME MATCH:", user.rows.length); // ✅ ADD HERE
+    }
+
+    if (!user.rows.length) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
       const dbUser = user.rows[0];
 
-      if (!dbUser.password_hash) {
-        res.status(401).json({ error: "This account does not have a password set. Contact an admin." });
-        return;
-      }
+         console.log("USER FOUND:", dbUser.email); // ✅ ADD HERE
 
-      const isValid = await bcrypt.compare(password, dbUser.password_hash);
-
-      if (!isValid) {
-        res.status(401).json({ error: "Invalid credentials" });
-        return;
-      }
-
-      const token = await storage.createSession(dbUser.id);
-      const { password_hash: _ph, ...safeUser } = dbUser;
-      res.json({ token, user: safeUser });
-    } catch (error: any) {
-      console.error("Login error:", error);
-      res.status(500).json({ error: error.message || "Login failed" });
+         if (!dbUser.password_hash) {
+      res.status(401).json({ error: "This account does not have a password set. Contact an admin." });
+      return;
     }
-  });
+
+    const isValid = await bcrypt.compare(password, dbUser.password_hash);
+
+    console.log({               // ✅ ADD HERE
+      password,
+      hash: dbUser.password_hash,
+      isValid
+    });
+
+    if (!isValid) {
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
+    }
+
+    const token = await storage.createSession(dbUser.id);
+    const { password_hash: _ph, ...safeUser } = dbUser;
+    res.json({ token, user: safeUser });
+
+  } catch (error: any) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: error.message || "Login failed" });
+  }
+});
 
   app.post("/api/auth/send-otp", async (req: Request, res: Response) => {
     try {
