@@ -1,8 +1,8 @@
 import { Platform } from "react-native";
 
-const PROD_URL = "https://pokescan.onrender.com"; // ← your Render URL
+const PROD_URL = "https://pokescantcg.onrender.com"; // ← your Render URL
 const LOCAL_IP = "192.168.1.107"; // only used in dev
-export const BASE_URL = "https://pokescan.onrender.com";
+export const BASE_URL = "https://pokescantcg.onrender.com";
 
 console.log("API BASE URL:", BASE_URL);
 export const apiFetch = async (
