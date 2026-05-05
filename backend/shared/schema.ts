@@ -38,6 +38,9 @@ export const pokescanUsers = pgTable("pokescan_users", {
   chatBannedUntil: timestamp("chat_banned_until", { withTimezone: true }),
   collectionVisible: boolean("collection_visible").notNull().default(false),
   emailVerified: boolean("email_verified").notNull().default(false),
+  isBanned: boolean("is_banned").notNull().default(false),
+  bannedReason: text("banned_reason"),
+  bannedAt: timestamp("banned_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
 });
 
@@ -62,19 +65,6 @@ export type PokescanUser = typeof pokescanUsers.$inferSelect;
 export type PokescanSession = typeof pokescanSessions.$inferSelect;
 
 export type UserRole = "user" | "moderator" | "admin";
-
-export const users = pgTable("users", {
-  id: varchar("id")
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  isBanned: boolean("is_banned").default(false),
-bannedReason: text("banned_reason"),
-bannedAt: timestamp("banned_at"),
-});
-export type User = typeof users.$inferSelect;
-
 
 export const pokescanSets = pgTable("pokescan_sets", {
   id: varchar("id").primaryKey(),

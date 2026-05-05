@@ -1,6 +1,9 @@
 import { randomBytes, randomUUID } from "crypto";
 import { Pool } from "pg";
 import { DATABASE_POOL_CONFIG } from "./db-config";
+import { db } from "./db";
+import { pokescanSessions, pokescanUsers } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 const pool = new Pool({
   ...DATABASE_POOL_CONFIG,
@@ -211,30 +214,31 @@ export class PgStorage implements IStorage {
 
   async createSession(userId: string): Promise<string> {
     const token = randomBytes(32).toString("hex");
-    await pool.query(
-      `INSERT INTO pokescan_sessions (token, user_id, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '30 days')`,
-      [token, userId]
-    );
+    await db.insert(pokescanSessions).values({
+      token,
+      userId,
+    });
     return token;
   }
 
   async validateSession(token: string): Promise<DbUser | null> {
-    const result = await pool.query(
-      `SELECT u.* FROM pokescan_users u
-       JOIN pokescan_sessions s ON s.user_id = u.id
-       WHERE s.token = $1 AND s.expires_at > NOW()`,
-      [token]
-    );
-    return result.rows[0] ? mapRow(result.rows[0]) : null;
+    const result = await db
+      .select()
+      .from(pokescanUsers)
+      .innerJoin(pokescanSessions, eq(pokescanUsers.id, pokescanSessions.userId))
+      .where(eq(pokescanSessions.token, token))
+      .limit(1);
+    
+    if (result.length === 0) return null;
+    return mapRow(result[0].pokescan_users);
   }
 
   async deleteSession(token: string): Promise<void> {
-    await pool.query("DELETE FROM pokescan_sessions WHERE token = $1", [token]);
+    await db.delete(pokescanSessions).where(eq(pokescanSessions.token, token));
   }
 
   async deleteAllUserSessions(userId: string): Promise<void> {
-    await pool.query("DELETE FROM pokescan_sessions WHERE user_id = $1", [userId]);
+    await db.delete(pokescanSessions).where(eq(pokescanSessions.userId, userId));
   }
 
   async deleteUser(id: string): Promise<void> {

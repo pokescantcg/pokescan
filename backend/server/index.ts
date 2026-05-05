@@ -176,8 +176,8 @@ function setupBanMiddleware(app: express.Application) {
 
       if (!userId) return next();
 
-      const result = await db.query(
-        `SELECT is_banned, banned_reason FROM users WHERE id = $1`,
+      const result = await pool.query(
+        `SELECT is_banned, banned_reason FROM pokescan_users WHERE id = $1`,
         [userId],
       );
 

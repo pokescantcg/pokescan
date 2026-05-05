@@ -140,10 +140,10 @@ async function checkTrialPrompts() {
   }
 }
 
-const openai = new OpenAI({
+const openai = process.env.AI_INTEGRATIONS_OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-});
+}) : null;
 
 const POKEMON_API = "https://api.pokemontcg.io/v2";
 
@@ -462,9 +462,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 if (actionType === "ban") {
   const { reason } = req.body;
 
-  await db.query(
+  await pool.query(
     `
-    UPDATE users
+    UPDATE pokescan_users
     SET 
       is_banned = true,
       banned_reason = $2,
@@ -476,9 +476,9 @@ if (actionType === "ban") {
 }
 
 if (actionType === "unban") {
-  await db.query(
+  await pool.query(
     `
-    UPDATE users
+    UPDATE pokescan_users
     SET 
       is_banned = false,
       banned_reason = NULL,
@@ -1169,8 +1169,12 @@ if (actionUserId === req.user?.id) {
 
       let response: Awaited<ReturnType<typeof openai.chat.completions.create>>;
       try {
+        if (!openai) {
+          return res.status(503).json({ error: "AI identification service is not configured" });
+        }
+        
         const aiPromise = openai.chat.completions.create({
-          model: "gpt-5.2",
+          model: "gpt-4o",
           messages: [
             {
               role: "system",
@@ -1560,23 +1564,42 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         res.status(400).json({ error: "Email/username and password are required" });
         return;
       }
-      let user = await storage.getUserByEmail(credential.toLowerCase().trim());
-      if (!user) user = await storage.getUserByUsername(credential.toLowerCase().trim());
-      if (!user) {
-        res.status(401).json({ error: "Invalid email/username or password" });
+
+      // Try email first
+      let user = await pool.query(
+        "SELECT * FROM pokescan_users WHERE email = $1",
+        [credential.toLowerCase().trim()]
+      );
+
+      // If not found by email, try username
+      if (!user.rows.length) {
+        user = await pool.query(
+          "SELECT * FROM pokescan_users WHERE username = $1",
+          [credential.toLowerCase().trim()]
+        );
+      }
+
+      if (!user.rows.length) {
+        res.status(401).json({ error: "Invalid credentials" });
         return;
       }
-      if (!user.passwordHash) {
+
+      const dbUser = user.rows[0];
+
+      if (!dbUser.password_hash) {
         res.status(401).json({ error: "This account does not have a password set. Contact an admin." });
         return;
       }
-      const valid = await bcrypt.compare(password, user.passwordHash);
-      if (!valid) {
-        res.status(401).json({ error: "Invalid email/username or password" });
+
+      const isValid = await bcrypt.compare(password, dbUser.password_hash);
+
+      if (!isValid) {
+        res.status(401).json({ error: "Invalid credentials" });
         return;
       }
-      const token = await storage.createSession(user.id);
-      const { passwordHash: _ph, ...safeUser } = user as any;
+
+      const token = await storage.createSession(dbUser.id);
+      const { password_hash: _ph, ...safeUser } = dbUser;
       res.json({ token, user: safeUser });
     } catch (error: any) {
       console.error("Login error:", error);
@@ -3431,6 +3454,10 @@ app.post("/api/admin/unban-user", async (req: Request, res: Response) => {
 
       if (imageBase64) {
         // AI vision grading mode — analyse the card photo
+        if (!openai) {
+          return res.status(503).json({ error: "AI grading service is not configured" });
+        }
+        
         const prompt = `You are a professional Pokémon TCG card grader. Analyse this card photo and score each of the four grading criteria on a scale of 0 to 5, where 0 = perfect condition and 5 = severe damage.
 
 Criteria:
