@@ -2,14 +2,7 @@ import { Platform } from "react-native";
 
 const PROD_URL = "https://pokescan.onrender.com"; // ← your Render URL
 const LOCAL_IP = "192.168.1.107"; // only used in dev
-
-export const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  (__DEV__
-    ? (Platform.OS === "android"
-        ? "http://10.0.2.2:5000"
-        : `http://${LOCAL_IP}:5000`)
-    : PROD_URL);
+export const BASE_URL = "https://pokescan.onrender.com";
 
 console.log("API BASE URL:", BASE_URL);
 export const apiFetch = async (
