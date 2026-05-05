@@ -452,6 +452,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use("/api/collection", requireAuth);
   app.use("/api/listings", requireAuth);
   app.use("/api/chatroom", requireAuth);
+  app.post("/api/admin/action", async (req, res) => {
+  try {
+    const { actionUserId, actionType } = req.body;
+
+    if (!actionUserId || !actionType) {
+      return res.status(400).json({ error: "Missing parameters" });
+    }
+if (actionType === "ban") {
+  const { reason } = req.body;
+
+  await db.query(
+    `
+    UPDATE users
+    SET 
+      is_banned = true,
+      banned_reason = $2,
+      banned_at = NOW()
+    WHERE id = $1
+    `,
+    [actionUserId, reason || "No reason provided"]
+  );
+}
+
+if (actionType === "unban") {
+  await db.query(
+    `
+    UPDATE users
+    SET 
+      is_banned = false,
+      banned_reason = NULL,
+      banned_at = NULL
+    WHERE id = $1
+    `,
+    [actionUserId]
+  );
+}
+
+if (actionUserId === req.user?.id) {
+  return res.status(400).json({ error: "You cannot ban yourself" });
+}
+
+    res.json({ success: true });
+
+  } catch (err: any) {
+    console.error("Admin action error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 
   app.patch("/api/admin/config", async (req: Request, res: Response) => {
     if (!await isSuperadminAuthorized(req)) {
@@ -3357,15 +3405,7 @@ app.post("/api/admin/unban-user", async (req: Request, res: Response) => {
     res.status(500).json({ error: error.message });
   }
 });
-const { actionUserId, actionType } = req.body;
 
-// 🔨 Optional action
-if (actionUserId && actionType === "ban") {
-  await pool.query(
-    `UPDATE pokescan_users SET is_banned = true WHERE id = $1`,
-    [actionUserId]
-  );
-}
 
   // POST /api/admin/card-reseed — seeds cards for any sets that have 0 cards in DB.
   // Fire-and-forget: returns immediately and runs in the background.
