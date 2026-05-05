@@ -455,7 +455,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/admin/action", async (req, res) => {
   try {
     const { actionUserId, actionType } = req.body;
+// -------------------------
+// DEBUG ROUTE (TEST)
+// -------------------------
+app.get("/api/test", (_req, res) => {
+  res.send("API WORKING");
+});
 
+// -------------------------
+// CURRENT USER (REQUIRED)
+// -------------------------
+app.get("/api/me", (req: any, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  res.json(req.user);
+});
     if (!actionUserId || !actionType) {
       return res.status(400).json({ error: "Missing parameters" });
     }
@@ -1573,7 +1589,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         "SELECT * FROM pokescan_users WHERE email = $1",
         [credential.toLowerCase().trim()]
       );
-      
+
 
     console.log("EMAIL MATCH:", user.rows.length); // ✅ ADD HERE
 
@@ -3731,3 +3747,4 @@ Return ONLY valid JSON in exactly this format:
   const httpServer = createServer(app);
   return httpServer;
 }
+
