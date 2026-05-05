@@ -1,16 +1,17 @@
 import "dotenv/config";
-import express from "express";
-import type { Request, Response, NextFunction } from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import { registerRoutes } from "./routes";
-import { warmupDb } from "./db";
+import { warmupDb, db } from "./db";
 import * as fs from "fs";
 import * as path from "path";
 
 const app = express();
-app.get("/api/users", (req, res) => {
+const log = console.log;
+
+// TEMP test route (safe to keep or remove)
+app.get("/api/users", (_req, res) => {
   res.json([{ id: 1, email: "test@example.com" }]);
 });
-const log = console.log;
 
 declare module "http" {
   interface IncomingMessage {
@@ -18,6 +19,7 @@ declare module "http" {
   }
 }
 
+// -------------------- CORS --------------------
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
     const origins = new Set<string>();
@@ -34,17 +36,13 @@ function setupCors(app: express.Application) {
 
     const origin = req.header("origin");
 
-    // Allow localhost origins for Expo web development (any port)
     const isLocalhost =
       origin?.startsWith("http://localhost:") ||
       origin?.startsWith("http://127.0.0.1:");
 
     if (origin && (origins.has(origin) || isLocalhost)) {
       res.header("Access-Control-Allow-Origin", origin);
-      res.header(
-        "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, OPTIONS",
-      );
+      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
       res.header("Access-Control-Allow-Headers", "Content-Type");
       res.header("Access-Control-Allow-Credentials", "true");
     }
@@ -57,12 +55,13 @@ function setupCors(app: express.Application) {
   });
 }
 
+// -------------------- BODY --------------------
 function setupBodyParsing(app: express.Application) {
   app.use(
     express.json({
       limit: "10mb",
       verify: (req, _res, buf) => {
-        req.rawBody = buf;
+        (req as any).rawBody = buf;
       },
     }),
   );
@@ -70,11 +69,13 @@ function setupBodyParsing(app: express.Application) {
   app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 }
 
+// -------------------- LOGGING --------------------
 function setupRequestLogging(app: express.Application) {
   app.use((req, res, next) => {
     const start = Date.now();
     const path = req.path;
-    let capturedJsonResponse: Record<string, unknown> | undefined = undefined;
+
+    let capturedJsonResponse: Record<string, unknown> | undefined;
 
     const originalResJson = res.json;
     res.json = function (bodyJson, ...args) {
@@ -92,8 +93,8 @@ function setupRequestLogging(app: express.Application) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 
-      if (logLine.length > 80) {
-        logLine = logLine.slice(0, 79) + "…";
+      if (logLine.length > 120) {
+        logLine = logLine.slice(0, 119) + "…";
       }
 
       log(logLine);
@@ -103,11 +104,12 @@ function setupRequestLogging(app: express.Application) {
   });
 }
 
+// -------------------- EXPO + LANDING --------------------
 function getAppName(): string {
   try {
-    const appJsonPath = path.resolve(process.cwd(), "app.json");
-    const appJsonContent = fs.readFileSync(appJsonPath, "utf-8");
-    const appJson = JSON.parse(appJsonContent);
+    const appJson = JSON.parse(
+      fs.readFileSync(path.resolve(process.cwd(), "app.json"), "utf-8"),
+    );
     return appJson.expo?.name || "App Landing Page";
   } catch {
     return "App Landing Page";
@@ -123,83 +125,40 @@ function serveExpoManifest(platform: string, res: Response) {
   );
 
   if (!fs.existsSync(manifestPath)) {
-    return res
-      .status(404)
-      .json({ error: `Manifest not found for platform: ${platform}` });
+    return res.status(404).json({ error: `Manifest not found for ${platform}` });
   }
 
   res.setHeader("expo-protocol-version", "1");
   res.setHeader("expo-sfv-version", "0");
   res.setHeader("content-type", "application/json");
 
-  const manifest = fs.readFileSync(manifestPath, "utf-8");
-  res.send(manifest);
-}
-
-function serveLandingPage({
-  req,
-  res,
-  landingPageTemplate,
-  appName,
-}: {
-  req: Request;
-  res: Response;
-  landingPageTemplate: string;
-  appName: string;
-}) {
-  const forwardedProto = req.header("x-forwarded-proto");
-  const protocol = forwardedProto || req.protocol || "https";
-  const forwardedHost = req.header("x-forwarded-host");
-  const host = forwardedHost || req.get("host");
-  const baseUrl = `${protocol}://${host}`;
-  const expsUrl = `${host}`;
-
-  log(`baseUrl`, baseUrl);
-  log(`expsUrl`, expsUrl);
-
-  const html = landingPageTemplate
-    .replace(/BASE_URL_PLACEHOLDER/g, baseUrl)
-    .replace(/EXPS_URL_PLACEHOLDER/g, expsUrl)
-    .replace(/APP_NAME_PLACEHOLDER/g, appName);
-
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  res.status(200).send(html);
+  res.send(fs.readFileSync(manifestPath, "utf-8"));
 }
 
 function configureExpoAndLanding(app: express.Application) {
-  const templatePath = path.resolve(
-    process.cwd(),
-    "backend",
-    "server",
-    "templates",
-    "landing-page.html",
+  const template = fs.readFileSync(
+    path.resolve(process.cwd(), "backend/server/templates/landing-page.html"),
+    "utf-8",
   );
-  const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
+
   const appName = getAppName();
 
-  log("Serving static Expo files with dynamic manifest routing");
-
   app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith("/api")) {
-      return next();
-    }
+    if (req.path.startsWith("/api")) return next();
 
-    if (req.path !== "/" && req.path !== "/manifest") {
-      return next();
-    }
+    if (req.path === "/" || req.path === "/manifest") {
+      const platform = req.header("expo-platform");
 
-    const platform = req.header("expo-platform");
-    if (platform && (platform === "ios" || platform === "android")) {
-      return serveExpoManifest(platform, res);
-    }
+      if (platform === "ios" || platform === "android") {
+        return serveExpoManifest(platform, res);
+      }
 
-    if (req.path === "/") {
-      return serveLandingPage({
-        req,
-        res,
-        landingPageTemplate,
-        appName,
-      });
+      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const html = template
+        .replace(/BASE_URL_PLACEHOLDER/g, baseUrl)
+        .replace(/APP_NAME_PLACEHOLDER/g, appName);
+
+      return res.send(html);
     }
 
     next();
@@ -207,31 +166,52 @@ function configureExpoAndLanding(app: express.Application) {
 
   app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
-
-  log("Expo routing: Checking expo-platform header on / and /manifest");
 }
 
-function setupErrorHandler(app: express.Application) {
-  app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
-    const error = err as {
-      status?: number;
-      statusCode?: number;
-      message?: string;
-    };
+// -------------------- BAN MIDDLEWARE --------------------
+function setupBanMiddleware(app: express.Application) {
+  app.use(async (req: any, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.id;
 
-    const status = error.status || error.statusCode || 500;
-    const message = error.message || "Internal Server Error";
+      if (!userId) return next();
 
-    console.error("Internal Server Error:", err);
+      const result = await db.query(
+        `SELECT is_banned, banned_reason FROM users WHERE id = $1`,
+        [userId],
+      );
 
-    if (res.headersSent) {
-      return next(err);
+      const user = result.rows[0];
+
+      if (user?.is_banned) {
+        return res.status(403).json({
+          error: "Account banned",
+          reason: user.banned_reason || "No reason provided",
+        });
+      }
+
+      next();
+    } catch (err) {
+      console.error("Ban middleware error:", err);
+      next();
     }
-
-    return res.status(status).json({ message });
   });
 }
 
+// -------------------- ERROR HANDLER --------------------
+function setupErrorHandler(app: express.Application) {
+  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    console.error("Internal Server Error:", err);
+
+    if (res.headersSent) return next(err);
+
+    res.status(err.status || 500).json({
+      message: err.message || "Internal Server Error",
+    });
+  });
+}
+
+// -------------------- START SERVER --------------------
 (async () => {
   setupCors(app);
   setupBodyParsing(app);
@@ -241,19 +221,22 @@ function setupErrorHandler(app: express.Application) {
 
   await warmupDb();
 
+  // 🔥 IMPORTANT: must be BEFORE routes
+  setupBanMiddleware(app);
+
   const server = await registerRoutes(app);
 
   setupErrorHandler(app);
 
   const port = parseInt(process.env.PORT || "5000", 10);
+
   server.listen(
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
     },
     () => {
-      log(`express server serving on port ${port}`);
+      log(`Server running on port ${port}`);
     },
   );
 })();
