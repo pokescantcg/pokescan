@@ -140,10 +140,51 @@ async function checkTrialPrompts() {
   }
 }
 
-const openai = process.env.AI_INTEGRATIONS_OPENAI_API_KEY ? new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-}) : null;
+const openaiApiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+const openaiBaseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL?.trim();
+
+function createOpenAIClient(options?: { direct?: boolean }) {
+  if (!openaiApiKey) return null;
+  return new OpenAI({
+    apiKey: openaiApiKey,
+    ...(options?.direct ? {} : openaiBaseUrl ? { baseURL: openaiBaseUrl } : {}),
+  });
+}
+
+const openai = createOpenAIClient();
+const openaiDirect = openaiBaseUrl ? createOpenAIClient({ direct: true }) : openai;
+
+function isOpenAIConnectionError(error: any): boolean {
+  const msg = String(error?.message || error?.toString() || "").toLowerCase();
+  return (
+    error?.name === "APIConnectionError" ||
+    error?.code === "ECONNREFUSED" ||
+    error?.code === "ECONNRESET" ||
+    error?.code === "ENOTFOUND" ||
+    msg.includes("connect econnrefused") ||
+    msg.includes("connection refused") ||
+    msg.includes("connection error") ||
+    msg.includes("failed to fetch") ||
+    msg.includes("getaddrinfo enotfound") ||
+    msg.includes("could not resolve host") ||
+    msg.includes("socket hang up") ||
+    msg.includes("api connection error")
+  );
+}
+
+async function createOpenAICompletion(payload: any) {
+  if (!openai) throw new Error("AI grading service is not configured");
+
+  try {
+    return await openai.chat.completions.create(payload);
+  } catch (error: any) {
+    if (openaiDirect && openai !== openaiDirect && isOpenAIConnectionError(error)) {
+      console.warn("OpenAI proxy unavailable, retrying direct OpenAI:", error?.message || error);
+      return await openaiDirect.chat.completions.create(payload);
+    }
+    throw error;
+  }
+}
 
 const POKEMON_API = "https://api.pokemontcg.io/v2";
 
@@ -434,12 +475,26 @@ let appConfig = {
   scannerEnabled: true,
 };
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express) {
+  console.log("ROUTES REGISTERING"); // ✅ THIS is the important one
+
   startSyncService();
   seedSuperadmin().catch((e) => console.error("[seedSuperadmin] failed:", e));
 
   app.get("/api/config", (_req: Request, res: Response) => {
     res.json(appConfig);
+  });
+
+  app.get("/api/test", (_req: Request, res: Response) => {
+    res.send("API WORKING");
+  });
+
+  app.get("/api/me", (req: any, res: Response) => {
+    if (!req.user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    res.json(req.user);
   });
 
   app.use("/api/auth/account", requireAuth);
@@ -448,74 +503,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use("/api/admin/listings", requireAuth);
   app.use("/api/admin/ban-user", requireAuth);
   app.use("/api/admin/unban-user", requireAuth);
+  app.use("/api/admin/action", requireAuth);
   app.use("/api/user", requireAuth);
   app.use("/api/collection", requireAuth);
   app.use("/api/listings", requireAuth);
   app.use("/api/chatroom", requireAuth);
+
   app.post("/api/admin/action", async (req, res) => {
-  try {
-    const { actionUserId, actionType } = req.body;
-// -------------------------
-// DEBUG ROUTE (TEST)
-// -------------------------
-app.get("/api/test", (_req, res) => {
-  res.send("API WORKING");
-});
+    try {
+      const { actionUserId, actionType } = req.body;
+      if (!actionUserId || !actionType) {
+        return res.status(400).json({ error: "Missing parameters" });
+      }
 
-// -------------------------
-// CURRENT USER (REQUIRED)
-// -------------------------
-app.get("/api/me", (req: any, res) => {
-  if (!req.user) {
-    return res.status(401).json({ error: "Not authenticated" });
-  }
+      if (actionType === "ban") {
+        const { reason } = req.body;
+        await pool.query(
+          `
+          UPDATE pokescan_users
+          SET 
+            is_banned = true,
+            banned_reason = $2,
+            banned_at = NOW()
+          WHERE id = $1
+          `,
+          [actionUserId, reason || "No reason provided"]
+        );
+      }
 
-  res.json(req.user);
-});
-    if (!actionUserId || !actionType) {
-      return res.status(400).json({ error: "Missing parameters" });
+      if (actionType === "unban") {
+        await pool.query(
+          `
+          UPDATE pokescan_users
+          SET 
+            is_banned = false,
+            banned_reason = NULL,
+            banned_at = NULL
+          WHERE id = $1
+          `,
+          [actionUserId]
+        );
+      }
+
+      if (actionUserId === req.user?.id) {
+        return res.status(400).json({ error: "You cannot ban yourself" });
+      }
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("Admin action error:", err);
+      res.status(500).json({ error: "Server error" });
     }
-if (actionType === "ban") {
-  const { reason } = req.body;
-
-  await pool.query(
-    `
-    UPDATE pokescan_users
-    SET 
-      is_banned = true,
-      banned_reason = $2,
-      banned_at = NOW()
-    WHERE id = $1
-    `,
-    [actionUserId, reason || "No reason provided"]
-  );
-}
-
-if (actionType === "unban") {
-  await pool.query(
-    `
-    UPDATE pokescan_users
-    SET 
-      is_banned = false,
-      banned_reason = NULL,
-      banned_at = NULL
-    WHERE id = $1
-    `,
-    [actionUserId]
-  );
-}
-
-if (actionUserId === req.user?.id) {
-  return res.status(400).json({ error: "You cannot ban yourself" });
-}
-
-    res.json({ success: true });
-
-  } catch (err: any) {
-    console.error("Admin action error:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
+  });
 
   app.patch("/api/admin/config", async (req: Request, res: Response) => {
     if (!await isSuperadminAuthorized(req)) {
@@ -1183,13 +1222,9 @@ if (actionUserId === req.user?.id) {
         }
       }
 
-      let response: Awaited<ReturnType<typeof openai.chat.completions.create>>;
+      let response: Awaited<ReturnType<typeof createOpenAICompletion>>;
       try {
-        if (!openai) {
-          return res.status(503).json({ error: "AI identification service is not configured" });
-        }
-        
-        const aiPromise = openai.chat.completions.create({
+        const aiPromise = createOpenAICompletion({
           model: "gpt-4o",
           messages: [
             {
@@ -1217,7 +1252,7 @@ Always respond with valid JSON in this exact format:
   "notes": "Any additional identification notes"
 }
 
-If you cannot identify the card, set confidence to "low" and provide your best guess. The "originalName" field should contain the name as printed on the card (in its original language). If the card is English, originalName equals englishName.`
+If you cannot identify the card, set confidence to "low" and provide your best guess. The "originalName" field should contain the name as printed on the card (in its original language). If the card is English, originalName equals englishName.`,
             },
             {
               role: "user",
@@ -3501,7 +3536,7 @@ Criteria:
 Return ONLY valid JSON in exactly this format:
 {"centering":0,"cornerDamage":0,"edgeDamage":0,"surfaceDamage":0,"notes":"brief explanation"}`;
 
-        const aiRes = await openai.chat.completions.create({
+        const aiRes = await createOpenAICompletion({
           model: "gpt-4o",
           max_tokens: 200,
           messages: [
@@ -3744,7 +3779,7 @@ Return ONLY valid JSON in exactly this format:
     }
   });
 
-  const httpServer = createServer(app);
-  return httpServer;
+  createServer(app);
+  return app;
 }
 
