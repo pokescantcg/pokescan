@@ -1573,12 +1573,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         "SELECT * FROM pokescan_users WHERE email = $1",
         [credential.toLowerCase().trim()]
       );
-
-       // Try email first
-    let user = await pool.query(
-      "SELECT * FROM pokescan_users WHERE email = $1",
-      [credential.toLowerCase().trim()]
-    );
+      
 
     console.log("EMAIL MATCH:", user.rows.length); // ✅ ADD HERE
 
