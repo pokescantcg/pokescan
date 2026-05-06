@@ -1,37 +1,32 @@
 // ======================================================
-// API CONFIG + FETCH WRAPPER (EXPO SAFE + DEBUG READY)
+// API CONFIG + FETCH WRAPPER (CLEAN + STABLE)
 // Location: lib/api.ts
 // ======================================================
 
-import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 // ------------------------------------------------------
-// BASE URL CONFIG (FIXED)
+// BASE URL (AUTO SWITCHING)
 // ------------------------------------------------------
 
-// ✅ Local dev URLs (important for Expo)
 const DEV_LOCAL_URL =
   Platform.OS === "android"
-    ? "http://10.0.2.2:5000"
+    ? "http://10.0.2.2:5000" // Android emulator fix
     : "http://localhost:5000";
 
-// ✅ Production URL
 const PROD_URL = "https://pokescantcg.onrender.com";
 
-// ✅ Final resolved API URL (ORDER MATTERS)
+// ✅ ONLY uses NODE_ENV (no env override bugs)
 export const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || // 1. explicit env override
-  Constants.expoConfig?.extra?.apiUrl || // 2. app.json extra
-  (process.env.NODE_ENV === "development"
-    ? DEV_LOCAL_URL // 3. dev fallback
-    : PROD_URL); // 4. prod fallback
+  process.env.NODE_ENV === "development"
+    ? DEV_LOCAL_URL
+    : PROD_URL;
 
-// 👇 Useful debug log (keep this)
+// Debug log (keep this)
 console.log("🌐 API BASE URL:", BASE_URL);
 
 // ------------------------------------------------------
-// DEFAULT HEADERS BUILDER
+// HEADERS BUILDER
 // ------------------------------------------------------
 
 function buildHeaders(
@@ -54,7 +49,7 @@ function buildHeaders(
 }
 
 // ------------------------------------------------------
-// MAIN FETCH WRAPPER
+// FETCH WRAPPER
 // ------------------------------------------------------
 
 export async function apiFetch<T = any>(
@@ -91,19 +86,17 @@ export async function apiFetch<T = any>(
       }
     }
 
-    // --------------------------------------------------
+    // -----------------------------
     // HANDLE AUTH FAIL
-    // --------------------------------------------------
-
+    // -----------------------------
     if (response.status === 401) {
-      console.warn("🔒 Unauthorized request:", url);
+      console.warn("🔒 Unauthorized:", url);
       return null as T;
     }
 
-    // --------------------------------------------------
-    // HANDLE OTHER ERRORS
-    // --------------------------------------------------
-
+    // -----------------------------
+    // HANDLE ERRORS
+    // -----------------------------
     if (!response.ok) {
       const message =
         data?.error ||
