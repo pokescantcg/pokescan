@@ -1,3 +1,10 @@
+process.on("uncaughtException", (err) => {
+  console.error("💥 UNCAUGHT EXCEPTION:", err);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("💥 UNHANDLED PROMISE:", err);
+});
 import "dotenv/config";
 import express, { type Request, type Response, type NextFunction } from "express";
 import { registerRoutes } from "./routes/index";
