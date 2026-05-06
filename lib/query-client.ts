@@ -18,20 +18,28 @@ if (!res.ok) {
 export async function apiRequest(
   method: string,
   route: string,
-  data?: unknown | undefined,
-): Promise<Response> {
-  const baseUrl = getApiUrl();
-  const url = new URL(route, baseUrl);
-
-  const res = await fetch(url.toString(), {
+  data?: unknown
+) {
+  const res = await fetch(route, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
   });
 
-  await throwIfResNotOk(res);
-  return res;
+  // ✅ HANDLE 401 FIRST
+  if (res.status === 401) {
+    return null;
+  }
+
+  // ✅ HANDLE OTHER ERRORS
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`API Error: ${res.status} - ${text}`);
+  }
+
+  return res.json();
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
