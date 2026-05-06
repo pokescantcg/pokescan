@@ -2,25 +2,33 @@ import { fetch } from "expo/fetch";
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { BASE_URL } from "../app/services/api";
 
+// -------------------- BASE URL --------------------
 export function getApiUrl(): string {
   return BASE_URL;
 }
 
+// -------------------- ERROR HANDLER --------------------
 async function throwIfResNotOk(res: Response) {
-if (res.status === 401) {
-  return null; // VERY IMPORTANT
+  if (res.status === 401) {
+    return null; // ✅ Prevent crashes on unauthenticated
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`API Error: ${res.status} - ${text}`);
+  }
 }
 
-if (!res.ok) {
-  const text = await res.text();
-  throw new Error(`API Error: ${res.status} - ${text}`);
-}
+// -------------------- API REQUEST --------------------
 export async function apiRequest(
   method: string,
   route: string,
   data?: unknown
 ) {
-  const res = await fetch(route, {
+  const baseUrl = getApiUrl();
+  const url = new URL(route, baseUrl).toString();
+
+  const res = await fetch(url, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -28,21 +36,20 @@ export async function apiRequest(
     body: data ? JSON.stringify(data) : undefined,
   });
 
-  // ✅ HANDLE 401 FIRST
+  // ✅ Handle 401 safely
   if (res.status === 401) {
     return null;
   }
 
-  // ✅ HANDLE OTHER ERRORS
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API Error: ${res.status} - ${text}`);
-  }
+  // ✅ Handle other errors
+  await throwIfResNotOk(res);
 
   return res.json();
 }
 
+// -------------------- REACT QUERY --------------------
 type UnauthorizedBehavior = "returnNull" | "throw";
+
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
@@ -55,18 +62,21 @@ export const getQueryFn: <T>(options: {
       credentials: "include",
     });
 
+    // ✅ Prevent crash on unauthenticated
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-      return null;
+      return null as any;
     }
 
     await throwIfResNotOk(res);
-    return await res.json();
+
+    return res.json();
   };
 
+// -------------------- QUERY CLIENT --------------------
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      queryFn: getQueryFn({ on401: "returnNull" }),
+      queryFn: getQueryFn({ on401: "returnNull" }), // ✅ CRITICAL FIX
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: Infinity,
