@@ -1,5 +1,5 @@
 import { getSessionToken } from "./storage";
-import { BASE_URL } from "../app/services/api";
+import { BASE_URL } from "@/lib/api";
 
 export interface PokemonSet {
   id: string;

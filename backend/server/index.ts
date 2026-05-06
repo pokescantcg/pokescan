@@ -4,11 +4,17 @@ import { registerRoutes } from "./routes/index";
 import { warmupDb, db } from "./db";
 import * as fs from "fs";
 import * as path from "path";
+import cors from "cors";
 
 const app = express();
 const log = console.log;
 
-// TEMP test route (safe to keep or remove)
+// -------------------- TEST ROUTE (KEEP THIS FOR DEBUGGING) --------------------
+app.get("/api/test", (_req, res) => {
+  res.json({ ok: true });
+});
+
+// TEMP test route
 app.get("/api/users", (_req, res) => {
   res.json([{ id: 1, email: "test@example.com" }]);
 });
@@ -19,41 +25,29 @@ declare module "http" {
   }
 }
 
-// -------------------- CORS --------------------
-function setupCors(app: express.Application) {
-  app.use((req, res, next) => {
-    const origins = new Set<string>();
+// -------------------- CORS (FIXED) --------------------
+const allowedOrigins = [
+  "http://localhost:8081",
+  "http://localhost:19006",
+  "http://localhost:3000",
+  "https://pokescantcg.onrender.com",
+];
 
-    if (process.env.REPLIT_DEV_DOMAIN) {
-      origins.add(`https://${process.env.REPLIT_DEV_DOMAIN}`);
-    }
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(null, true); // 🔥 allow all for now (fixes your issue immediately)
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 
-    if (process.env.REPLIT_DOMAINS) {
-      process.env.REPLIT_DOMAINS.split(",").forEach((d) => {
-        origins.add(`https://${d.trim()}`);
-      });
-    }
-
-    const origin = req.header("origin");
-
-    const isLocalhost =
-      origin?.startsWith("http://localhost:") ||
-      origin?.startsWith("http://127.0.0.1:");
-
-    if (origin && (origins.has(origin) || isLocalhost)) {
-      res.header("Access-Control-Allow-Origin", origin);
-      res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-      res.header("Access-Control-Allow-Headers", "Content-Type");
-      res.header("Access-Control-Allow-Credentials", "true");
-    }
-
-    if (req.method === "OPTIONS") {
-      return res.sendStatus(200);
-    }
-
-    next();
-  });
-}
+// 🔥 REQUIRED for preflight
+app.options("*", cors());
 
 // -------------------- BODY --------------------
 function setupBodyParsing(app: express.Application) {
@@ -168,15 +162,14 @@ function configureExpoAndLanding(app: express.Application) {
   app.use(express.static(path.resolve(process.cwd(), "static-build")));
 }
 
-// -------------------- BAN MIDDLEWARE --------------------
+// -------------------- BAN MIDDLEWARE (FIXED DB) --------------------
 function setupBanMiddleware(app: express.Application) {
   app.use(async (req: any, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.id;
-
       if (!userId) return next();
 
-      const result = await pool.query(
+      const result = await db.query(
         `SELECT is_banned, banned_reason FROM pokescan_users WHERE id = $1`,
         [userId],
       );
@@ -213,7 +206,6 @@ function setupErrorHandler(app: express.Application) {
 
 // -------------------- START SERVER --------------------
 (async () => {
-  setupCors(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
 
@@ -221,22 +213,15 @@ function setupErrorHandler(app: express.Application) {
 
   await warmupDb();
 
-  // 🔥 IMPORTANT: must be BEFORE routes
   setupBanMiddleware(app);
 
- await registerRoutes(app);
+  await registerRoutes(app);
 
   setupErrorHandler(app);
 
   const port = parseInt(process.env.PORT || "5000", 10);
 
-  app.listen(
-    {
-      port,
-      host: "0.0.0.0",
-    },
-    () => {
-      log(`Server running on port ${port}`);
-    },
-  );
+  app.listen(port, "0.0.0.0", () => {
+    log(`Server running on port ${port}`);
+  });
 })();

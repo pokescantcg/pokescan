@@ -1,30 +1,121 @@
+// ======================================================
+// API CONFIG + FETCH WRAPPER (EXPO SAFE + DEBUG READY)
+// Location: lib/api.ts
+// ======================================================
+
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 
-const PROD_URL = "https://pokescantcg.onrender.com"; // ← your Render URL
-const LOCAL_IP = "192.168.1.107"; // only used in dev
-export const BASE_URL = "https://pokescantcg.onrender.com";
+// ------------------------------------------------------
+// BASE URL CONFIG
+// ------------------------------------------------------
 
-console.log("API BASE URL:", BASE_URL);
-export const apiFetch = async (
-  path: string,
-  options?: RequestInit
-) => {
-  const url = `${BASE_URL}${path}`;
+const DEFAULT_BASE_URL = "https://pokescantcg.onrender.com";
 
-  console.log("API REQUEST:", url);
+const DEV_LOCAL_URL =
+  Platform.OS === "android"
+    ? "http://10.0.2.2:5000"
+    : "http://localhost:5000";
 
-  const res = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options?.headers || {}),
-    },
-    ...options,
-  });
+// Final resolved API URL
+export const BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  Constants.expoConfig?.extra?.apiUrl ||
+  (process.env.NODE_ENV === "development"
+    ? DEV_LOCAL_URL
+    : DEFAULT_BASE_URL);
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API Error: ${res.status} - ${text}`);
+// 👇 Useful debug log (keep this)
+console.log("🌐 API BASE URL:", BASE_URL);
+
+// ------------------------------------------------------
+// DEFAULT HEADERS BUILDER
+// ------------------------------------------------------
+
+function buildHeaders(
+  body: unknown,
+  extraHeaders?: Record<string, string>
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    ...(extraHeaders ?? {}),
+  };
+
+  if (
+    body !== undefined &&
+    !(body instanceof FormData) &&
+    !headers["Content-Type"]
+  ) {
+    headers["Content-Type"] = "application/json";
   }
 
-  return res.json();
-};
+  return headers;
+}
+
+// ------------------------------------------------------
+// MAIN FETCH WRAPPER
+// ------------------------------------------------------
+
+export async function apiFetch<T = any>(
+  route: string,
+  options?: {
+    method?: string;
+    body?: unknown;
+    headers?: Record<string, string>;
+  }
+): Promise<T> {
+  const url = new URL(route, BASE_URL).toString();
+
+  try {
+    const response = await fetch(url, {
+      method: options?.method ?? "GET",
+      headers: buildHeaders(options?.body, options?.headers),
+      body:
+        options?.body === undefined
+          ? undefined
+          : options.body instanceof FormData
+          ? options.body
+          : JSON.stringify(options.body),
+      credentials: "include",
+    });
+
+    const text = await response.text();
+
+    let data: any = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+
+    // --------------------------------------------------
+    // HANDLE AUTH FAIL (IMPORTANT FOR YOUR APP)
+    // --------------------------------------------------
+
+    if (response.status === 401) {
+      console.warn("🔒 Unauthorized request:", url);
+      return null as T;
+    }
+
+    // --------------------------------------------------
+    // HANDLE OTHER ERRORS
+    // --------------------------------------------------
+
+    if (!response.ok) {
+      const message =
+        data?.error ||
+        data?.message ||
+        text ||
+        response.statusText;
+
+      console.error("❌ API ERROR:", url, message);
+      throw new Error(message);
+    }
+
+    return data ?? ({} as T);
+  } catch (err: any) {
+    console.error("🔥 NETWORK ERROR:", url, err.message);
+    throw new Error(err.message || "Network request failed");
+  }
+}

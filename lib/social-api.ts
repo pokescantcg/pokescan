@@ -1,6 +1,7 @@
 import { getApiUrl } from "./query-client";
 import { getSessionToken } from "./storage";
 
+
 async function authHeaders(): Promise<HeadersInit> {
   const token = await getSessionToken();
   return {

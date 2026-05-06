@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
 import { Platform } from "react-native";
 import { apiRequest, getApiUrl } from "./query-client";
-import { apiFetch } from "../app/services/api";
+import { apiFetch } from "@/lib/api";
 
 export type UserRole = "user" | "moderator" | "admin";
 
