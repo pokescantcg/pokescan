@@ -1,6 +1,6 @@
 import "dotenv/config";
 import express, { type Request, type Response, type NextFunction } from "express";
-import { registerRoutes } from "./routes";
+import { registerRoutes } from "./routes/index";
 import { warmupDb, db } from "./db";
 import * as fs from "fs";
 import * as path from "path";
@@ -224,13 +224,13 @@ function setupErrorHandler(app: express.Application) {
   // 🔥 IMPORTANT: must be BEFORE routes
   setupBanMiddleware(app);
 
-  const server = await registerRoutes(app);
+ await registerRoutes(app);
 
   setupErrorHandler(app);
 
   const port = parseInt(process.env.PORT || "5000", 10);
 
-  server.listen(
+  app.listen(
     {
       port,
       host: "0.0.0.0",
