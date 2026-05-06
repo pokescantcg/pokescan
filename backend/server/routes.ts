@@ -33,6 +33,8 @@ import {
   pokescanMessages,
   pokescanReports,
   pokescanChatroomMessages,
+  adminLogs,
+  notifications,
 } from "@shared/schema";
 import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
@@ -45,6 +47,19 @@ async function cleanupOldChatroomMessages() {
     console.log("[Chatroom] Cleaned up old messages");
   } catch (e) {
     console.error("[Chatroom] Cleanup error:", e);
+  }
+}
+
+async function logAdminAction(action: string, details: string | null, actorId: string | null, targetId: string | null) {
+  try {
+    await db.insert(adminLogs).values({
+      action,
+      details,
+      actorId,
+      targetId,
+    });
+  } catch (e) {
+    console.error("[Admin Log] Failed to log action:", e);
   }
 }
 
@@ -2313,6 +2328,10 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         [status, user.id, reviewNote ?? null, id]
       );
       if (result.rows.length === 0) { res.status(404).json({ error: "Listing not found" }); return; }
+
+      // Log the action
+      await logAdminAction(`listing_${status}`, `Listing ${id}: ${reviewNote ?? "No note"}`, user.id, result.rows[0].user_id);
+
       res.json({ listing: rowToListing(result.rows[0]) });
     } catch (err: any) {
       console.error("[Admin Listings] PATCH error:", err.message);
@@ -3400,6 +3419,10 @@ return { id: user.id, username: user.username, displayName: user.displayName };
       reviewedAt: new Date(),
     }).where(eq(pokescanReports.id, req.params.id)).returning();
     if (!updated) { res.status(404).json({ error: "Report not found" }); return; }
+
+    // Log the action
+    await logAdminAction(`report_${status}`, `Report ${req.params.id}: ${reviewNote?.trim() || "No note"}`, reviewerId, updated.reportedUserId);
+
     res.json({ report: updated });
   });
 // 🔨 GLOBAL ACCOUNT BAN
@@ -3438,6 +3461,9 @@ app.post("/api/admin/ban-user", async (req: Request, res: Response) => {
        WHERE id = $2`,
       [reason || "No reason provided", userId]
     );
+
+    // Log the action
+    await logAdminAction("ban_user", `Reason: ${reason || "No reason provided"}`, caller.id, userId);
 
     // 🔒 Kill sessions
     await db.delete(pokescanSessions).where(eq(pokescanSessions.userId, userId));
@@ -3489,9 +3515,119 @@ app.post("/api/admin/unban-user", async (req: Request, res: Response) => {
       [userId]
     );
 
+    // Log the action
+    await logAdminAction("unban_user", "User unbanned", caller.id, userId);
+
     res.json({ success: true });
 
   } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/admin/banned-users — list all banned users
+app.get("/api/admin/banned-users", async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const caller = token ? await storage.validateSession(token) : null;
+
+    if (!caller || (caller.role !== "admin" && caller.role !== "moderator")) {
+      res.status(403).json({ error: "Staff only" });
+      return;
+    }
+
+    const result = await pool.query(
+      `SELECT id, username, display_name, email, role, banned_reason, banned_at 
+       FROM pokescan_users 
+       WHERE is_banned = true 
+       ORDER BY banned_at DESC`
+    );
+
+    res.json({ users: result.rows });
+
+  } catch (error: any) {
+    console.error("Get banned users error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/admin/logs — admin action logs
+app.get("/api/admin/logs", async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    const caller = token ? await storage.validateSession(token) : null;
+
+    if (!caller || caller.role !== "admin") {
+      res.status(403).json({ error: "Admin only" });
+      return;
+    }
+
+    const logs = await db.select({
+      id: adminLogs.id,
+      action: adminLogs.action,
+      details: adminLogs.details,
+      createdAt: adminLogs.createdAt,
+      actorUsername: sql<string>`actor.username`,
+      targetUsername: sql<string>`target.username`,
+    })
+    .from(adminLogs)
+    .leftJoin(sql`pokescan_users AS actor`, sql`actor.id = admin_logs.actor_id`)
+    .leftJoin(sql`pokescan_users AS target`, sql`target.id = admin_logs.target_id`)
+    .orderBy(desc(adminLogs.createdAt))
+    .limit(1000);
+
+    res.json({ logs });
+
+  } catch (error: any) {
+    console.error("Get admin logs error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/notifications — get user's notifications
+app.get("/api/notifications", async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const user = await storage.validateSession(token);
+    if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+
+    const userNotifications = await db.select()
+      .from(notifications)
+      .where(eq(notifications.userId, user.id))
+      .orderBy(desc(notifications.createdAt))
+      .limit(100);
+
+    res.json({ notifications: userNotifications });
+
+  } catch (error: any) {
+    console.error("Get notifications error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/notifications/read — mark notification as read
+app.post("/api/notifications/read", async (req: Request, res: Response) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+    if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const user = await storage.validateSession(token);
+    if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+
+    const { notificationId } = req.body;
+    if (!notificationId) {
+      res.status(400).json({ error: "notificationId required" });
+      return;
+    }
+
+    await db.update(notifications)
+      .set({ isRead: true })
+      .where(and(eq(notifications.id, notificationId), eq(notifications.userId, user.id)));
+
+    res.json({ success: true });
+
+  } catch (error: any) {
+    console.error("Mark notification read error:", error);
     res.status(500).json({ error: error.message });
   }
 });

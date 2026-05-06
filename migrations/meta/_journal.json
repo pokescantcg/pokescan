@@ -17,11 +17,9 @@
       "breakpoints": true
     },
     {
-      "idx": 2,
+      "idx": 3,
       "version": "7",
-      "when": 1777996728683,
-      "tag": "0002_milky_krista_starr",
+      "when": 1778000000000,
+      "tag": "0003_admin_logs_notifications",
       "breakpoints": true
     }
-  ]
-}

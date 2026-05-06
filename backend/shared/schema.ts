@@ -221,6 +221,29 @@ export const pokescanChatroomMessages = pgTable("pokescan_chatroom_messages", {
 
 export type PokescanChatroomMessage = typeof pokescanChatroomMessages.$inferSelect;
 
+export const adminLogs = pgTable("admin_logs", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  action: text("action").notNull(),
+  details: text("details"),
+  actorId: varchar("actor_id", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
+  targetId: varchar("target_id", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type AdminLog = typeof adminLogs.$inferSelect;
+
+export const notifications = pgTable("notifications", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  link: text("link"),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type Notification = typeof notifications.$inferSelect;
+
 export const syncStatus = pgTable("sync_status", {
   id: serial("id").primaryKey(),
   totalSets: integer("total_sets").default(0),

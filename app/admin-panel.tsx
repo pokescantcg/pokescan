@@ -249,7 +249,35 @@ const editStyles = StyleSheet.create({
   saveBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFF" },
 });
 
-type Tab = "listings" | "users" | "reports" | "revenue" | "database";
+type Tab = "listings" | "users" | "reports" | "revenue" | "database" | "banned" | "logs" | "notifications";
+
+interface AdminLogEntry {
+  id: string;
+  action: string;
+  details: string | null;
+  actorUsername: string | null;
+  targetUsername: string | null;
+  createdAt: string;
+}
+
+interface BannedUser {
+  id: string;
+  username: string;
+  displayName: string;
+  email: string;
+  role: string;
+  bannedReason: string | null;
+  bannedAt: string | null;
+}
+
+interface NotificationItem {
+  id: string;
+  title: string;
+  body: string;
+  link: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
 
 const STRIPE_PRICE_MONTHLY = "price_1TM7D8K7N6BNdayAPnuINUuU";
 
@@ -881,6 +909,13 @@ export default function AdminPanelScreen() {
   const [expandedReport, setExpandedReport] = useState<string | null>(null);
   const [revenueData, setRevenueData] = useState<{ subscribers: any[]; stats: any } | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(false);
+  const [adminLogs, setAdminLogs] = useState<AdminLogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
+  const [bannedUsersLoading, setBannedUsersLoading] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [sectionPickerVisible, setSectionPickerVisible] = useState(false);
 
   React.useEffect(() => {
     return () => {
@@ -987,7 +1022,10 @@ export default function AdminPanelScreen() {
   React.useEffect(() => { loadFriends(); }, [loadFriends]);
   React.useEffect(() => {
     if (activeTab === "listings") loadAdminListings();
-  }, [activeTab, loadAdminListings]);
+    if (activeTab === "logs") loadAdminLogs();
+    if (activeTab === "banned") loadBannedUsers();
+    if (activeTab === "notifications") loadNotifications();
+  }, [activeTab, loadAdminListings, loadAdminLogs, loadBannedUsers, loadNotifications]);
 
   // Lightweight pending count for the tab badge (independent of the
   // currently-selected filter so mods always see how many need review).
@@ -1071,11 +1109,78 @@ export default function AdminPanelScreen() {
     }
   }, []);
 
+  const loadAdminLogs = useCallback(async () => {
+    setLogsLoading(true);
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
+    try {
+      const res = await fetch(new URL("/api/admin/logs", getApiUrl()).href, { headers });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json();
+      setAdminLogs(data.logs || []);
+    } catch (e: any) {
+      console.error("Failed to load admin logs:", e);
+    } finally {
+      setLogsLoading(false);
+    }
+  }, []);
+
+  const loadBannedUsers = useCallback(async () => {
+    setBannedUsersLoading(true);
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
+    try {
+      const res = await fetch(new URL("/api/admin/banned-users", getApiUrl()).href, { headers });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json();
+      setBannedUsers(data.users || []);
+    } catch (e: any) {
+      console.error("Failed to load banned users:", e);
+    } finally {
+      setBannedUsersLoading(false);
+    }
+  }, []);
+
+  const loadNotifications = useCallback(async () => {
+    setNotificationsLoading(true);
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
+    try {
+      const res = await fetch(new URL("/api/notifications", getApiUrl()).href, { headers });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json();
+      setNotifications(data.notifications || []);
+    } catch (e: any) {
+      console.error("Failed to load notifications:", e);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, []);
+
+  const markNotificationRead = useCallback(async (notificationId: string) => {
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
+    try {
+      const res = await fetch(new URL("/api/notifications/read", getApiUrl()).href, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ notificationId }),
+      });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      setNotifications((prev) => prev.map((item) => item.id === notificationId ? { ...item, isRead: true } : item));
+    } catch (e: any) {
+      console.error("Failed to mark notification read:", e);
+    }
+  }, []);
+
   React.useEffect(() => {
     if (activeTab === "reports") loadReports();
     if (activeTab === "revenue") loadRevenue();
     if (activeTab === "users") handleRefreshUsers();
-  }, [activeTab, loadReports, loadRevenue]);
+    if (activeTab === "logs") loadAdminLogs();
+    if (activeTab === "banned") loadBannedUsers();
+    if (activeTab === "notifications") loadNotifications();
+  }, [activeTab, loadReports, loadRevenue, loadAdminLogs, loadBannedUsers, loadNotifications]);
 
   const handleUpdateReport = useCallback(async (id: string, status: "reviewed" | "dismissed") => {
     try {
@@ -1086,6 +1191,38 @@ export default function AdminPanelScreen() {
       Alert.alert("Error", e.message || "Could not update report.");
     }
   }, [reviewNotes]);
+
+  const handleUnbanUser = useCallback(async (userId: string) => {
+    const confirmed = await new Promise<boolean>((resolve) => {
+      Alert.alert(
+        "Unban User",
+        "Unban this user and restore access to their account?",
+        [
+          { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+          { text: "Unban", style: "default", onPress: () => resolve(true) },
+        ]
+      );
+    });
+    if (!confirmed) return;
+
+    const headers = await requireAdminAuthHeader();
+    if (!headers) return;
+    try {
+      const res = await fetch(new URL("/api/admin/unban-user", getApiUrl()).href, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ userId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `Server error ${res.status}`);
+      }
+      setBannedUsers(prev => prev.filter((user) => user.id !== userId));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Could not unban user.");
+    }
+  }, []);
 
   const handleRefreshUsers = useCallback(async () => {
     setIsRefreshingUsers(true);
@@ -1500,6 +1637,17 @@ export default function AdminPanelScreen() {
 
   const badgeLabel = isSuperadminUser ? "SUPERADMIN" : user.role === "admin" ? "ADMIN" : "MODERATOR";
 
+  const sectionLabelMap: Record<Tab, string> = {
+    listings: "Listings",
+    users: "Users",
+    reports: "Reports",
+    revenue: "Revenue",
+    database: "Database",
+    banned: "Banned Users",
+    logs: "Admin Logs",
+    notifications: "Notifications",
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.topBar, { paddingTop: (insets.top || webTopInset) + 4 }]}>
@@ -1516,6 +1664,13 @@ export default function AdminPanelScreen() {
             <Ionicons name="shield-checkmark" size={14} color="#FFF" />
             <Text style={styles.staffBadgeText}>{badgeLabel}</Text>
           </LinearGradient>
+          <Pressable
+            style={[styles.sectionSelector, { borderColor: colors.border }]}
+            onPress={() => setSectionPickerVisible(true)}
+          >
+            <Text style={[styles.sectionSelectorText, { color: colors.text }]}>Section: {sectionLabelMap[activeTab]}</Text>
+            <Ionicons name="chevron-down-outline" size={16} color={colors.text} />
+          </Pressable>
         </View>
         <Pressable
           onPress={() => {
@@ -1536,6 +1691,44 @@ export default function AdminPanelScreen() {
           <Ionicons name="log-out-outline" size={22} color={colors.error} />
         </Pressable>
       </View>
+
+      <Modal
+        visible={sectionPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSectionPickerVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setSectionPickerVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Select admin section</Text>
+              {(
+                [
+                  { id: "listings" as Tab, label: "Listings", visible: true },
+                  { id: "users" as Tab, label: "Users", visible: isSuperadminUser || isAdminUser },
+                  { id: "reports" as Tab, label: "Reports", visible: true },
+                  { id: "banned" as Tab, label: "Banned Users", visible: isSuperadminUser || isAdminUser },
+                  { id: "notifications" as Tab, label: "Notifications", visible: isStaff },
+                  { id: "logs" as Tab, label: "Admin Logs", visible: isSuperadminUser },
+                  { id: "revenue" as Tab, label: "Revenue", visible: isSuperadminUser },
+                  { id: "database" as Tab, label: "Database", visible: isSuperadminUser },
+                ]
+              ).filter((option) => option.visible).map((option) => (
+                <Pressable
+                  key={option.id}
+                  style={styles.modalOption}
+                  onPress={() => {
+                    setActiveTab(option.id);
+                    setSectionPickerVisible(false);
+                  }}
+                >
+                  <Text style={[styles.modalOptionText, { color: colors.text }]}>{option.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       <View style={styles.tabBar}>
         <Pressable
@@ -1594,6 +1787,64 @@ export default function AdminPanelScreen() {
             Reports {reports.filter(r => r.status === "pending").length > 0 ? `(${reports.filter(r => r.status === "pending").length})` : ""}
           </Text>
         </Pressable>
+        {(isSuperadminUser || isAdminUser) && (
+          <Pressable
+            style={[styles.tab, activeTab === "banned" && styles.tabActive]}
+            onPress={() => setActiveTab("banned")}
+          >
+            <Ionicons
+              name="ban-outline"
+              size={18}
+              color={activeTab === "banned" ? "#FFF" : colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                { color: activeTab === "banned" ? "#FFF" : colors.textMuted },
+              ]}
+            >
+              Banned
+            </Text>
+          </Pressable>
+        )}
+        <Pressable
+          style={[styles.tab, activeTab === "notifications" && styles.tabActive]}
+          onPress={() => setActiveTab("notifications")}
+        >
+          <Ionicons
+            name="notifications-outline"
+            size={18}
+            color={activeTab === "notifications" ? "#FFF" : colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.tabText,
+              { color: activeTab === "notifications" ? "#FFF" : colors.textMuted },
+            ]}
+          >
+            Notifications
+          </Text>
+        </Pressable>
+        {isSuperadminUser && (
+          <Pressable
+            style={[styles.tab, activeTab === "logs" && styles.tabActive]}
+            onPress={() => setActiveTab("logs")}
+          >
+            <Ionicons
+              name="clipboard-list-outline"
+              size={18}
+              color={activeTab === "logs" ? "#FFF" : colors.textMuted}
+            />
+            <Text
+              style={[
+                styles.tabText,
+                { color: activeTab === "logs" ? "#FFF" : colors.textMuted },
+              ]}
+            >
+              Logs
+            </Text>
+          </Pressable>
+        )}
         {isSuperadminUser && (
           <Pressable
             style={[styles.tab, activeTab === "revenue" && styles.tabActive]}
@@ -1910,6 +2161,130 @@ export default function AdminPanelScreen() {
             );
           }}
         />
+      )}
+
+      {activeTab === "banned" && (isSuperadminUser || isAdminUser) && (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 100, gap: 12 }]}
+        >
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
+            <Text style={[styles.sectionHeader, { color: colors.text }]}>Banned Users ({bannedUsers.length})</Text>
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+              onPress={loadBannedUsers}
+            >
+              <Ionicons name="refresh-outline" size={16} color={colors.text} />
+              <Text style={[styles.actionBtnText, { color: colors.text }]}>Refresh</Text>
+            </Pressable>
+          </View>
+          {bannedUsers.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="ban-outline" size={56} color={colors.textMuted} />
+              <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No banned users</Text>
+              <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>No accounts are currently disabled.</Text>
+            </View>
+          ) : (
+            bannedUsers.map((banned) => (
+              <View
+                key={banned.id}
+                style={[styles.accountRow, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.accountTitle, { color: colors.text }]}>{banned.displayName} (@{banned.username})</Text>
+                  <Text style={[styles.accountSubtitle, { color: colors.textMuted }]}>Role: {banned.role} · {banned.email}</Text>
+                  <Text style={[styles.accountSubtitle, { color: colors.textMuted }]}>Banned: {banned.bannedAt ? new Date(banned.bannedAt).toLocaleString() : "Unknown"}</Text>
+                  {banned.bannedReason ? <Text style={[styles.accountSubtitle, { color: colors.textMuted }]}>Reason: {banned.bannedReason}</Text> : null}
+                </View>
+                <Pressable
+                  style={[styles.dangerBtn, { backgroundColor: colors.pokemonBlue }]}
+                  onPress={() => handleUnbanUser(banned.id)}
+                >
+                  <Ionicons name="arrow-undo-outline" size={18} color="#FFF" />
+                  <Text style={styles.dangerBtnText}>Unban</Text>
+                </Pressable>
+              </View>
+            ))
+          )}
+        </ScrollView>
+      )}
+
+      {activeTab === "logs" && isSuperadminUser && (
+        <FlatList
+          data={adminLogs}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
+          showsVerticalScrollIndicator={false}
+          onRefresh={loadAdminLogs}
+          refreshing={logsLoading}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          ListEmptyComponent={
+            logsLoading ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="hourglass-outline" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>Loading logs...</Text>
+              </View>
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="clipboard-outline" size={56} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No admin logs</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>No recent admin actions were recorded.</Text>
+              </View>
+            )
+          }
+          renderItem={({ item }) => (
+            <View style={[styles.reportCard, { backgroundColor: colors.card, borderColor: colors.border }]}> 
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <Text style={[styles.reportTypeBadgeText, { color: colors.text }]}>{item.action.replace(/_/g, " ")}</Text>
+                <Text style={[styles.reportTime, { color: colors.textMuted }]}>{getTimeAgo(item.createdAt)}</Text>
+              </View>
+              <Text style={[styles.reportReasonText, { color: colors.text }]}>{item.details || "No details provided."}</Text>
+              <Text style={[styles.reportMetaText, { color: colors.textMuted, marginTop: 8 }]}>Actor: {item.actorUsername || "Unknown"} • Target: {item.targetUsername || "—"}</Text>
+            </View>
+          )}
+        />
+      )}
+
+      {activeTab === "notifications" && isStaff && (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 100, gap: 12 }]}
+        >
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
+            <Text style={[styles.sectionHeader, { color: colors.text }]}>Notifications</Text>
+            <Pressable
+              style={[styles.actionBtn, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+              onPress={loadNotifications}
+            >
+              <Ionicons name="refresh-outline" size={16} color={colors.text} />
+              <Text style={[styles.actionBtnText, { color: colors.text }]}>Refresh</Text>
+            </Pressable>
+          </View>
+          {notifications.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="notifications-outline" size={56} color={colors.textMuted} />
+              <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No notifications</Text>
+              <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>You have no new admin notifications.</Text>
+            </View>
+          ) : (
+            notifications.map((notification) => (
+              <Pressable
+                key={notification.id}
+                style={[styles.notificationRow, { backgroundColor: notification.isRead ? colors.surface : colors.card, borderColor: colors.borderLight }]}
+                onPress={() => {
+                  if (!notification.isRead) markNotificationRead(notification.id);
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.accountTitle, { color: colors.text }]}>{notification.title}</Text>
+                  <Text style={[styles.accountSubtitle, { color: colors.textSecondary }]}>{notification.body}</Text>
+                  <Text style={[styles.accountSubtitle, { color: colors.textMuted }]}>{new Date(notification.createdAt).toLocaleString()}</Text>
+                </View>
+              </Pressable>
+            ))
+          )}
+        </ScrollView>
       )}
 
       {activeTab === "revenue" && isSuperadminUser && (
@@ -2598,6 +2973,96 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+  },
+  actionBtnText: {
+    fontSize: 12,
+    fontFamily: "Outfit_600SemiBold",
+  },
+  sectionSelector: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  sectionSelectorText: {
+    fontSize: 12,
+    fontFamily: "Outfit_600SemiBold",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.32)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 18,
+  },
+  modalSheet: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 18,
+    padding: 18,
+    borderWidth: 1,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontFamily: "Outfit_700Bold",
+    marginBottom: 12,
+  },
+  modalOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  modalOptionText: {
+    fontSize: 14,
+    fontFamily: "Outfit_600SemiBold",
+  },
+  accountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    gap: 10,
+  },
+  accountTitle: {
+    fontSize: 14,
+    fontFamily: "Outfit_600SemiBold",
+  },
+  accountSubtitle: {
+    fontSize: 12,
+    fontFamily: "Outfit_400Regular",
+  },
+  dangerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  dangerBtnText: {
+    fontSize: 12,
+    fontFamily: "Outfit_700Bold",
+    color: "#FFF",
+    marginLeft: 6,
+  },
+  notificationRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    gap: 10,
   },
   noUsersBox: {
     alignItems: "center",
