@@ -475,4 +475,3 @@ const styles = StyleSheet.create({
   registerText: { fontSize: 14, fontFamily: "Outfit_400Regular" },
   registerLink: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFDE00" },
 });
-console.log("ACTUAL BASE URL:", BASE_URL);
