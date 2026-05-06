@@ -38,7 +38,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
-
+import { registerRoutes } from "./routes/index";
 async function cleanupOldChatroomMessages() {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -496,9 +496,6 @@ export async function registerRoutes(app: Express) {
   startSyncService();
   seedSuperadmin().catch((e) => console.error("[seedSuperadmin] failed:", e));
 
-  app.get("/api/config", (_req: Request, res: Response) => {
-    res.json(appConfig);
-  });
 
   app.get("/api/test", (_req: Request, res: Response) => {
     res.send("API WORKING");

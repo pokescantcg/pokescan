@@ -10,6 +10,8 @@ const app = express();
 const log = console.log;
 
 // -------------------- TEST ROUTE (KEEP THIS FOR DEBUGGING) --------------------
+
+
 app.get("/api/test", (_req, res) => {
   res.json({ ok: true });
 });
@@ -31,23 +33,23 @@ const allowedOrigins = [
   "http://localhost:19006",
   "http://localhost:3000",
   "https://pokescantcg.onrender.com",
+  
 ];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(null, true); // 🔥 allow all for now (fixes your issue immediately)
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
 
-// 🔥 REQUIRED for preflight
-app.options("/*", cors());
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(null, false); // ✅ safer
+  },
+  credentials: true,
+}));
+
+
 
 // -------------------- BODY --------------------
 function setupBodyParsing(app: express.Application) {

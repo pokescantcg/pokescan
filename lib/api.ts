@@ -7,23 +7,25 @@ import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 // ------------------------------------------------------
-// BASE URL CONFIG
+// BASE URL CONFIG (FIXED)
 // ------------------------------------------------------
 
-const DEFAULT_BASE_URL = "https://pokescantcg.onrender.com";
-
+// ✅ Local dev URLs (important for Expo)
 const DEV_LOCAL_URL =
   Platform.OS === "android"
     ? "http://10.0.2.2:5000"
     : "http://localhost:5000";
 
-// Final resolved API URL
+// ✅ Production URL
+const PROD_URL = "https://pokescantcg.onrender.com";
+
+// ✅ Final resolved API URL (ORDER MATTERS)
 export const BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  Constants.expoConfig?.extra?.apiUrl ||
+  process.env.EXPO_PUBLIC_API_URL || // 1. explicit env override
+  Constants.expoConfig?.extra?.apiUrl || // 2. app.json extra
   (process.env.NODE_ENV === "development"
-    ? DEV_LOCAL_URL
-    : DEFAULT_BASE_URL);
+    ? DEV_LOCAL_URL // 3. dev fallback
+    : PROD_URL); // 4. prod fallback
 
 // 👇 Useful debug log (keep this)
 console.log("🌐 API BASE URL:", BASE_URL);
@@ -90,7 +92,7 @@ export async function apiFetch<T = any>(
     }
 
     // --------------------------------------------------
-    // HANDLE AUTH FAIL (IMPORTANT FOR YOUR APP)
+    // HANDLE AUTH FAIL
     // --------------------------------------------------
 
     if (response.status === 401) {
