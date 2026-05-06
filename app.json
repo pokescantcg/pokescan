@@ -23,7 +23,7 @@
 
     "android": {
       "package": "pokescan.tcg1",
-      "versionCode": 26,
+      "versionCode": 28,
       "adaptiveIcon": {
         "backgroundColor": "#0B1426",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

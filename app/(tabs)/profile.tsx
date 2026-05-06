@@ -121,8 +121,10 @@ export default function ProfileScreen() {
   }, [user, collectionVisible]);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
-  const myListings = listings.filter((l) => l.userId === user?.id);
+  const safeCollection = collection || [];
+  const totalCards = safeCollection.reduce((sum, item) => sum + item.quantity, 0);
+  const safeListings = listings || [];
+  const myListings = safeListings.filter((l) => l.userId === user?.id);
 
   const handlePickAvatar = useCallback(async () => {
     if (!user?.isPremium) {

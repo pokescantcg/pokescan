@@ -264,7 +264,8 @@ export default function CollectionScreen() {
     [rawSections, collapsedSets]
   );
 
-  const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
+  const safeCollection = collection || [];
+  const totalCards = safeCollection.reduce((sum, item) => sum + item.quantity, 0);
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   if (!user) {
