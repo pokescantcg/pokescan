@@ -7,12 +7,14 @@ export function getApiUrl(): string {
 }
 
 async function throwIfResNotOk(res: Response) {
-  if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
-  }
+if (res.status === 401) {
+  return null; // VERY IMPORTANT
 }
 
+if (!res.ok) {
+  const text = await res.text();
+  throw new Error(`API Error: ${res.status} - ${text}`);
+}
 export async function apiRequest(
   method: string,
   route: string,
