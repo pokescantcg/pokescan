@@ -47,7 +47,7 @@ app.use(
 );
 
 // 🔥 REQUIRED for preflight
-app.options("*", cors());
+app.options("/*", cors());
 
 // -------------------- BODY --------------------
 function setupBodyParsing(app: express.Application) {
