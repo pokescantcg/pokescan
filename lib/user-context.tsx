@@ -23,6 +23,7 @@ import {
   getListings,
   addListing,
   removeListing,
+  updateListing,
   getCollectionValue,
   getAllUsers,
   grantPremiumToUser,
@@ -66,6 +67,7 @@ interface UserContextValue {
   removeCard: (cardId: string, condition: string, variant?: CardVariant) => Promise<void>;
   updateQuantity: (cardId: string, condition: string, quantity: number, variant?: CardVariant) => Promise<void>;
   createListing: (listing: Omit<MarketListing, "id" | "createdAt" | "status" | "reviewedBy" | "reviewedAt" | "reviewNote">) => Promise<void>;
+  updateListingDetails: (listingId: string, updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null }) => Promise<void>;
   deleteListing: (listingId: string) => Promise<void>;
   grantPremium: (userId: string) => Promise<void>;
   revokePremium: (userId: string) => Promise<void>;
@@ -247,6 +249,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setListings(updated);
   }, []);
 
+  const handleUpdateListingDetails = useCallback(async (
+    listingId: string,
+    updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null }
+  ) => {
+    const updated = await updateListing(listingId, updates);
+    setListings(updated);
+  }, []);
+
   const handleDeleteListing = useCallback(async (listingId: string) => {
     const updated = await removeListing(listingId);
     setListings(updated);
@@ -340,6 +350,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       removeCard,
       updateQuantity,
       createListing,
+      updateListingDetails: handleUpdateListingDetails,
       deleteListing: handleDeleteListing,
       grantPremium: handleGrantPremium,
       revokePremium: handleRevokePremium,
@@ -353,7 +364,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       isAdminUser,
       isSuperadminUser: superadminFlag,
     }),
-    [user, isLoading, collection, listings, collectionValue, allUsers, register, registerWithPassword, loginWithPassword, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleRequestAdminOtp, handleVerifyAdminOtp, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, handleRefreshUsers, isStaff, isAdminUser, superadminFlag]
+    [user, isLoading, collection, listings, collectionValue, allUsers, register, registerWithPassword, loginWithPassword, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleRequestAdminOtp, handleVerifyAdminOtp, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleUpdateListingDetails, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, handleRefreshUsers, isStaff, isAdminUser, superadminFlag]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

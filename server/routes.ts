@@ -1978,6 +1978,54 @@ If you cannot identify the card, set confidence to "low" and provide your best g
     }
   });
 
+  // PATCH /api/listings/:id — owner can edit editable fields; resets to pending
+  app.patch("/api/listings/:id", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+
+      const { id } = req.params;
+      const existing = await pool.query(`SELECT user_id FROM pokescan_market_listings WHERE id = $1`, [id]);
+      if (existing.rows.length === 0) { res.status(404).json({ error: "Listing not found" }); return; }
+
+      const isOwner = existing.rows[0].user_id === user.id;
+      if (!isOwner) { res.status(403).json({ error: "Not authorised to edit this listing" }); return; }
+
+      const { priceGBP, condition, description, externalUrl } = req.body;
+      if (!condition) { res.status(400).json({ error: "Condition is required" }); return; }
+
+      const safeExternalUrl = (typeof externalUrl === "string" && /^https?:\/\//i.test(externalUrl.trim()))
+        ? externalUrl.trim()
+        : null;
+
+      const isStaff = user.role === "admin" || user.role === "moderator";
+      const newStatus = isStaff ? "approved" : "pending";
+
+      const result = await pool.query(
+        `UPDATE pokescan_market_listings
+           SET price_gbp = $1, condition = $2, description = $3, external_url = $4,
+               status = $5,
+               reviewed_by = $6, reviewed_at = $7,
+               review_note = NULL
+           WHERE id = $8
+           RETURNING *`,
+        [
+          priceGBP ?? null, condition, description ?? "", safeExternalUrl,
+          newStatus,
+          isStaff ? user.id : null,
+          isStaff ? new Date() : null,
+          id,
+        ]
+      );
+      res.json({ listing: rowToListing(result.rows[0]) });
+    } catch (err: any) {
+      console.error("[Listings] PATCH error:", err.message);
+      res.status(500).json({ error: "Could not update listing" });
+    }
+  });
+
   // ─── Admin: market listing moderation ─────────────────────────────────────
   // GET /api/admin/listings?status=pending|approved|rejected|all (default: all)
   app.get("/api/admin/listings", async (req: Request, res: Response) => {

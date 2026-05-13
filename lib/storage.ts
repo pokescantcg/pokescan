@@ -763,6 +763,25 @@ export async function addListing(listing: Omit<MarketListing, "id" | "createdAt"
   return getListings();
 }
 
+export async function updateListing(
+  listingId: string,
+  updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null }
+): Promise<MarketListing[]> {
+  const token = await getSessionToken();
+  if (!token) throw new Error("Not authenticated");
+  const url = new URL(`/api/listings/${listingId}`, getApiUrl()).href;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error ?? "Failed to update listing");
+  }
+  return getListings();
+}
+
 export async function removeListing(listingId: string): Promise<MarketListing[]> {
   const token = await getSessionToken();
   if (!token) throw new Error("Not authenticated");

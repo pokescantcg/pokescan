@@ -12,6 +12,8 @@ import {
   Alert,
   RefreshControl,
   Linking,
+  TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -35,6 +37,8 @@ const REPORT_REASONS = [
   "Other",
 ];
 
+const CONDITIONS = ["Mint", "Near Mint", "Excellent", "Good", "Lightly Played", "Played", "Poor"];
+
 function ListingDetailModal({
   listing,
   visible,
@@ -45,6 +49,7 @@ function ListingDetailModal({
   onDelete,
   onMessage,
   onReport,
+  onSaveEdit,
 }: {
   listing: MarketListing | null;
   visible: boolean;
@@ -55,9 +60,16 @@ function ListingDetailModal({
   onDelete: () => void;
   onMessage: () => void;
   onReport: (reason: string) => void;
+  onSaveEdit: (listingId: string, updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null }) => Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const [isEditing, setIsEditing] = useState(false);
+  const [editPrice, setEditPrice] = useState("");
+  const [editCondition, setEditCondition] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editExternalUrl, setEditExternalUrl] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   const { data: card } = useQuery<PokemonCard>({
     queryKey: ["/api/pokemon/cards", listing?.cardId],
@@ -86,8 +98,40 @@ function ListingDetailModal({
     );
   };
 
+  const startEdit = () => {
+    setEditPrice(listing.priceGBP != null ? String(listing.priceGBP) : "");
+    setEditCondition(listing.condition);
+    setEditDescription(listing.description ?? "");
+    setEditExternalUrl(listing.externalUrl ?? "");
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => setIsEditing(false);
+
+  const handleSave = async () => {
+    if (!editCondition) {
+      Alert.alert("Required", "Please select a condition.");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const priceVal = editPrice.trim() ? parseFloat(editPrice.trim()) : null;
+      await onSaveEdit(listing.id, {
+        priceGBP: (priceVal !== null && !isNaN(priceVal)) ? priceVal : null,
+        condition: editCondition,
+        description: editDescription.trim() || undefined,
+        externalUrl: editExternalUrl.trim() || null,
+      });
+      setIsEditing(false);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Could not save changes.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={isEditing ? cancelEdit : onClose}>
       <View style={[modalStyles.container, { backgroundColor: colors.background }]}>
         {/* Header bar */}
         <View
@@ -100,155 +144,249 @@ function ListingDetailModal({
             },
           ]}
         >
-          <Pressable onPress={onClose} hitSlop={12} style={modalStyles.closeBtn}>
-            <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
+          <Pressable onPress={isEditing ? cancelEdit : onClose} hitSlop={12} style={modalStyles.closeBtn}>
+            <Ionicons name={isEditing ? "arrow-back" : "chevron-down"} size={24} color={colors.textSecondary} />
           </Pressable>
           <Text style={[modalStyles.headerTitle, { color: colors.text }]} numberOfLines={1}>
-            {listing.cardName}
+            {isEditing ? "Edit Listing" : listing.cardName}
           </Text>
           <View style={{ width: 36 }} />
         </View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[modalStyles.scrollContent, { paddingBottom: insets.bottom + 120 }]}
-        >
-          {/* Card image */}
-          <View style={modalStyles.imageWrap}>
-            <Image
-              source={{ uri: listing.cardImage }}
-              style={modalStyles.cardImage}
-              contentFit="contain"
-            />
-          </View>
-
-          {/* Card identity */}
-          <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
-            <Text style={[modalStyles.cardName, { color: colors.text }]}>{listing.cardName}</Text>
-            <Text style={[modalStyles.setName, { color: colors.textSecondary }]}>{listing.setName}</Text>
-            {card?.number && (
-              <Text style={[modalStyles.cardMeta, { color: colors.textMuted }]}>
-                #{card.number}
-                {listing.rarity && listing.rarity !== "Unknown" ? ` · ${listing.rarity}` : ""}
-              </Text>
-            )}
-            {!card?.number && listing.rarity && listing.rarity !== "Unknown" && (
-              <Text style={[modalStyles.cardMeta, { color: colors.textMuted }]}>{listing.rarity}</Text>
-            )}
-          </View>
-
-          {/* Listing details */}
-          <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
-            {/* Type badge + price row */}
-            <View style={modalStyles.badgeRow}>
-              <View
-                style={[
-                  modalStyles.typeBadge,
-                  { backgroundColor: listing.type === "sale" ? colors.success : colors.pokemonBlue },
-                ]}
-              >
-                <Text style={modalStyles.typeBadgeText}>
-                  {listing.type === "sale" ? "FOR SALE" : "TRADE"}
-                </Text>
+        {isEditing ? (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[modalStyles.scrollContent, { paddingBottom: insets.bottom + 120 }]}
+          >
+            {/* Price (sale only) */}
+            {listing.type === "sale" && (
+              <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+                <Text style={[modalStyles.editLabel, { color: colors.textMuted }]}>Price (£)</Text>
+                <TextInput
+                  style={[modalStyles.editInput, { color: colors.text, borderColor: colors.borderLight, backgroundColor: colors.background }]}
+                  value={editPrice}
+                  onChangeText={setEditPrice}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="decimal-pad"
+                  returnKeyType="done"
+                />
               </View>
-              {listing.priceGBP ? (
-                <Text style={[modalStyles.price, { color: colors.success }]}>
-                  {formatGBP(listing.priceGBP)}
-                </Text>
-              ) : null}
-            </View>
+            )}
 
             {/* Condition */}
-            <View style={modalStyles.detailRow}>
-              <Text style={[modalStyles.detailLabel, { color: colors.textMuted }]}>Condition</Text>
-              <Text style={[modalStyles.detailValue, { color: colors.text }]}>{listing.condition}</Text>
-            </View>
-
-            {/* Seller */}
-            <View style={modalStyles.detailRow}>
-              <Text style={[modalStyles.detailLabel, { color: colors.textMuted }]}>Seller</Text>
-              <Text style={[modalStyles.detailValue, { color: colors.text }]}>{listing.userName}</Text>
+            <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+              <Text style={[modalStyles.editLabel, { color: colors.textMuted }]}>Condition</Text>
+              <View style={modalStyles.conditionGrid}>
+                {CONDITIONS.map((c) => (
+                  <Pressable
+                    key={c}
+                    style={[
+                      modalStyles.conditionChip,
+                      {
+                        borderColor: editCondition === c ? colors.pokemonRed : colors.borderLight,
+                        backgroundColor: editCondition === c ? colors.pokemonRed + "18" : colors.background,
+                      },
+                    ]}
+                    onPress={() => setEditCondition(c)}
+                  >
+                    <Text
+                      style={[
+                        modalStyles.conditionChipText,
+                        { color: editCondition === c ? colors.pokemonRed : colors.textSecondary },
+                      ]}
+                    >
+                      {c}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
 
             {/* Description */}
-            {!!listing.description && (
-              <View style={[modalStyles.descriptionWrap, { borderTopColor: colors.borderLight }]}>
-                <Text style={[modalStyles.detailLabel, { color: colors.textMuted, marginBottom: 4 }]}>Description</Text>
-                <Text style={[modalStyles.descriptionText, { color: colors.textSecondary }]}>
-                  {listing.description}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          {/* Moderation status (real owner only, non-approved) */}
-          {isRealOwner && listing.status !== "approved" && (
-            <View
-              style={[
-                modalStyles.statusBanner,
-                {
-                  backgroundColor: listing.status === "rejected" ? colors.error + "18" : "#E67E2218",
-                  borderColor: listing.status === "rejected" ? colors.error + "40" : "#E67E2240",
-                },
-              ]}
-            >
-              <Ionicons
-                name={listing.status === "rejected" ? "close-circle-outline" : "time-outline"}
-                size={16}
-                color={listing.status === "rejected" ? colors.error : "#E67E22"}
+            <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+              <Text style={[modalStyles.editLabel, { color: colors.textMuted }]}>Description</Text>
+              <TextInput
+                style={[
+                  modalStyles.editInput,
+                  modalStyles.editTextArea,
+                  { color: colors.text, borderColor: colors.borderLight, backgroundColor: colors.background },
+                ]}
+                value={editDescription}
+                onChangeText={setEditDescription}
+                placeholder="Describe the card's condition, inclusions, etc."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
               />
-              <View style={{ flex: 1 }}>
-                <Text
+            </View>
+
+            {/* External URL */}
+            <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+              <Text style={[modalStyles.editLabel, { color: colors.textMuted }]}>External URL (optional)</Text>
+              <TextInput
+                style={[modalStyles.editInput, { color: colors.text, borderColor: colors.borderLight, backgroundColor: colors.background }]}
+                value={editExternalUrl}
+                onChangeText={setEditExternalUrl}
+                placeholder="https://ebay.com/..."
+                placeholderTextColor={colors.textMuted}
+                keyboardType="url"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+              />
+            </View>
+
+            <View style={[modalStyles.section, { backgroundColor: colors.card + "00", borderColor: "transparent" }]}>
+              <Text style={[{ color: colors.textMuted, fontSize: 12, textAlign: "center" }]}>
+                Saving will resubmit this listing for moderation review.
+              </Text>
+            </View>
+          </ScrollView>
+        ) : (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[modalStyles.scrollContent, { paddingBottom: insets.bottom + 120 }]}
+          >
+            {/* Card image */}
+            <View style={modalStyles.imageWrap}>
+              <Image
+                source={{ uri: listing.cardImage }}
+                style={modalStyles.cardImage}
+                contentFit="contain"
+              />
+            </View>
+
+            {/* Card identity */}
+            <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+              <Text style={[modalStyles.cardName, { color: colors.text }]}>{listing.cardName}</Text>
+              <Text style={[modalStyles.setName, { color: colors.textSecondary }]}>{listing.setName}</Text>
+              {card?.number && (
+                <Text style={[modalStyles.cardMeta, { color: colors.textMuted }]}>
+                  #{card.number}
+                  {listing.rarity && listing.rarity !== "Unknown" ? ` · ${listing.rarity}` : ""}
+                </Text>
+              )}
+              {!card?.number && listing.rarity && listing.rarity !== "Unknown" && (
+                <Text style={[modalStyles.cardMeta, { color: colors.textMuted }]}>{listing.rarity}</Text>
+              )}
+            </View>
+
+            {/* Listing details */}
+            <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+              {/* Type badge + price row */}
+              <View style={modalStyles.badgeRow}>
+                <View
                   style={[
-                    modalStyles.statusTitle,
-                    { color: listing.status === "rejected" ? colors.error : "#E67E22" },
+                    modalStyles.typeBadge,
+                    { backgroundColor: listing.type === "sale" ? colors.success : colors.pokemonBlue },
                   ]}
                 >
-                  {listing.status === "rejected" ? "Rejected by moderation" : "Awaiting approval"}
-                </Text>
-                {!!listing.reviewNote && (
-                  <Text style={[modalStyles.statusNote, { color: colors.textMuted }]}>{listing.reviewNote}</Text>
-                )}
+                  <Text style={modalStyles.typeBadgeText}>
+                    {listing.type === "sale" ? "FOR SALE" : "TRADE"}
+                  </Text>
+                </View>
+                {listing.priceGBP ? (
+                  <Text style={[modalStyles.price, { color: colors.success }]}>
+                    {formatGBP(listing.priceGBP)}
+                  </Text>
+                ) : null}
               </View>
+
+              {/* Condition */}
+              <View style={modalStyles.detailRow}>
+                <Text style={[modalStyles.detailLabel, { color: colors.textMuted }]}>Condition</Text>
+                <Text style={[modalStyles.detailValue, { color: colors.text }]}>{listing.condition}</Text>
+              </View>
+
+              {/* Seller */}
+              <View style={modalStyles.detailRow}>
+                <Text style={[modalStyles.detailLabel, { color: colors.textMuted }]}>Seller</Text>
+                <Text style={[modalStyles.detailValue, { color: colors.text }]}>{listing.userName}</Text>
+              </View>
+
+              {/* Description */}
+              {!!listing.description && (
+                <View style={[modalStyles.descriptionWrap, { borderTopColor: colors.borderLight }]}>
+                  <Text style={[modalStyles.detailLabel, { color: colors.textMuted, marginBottom: 4 }]}>Description</Text>
+                  <Text style={[modalStyles.descriptionText, { color: colors.textSecondary }]}>
+                    {listing.description}
+                  </Text>
+                </View>
+              )}
             </View>
-          )}
 
-          {/* External URL */}
-          {!!listing.externalUrl && (
-            <Pressable
-              style={[modalStyles.externalBtn, { backgroundColor: colors.card, borderColor: colors.pokemonBlue + "50" }]}
-              onPress={() => Linking.openURL(listing.externalUrl!)}
-            >
-              <Ionicons name="open-outline" size={18} color={colors.pokemonBlue} />
-              <Text style={[modalStyles.externalBtnText, { color: colors.pokemonBlue }]}>
-                View External Listing
-              </Text>
-            </Pressable>
-          )}
-
-          {/* Photos */}
-          {hasPhotos && (
-            <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
-              <Text style={[modalStyles.detailLabel, { color: colors.textMuted, marginBottom: 10 }]}>
-                Seller Photos
-              </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: 10 }}
+            {/* Moderation status (real owner only, non-approved) */}
+            {isRealOwner && listing.status !== "approved" && (
+              <View
+                style={[
+                  modalStyles.statusBanner,
+                  {
+                    backgroundColor: listing.status === "rejected" ? colors.error + "18" : "#E67E2218",
+                    borderColor: listing.status === "rejected" ? colors.error + "40" : "#E67E2240",
+                  },
+                ]}
               >
-                {listing.photos.map((uri, idx) => (
-                  <Image
-                    key={idx}
-                    source={{ uri }}
-                    style={modalStyles.photo}
-                    contentFit="cover"
-                  />
-                ))}
-              </ScrollView>
-            </View>
-          )}
-        </ScrollView>
+                <Ionicons
+                  name={listing.status === "rejected" ? "close-circle-outline" : "time-outline"}
+                  size={16}
+                  color={listing.status === "rejected" ? colors.error : "#E67E22"}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      modalStyles.statusTitle,
+                      { color: listing.status === "rejected" ? colors.error : "#E67E22" },
+                    ]}
+                  >
+                    {listing.status === "rejected" ? "Rejected by moderation" : "Awaiting approval"}
+                  </Text>
+                  {!!listing.reviewNote && (
+                    <Text style={[modalStyles.statusNote, { color: colors.textMuted }]}>{listing.reviewNote}</Text>
+                  )}
+                </View>
+              </View>
+            )}
+
+            {/* External URL */}
+            {!!listing.externalUrl && (
+              <Pressable
+                style={[modalStyles.externalBtn, { backgroundColor: colors.card, borderColor: colors.pokemonBlue + "50" }]}
+                onPress={() => Linking.openURL(listing.externalUrl!)}
+              >
+                <Ionicons name="open-outline" size={18} color={colors.pokemonBlue} />
+                <Text style={[modalStyles.externalBtnText, { color: colors.pokemonBlue }]}>
+                  View External Listing
+                </Text>
+              </Pressable>
+            )}
+
+            {/* Photos */}
+            {hasPhotos && (
+              <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+                <Text style={[modalStyles.detailLabel, { color: colors.textMuted, marginBottom: 10 }]}>
+                  Seller Photos
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 10 }}
+                >
+                  {listing.photos.map((uri, idx) => (
+                    <Image
+                      key={idx}
+                      source={{ uri }}
+                      style={modalStyles.photo}
+                      contentFit="cover"
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </ScrollView>
+        )}
 
         {/* Bottom action bar */}
         <View
@@ -261,32 +399,69 @@ function ListingDetailModal({
             },
           ]}
         >
-          {canMessage && (
-            <Pressable
-              style={[modalStyles.actionBtn, { backgroundColor: colors.pokemonBlue, flex: 1 }]}
-              onPress={onMessage}
-            >
-              <Ionicons name="mail-outline" size={16} color="#FFF" />
-              <Text style={modalStyles.actionBtnText}>Message Seller</Text>
-            </Pressable>
-          )}
-          {canReport && (
-            <Pressable
-              style={[modalStyles.actionBtn, { backgroundColor: colors.error + "CC", flex: canMessage ? 0 : 1 }]}
-              onPress={handleReport}
-            >
-              <Ionicons name="flag-outline" size={16} color="#FFF" />
-              <Text style={modalStyles.actionBtnText}>Report</Text>
-            </Pressable>
-          )}
-          {isOwner && (
-            <Pressable
-              style={[modalStyles.actionBtn, { backgroundColor: colors.error, flex: 1 }]}
-              onPress={onDelete}
-            >
-              <Ionicons name="trash-outline" size={16} color="#FFF" />
-              <Text style={modalStyles.actionBtnText}>Delete Listing</Text>
-            </Pressable>
+          {isEditing ? (
+            <>
+              <Pressable
+                style={[modalStyles.actionBtn, { backgroundColor: colors.borderLight, flex: 1 }]}
+                onPress={cancelEdit}
+                disabled={isSaving}
+              >
+                <Text style={[modalStyles.actionBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[modalStyles.actionBtn, { backgroundColor: colors.success, flex: 2 }]}
+                onPress={handleSave}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-outline" size={16} color="#FFF" />
+                    <Text style={modalStyles.actionBtnText}>Save Changes</Text>
+                  </>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <>
+              {canMessage && (
+                <Pressable
+                  style={[modalStyles.actionBtn, { backgroundColor: colors.pokemonBlue, flex: 1 }]}
+                  onPress={onMessage}
+                >
+                  <Ionicons name="mail-outline" size={16} color="#FFF" />
+                  <Text style={modalStyles.actionBtnText}>Message Seller</Text>
+                </Pressable>
+              )}
+              {canReport && (
+                <Pressable
+                  style={[modalStyles.actionBtn, { backgroundColor: colors.error + "CC", flex: canMessage ? 0 : 1 }]}
+                  onPress={handleReport}
+                >
+                  <Ionicons name="flag-outline" size={16} color="#FFF" />
+                  <Text style={modalStyles.actionBtnText}>Report</Text>
+                </Pressable>
+              )}
+              {isRealOwner && (
+                <Pressable
+                  style={[modalStyles.actionBtn, { backgroundColor: colors.pokemonYellow, flex: canMessage ? 0 : 1 }]}
+                  onPress={startEdit}
+                >
+                  <Ionicons name="pencil-outline" size={16} color="#000" />
+                  <Text style={[modalStyles.actionBtnText, { color: "#000" }]}>Edit</Text>
+                </Pressable>
+              )}
+              {isOwner && (
+                <Pressable
+                  style={[modalStyles.actionBtn, { backgroundColor: colors.error, flex: 1 }]}
+                  onPress={onDelete}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#FFF" />
+                  <Text style={modalStyles.actionBtnText}>Delete Listing</Text>
+                </Pressable>
+              )}
+            </>
           )}
         </View>
       </View>
@@ -340,7 +515,7 @@ export default function MarketScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user, listings, deleteListing, isStaff, refreshData } = useUser();
+  const { user, listings, deleteListing, updateListingDetails, isStaff, refreshData } = useUser();
   const [filter, setFilter] = useState<"all" | "sale" | "trade">("all");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedListing, setSelectedListing] = useState<MarketListing | null>(null);
@@ -591,6 +766,10 @@ export default function MarketScreen() {
             });
           }}
           onReport={(reason) => handleReport(selectedListing, reason)}
+          onSaveEdit={async (listingId, updates) => {
+            await updateListingDetails(listingId, updates);
+            setSelectedListing(null);
+          }}
         />
       )}
     </View>
@@ -733,4 +912,29 @@ const modalStyles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   actionBtnText: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+  editLabel: { fontSize: 13, fontFamily: "Outfit_500Medium", marginBottom: 6 },
+  editInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    fontFamily: "Outfit_400Regular",
+  },
+  editTextArea: {
+    minHeight: 90,
+    paddingTop: 10,
+  },
+  conditionGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  conditionChip: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  conditionChipText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
 });
