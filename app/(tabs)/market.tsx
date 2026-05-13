@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -60,7 +61,7 @@ function ListingDetailModal({
   onDelete: () => void;
   onMessage: () => void;
   onReport: (reason: string) => void;
-  onSaveEdit: (listingId: string, updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null }) => Promise<void>;
+  onSaveEdit: (listingId: string, updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null; photos?: string[] }) => Promise<void>;
 }) {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -69,6 +70,7 @@ function ListingDetailModal({
   const [editCondition, setEditCondition] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editExternalUrl, setEditExternalUrl] = useState("");
+  const [editPhotos, setEditPhotos] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   const { data: card } = useQuery<PokemonCard>({
@@ -103,10 +105,37 @@ function ListingDetailModal({
     setEditCondition(listing.condition);
     setEditDescription(listing.description ?? "");
     setEditExternalUrl(listing.externalUrl ?? "");
+    setEditPhotos(listing.photos ?? []);
     setIsEditing(true);
   };
 
   const cancelEdit = () => setIsEditing(false);
+
+  const handleAddPhoto = async () => {
+    if (editPhotos.length >= 6) {
+      Alert.alert("Max Photos", "You can add up to 6 photos per listing.");
+      return;
+    }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow photo library access to add photos.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: "images",
+      allowsEditing: false,
+      allowsMultipleSelection: false,
+      quality: 0.6,
+      base64: true,
+    });
+    if (!result.canceled && result.assets[0]?.base64) {
+      setEditPhotos((prev) => [...prev, `data:image/jpeg;base64,${result.assets[0].base64}`]);
+    }
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setEditPhotos((prev) => prev.filter((_, i) => i !== index));
+  };
 
   const handleSave = async () => {
     if (!editCondition) {
@@ -121,6 +150,7 @@ function ListingDetailModal({
         condition: editCondition,
         description: editDescription.trim() || undefined,
         externalUrl: editExternalUrl.trim() || null,
+        photos: editPhotos,
       });
       setIsEditing(false);
     } catch (e: any) {
@@ -237,6 +267,42 @@ function ListingDetailModal({
                 autoCorrect={false}
                 returnKeyType="done"
               />
+            </View>
+
+            {/* Photos */}
+            <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+              <Text style={[modalStyles.editLabel, { color: colors.textMuted }]}>
+                Photos ({editPhotos.length}/6)
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 10 }}
+              >
+                {editPhotos.map((uri, idx) => (
+                  <View key={idx} style={modalStyles.editPhotoThumb}>
+                    <Image source={{ uri }} style={modalStyles.editPhotoImage} contentFit="cover" />
+                    <Pressable
+                      style={[modalStyles.editPhotoRemoveBtn, { backgroundColor: colors.error }]}
+                      onPress={() => handleRemovePhoto(idx)}
+                      hitSlop={4}
+                    >
+                      <Ionicons name="close" size={12} color="#FFF" />
+                    </Pressable>
+                  </View>
+                ))}
+                {editPhotos.length < 6 && (
+                  <Pressable
+                    style={[modalStyles.editPhotoAddBtn, { borderColor: colors.borderLight, backgroundColor: colors.background }]}
+                    onPress={handleAddPhoto}
+                  >
+                    <Ionicons name="camera-outline" size={22} color={colors.textMuted} />
+                    <Text style={[{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textMuted, marginTop: 4 }]}>
+                      Add Photo
+                    </Text>
+                  </Pressable>
+                )}
+              </ScrollView>
             </View>
 
             <View style={[modalStyles.section, { backgroundColor: colors.card + "00", borderColor: "transparent" }]}>
@@ -937,4 +1003,34 @@ const modalStyles = StyleSheet.create({
     paddingVertical: 7,
   },
   conditionChipText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
+  editPhotoThumb: {
+    width: 90,
+    height: 90,
+    borderRadius: 10,
+    position: "relative",
+  },
+  editPhotoImage: {
+    width: 90,
+    height: 90,
+    borderRadius: 10,
+  },
+  editPhotoRemoveBtn: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editPhotoAddBtn: {
+    width: 90,
+    height: 90,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });

@@ -67,7 +67,7 @@ interface UserContextValue {
   removeCard: (cardId: string, condition: string, variant?: CardVariant) => Promise<void>;
   updateQuantity: (cardId: string, condition: string, quantity: number, variant?: CardVariant) => Promise<void>;
   createListing: (listing: Omit<MarketListing, "id" | "createdAt" | "status" | "reviewedBy" | "reviewedAt" | "reviewNote">) => Promise<void>;
-  updateListingDetails: (listingId: string, updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null }) => Promise<void>;
+  updateListingDetails: (listingId: string, updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null; photos?: string[] }) => Promise<void>;
   deleteListing: (listingId: string) => Promise<void>;
   grantPremium: (userId: string) => Promise<void>;
   revokePremium: (userId: string) => Promise<void>;
@@ -251,7 +251,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const handleUpdateListingDetails = useCallback(async (
     listingId: string,
-    updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null }
+    updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null; photos?: string[] }
   ) => {
     const updated = await updateListing(listingId, updates);
     setListings(updated);

@@ -765,7 +765,7 @@ export async function addListing(listing: Omit<MarketListing, "id" | "createdAt"
 
 export async function updateListing(
   listingId: string,
-  updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null }
+  updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null; photos?: string[] }
 ): Promise<MarketListing[]> {
   const token = await getSessionToken();
   if (!token) throw new Error("Not authenticated");
