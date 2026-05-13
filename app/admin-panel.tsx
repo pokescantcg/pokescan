@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Keyboard,
+  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -433,6 +434,26 @@ function ListingDetailModal({
               <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textMuted, letterSpacing: 1 }}>DESCRIPTION</Text>
               <Text style={{ fontSize: 14, fontFamily: "Outfit_400Regular", color: colors.text, lineHeight: 20 }}>{listing.description}</Text>
             </View>
+          ) : null}
+
+          {listing.externalUrl ? (
+            <Pressable
+              onPress={() => {
+                const url = listing.externalUrl!;
+                if (/^https?:\/\//i.test(url)) {
+                  Linking.openURL(url).catch(() => Alert.alert("Error", "Could not open the external listing URL."));
+                } else {
+                  Alert.alert("Invalid URL", "This listing has an unsupported URL format.");
+                }
+              }}
+              style={{ backgroundColor: colors.card, padding: 12, borderRadius: 10, gap: 4, flexDirection: "row", alignItems: "center" }}
+            >
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textMuted, letterSpacing: 1 }}>EXTERNAL LISTING</Text>
+                <Text style={{ fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.pokemonBlue }} numberOfLines={1}>{listing.externalUrl}</Text>
+              </View>
+              <Ionicons name="open-outline" size={18} color={colors.pokemonBlue} />
+            </Pressable>
           ) : null}
 
           {listing.photos && listing.photos.length > 0 && (
