@@ -51,6 +51,7 @@ function ListingDetailModal({
   onMessage,
   onReport,
   onSaveEdit,
+  isStaff,
 }: {
   listing: MarketListing | null;
   visible: boolean;
@@ -62,6 +63,7 @@ function ListingDetailModal({
   onMessage: () => void;
   onReport: (reason: string) => void;
   onSaveEdit: (listingId: string, updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null; photos?: string[] }) => Promise<void>;
+  isStaff: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -153,6 +155,9 @@ function ListingDetailModal({
         photos: editPhotos,
       });
       setIsEditing(false);
+      if (!isStaff) {
+        Alert.alert("Listing Updated", "Listing updated — awaiting moderation approval.");
+      }
     } catch (e: any) {
       Alert.alert("Error", e.message || "Could not save changes.");
     } finally {
@@ -832,6 +837,7 @@ export default function MarketScreen() {
             });
           }}
           onReport={(reason) => handleReport(selectedListing, reason)}
+          isStaff={isStaff}
           onSaveEdit={async (listingId, updates) => {
             await updateListingDetails(listingId, updates);
             setSelectedListing(null);
