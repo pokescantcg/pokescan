@@ -521,7 +521,7 @@ export default function ProfileScreen() {
           <View style={[styles.socialRow, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
             <Pressable
               style={[styles.socialBtn, { borderColor: "#5865F240" }]}
-              onPress={() => Linking.openURL("https://discord.gg/pokescantcg")}
+              onPress={() => Linking.openURL("https://discord.gg/tF2wcEZCSh")}
             >
               <View style={[styles.socialIconWrap, { backgroundColor: "#5865F220" }]}>
                 <MaterialCommunityIcons name="discord" size={22} color="#5865F2" />
@@ -532,7 +532,7 @@ export default function ProfileScreen() {
             <View style={[styles.socialDivider, { backgroundColor: colors.borderLight }]} />
             <Pressable
               style={[styles.socialBtn, { borderColor: "#1877F240" }]}
-              onPress={() => Linking.openURL("https://facebook.com/pokescantcg")}
+              onPress={() => Linking.openURL("https://www.facebook.com/share/1HzUREvbax/")}
             >
               <View style={[styles.socialIconWrap, { backgroundColor: "#1877F220" }]}>
                 <MaterialCommunityIcons name="facebook" size={22} color="#1877F2" />
