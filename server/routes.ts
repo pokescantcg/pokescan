@@ -1232,11 +1232,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      let baseQuery = `pokemon tcg ${cardName}`;
-      if (setName) baseQuery += ` ${setName}`;
-      if (number) baseQuery += ` ${number}`;
+      // Build queries from most useful to least — "/" in number breaks eBay search
+      const numberFirst = number ? number.split("/")[0].replace(/^0+/, "") : null;
+      const queries: string[] = [];
+      if (setName) queries.push(`${cardName} pokemon ${setName}`);
+      if (numberFirst && parseInt(numberFirst, 10) > 0) queries.push(`${cardName} pokemon ${numberFirst}`);
+      queries.push(`${cardName} pokemon card`);
 
-      const rawPrices = await scrapeEbaySoldPrices(baseQuery);
+      let rawPrices: number[] = [];
+      for (const q of queries) {
+        rawPrices = await scrapeEbaySoldPrices(q);
+        if (rawPrices.length >= 3) break;
+      }
 
       if (rawPrices.length === 0) {
         res.json({ price: null, lowestSold: null, medianSold: null, highestSold: null, source: "eBay UK (Sold)", count: 0, gradedPrices: null });

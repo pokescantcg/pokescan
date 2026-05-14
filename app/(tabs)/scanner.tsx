@@ -567,6 +567,28 @@ function AIPriceCard({
 
   const [extPrice, setExtPrice] = useState<ExtendedEbayPrice | null>(null);
   const [extLoading, setExtLoading] = useState(false);
+  const [finding, setFinding] = useState(false);
+
+  const handleFindCard = async () => {
+    if (finding || !identification.englishName) return;
+    setFinding(true);
+    try {
+      const found = await findCard(
+        identification.englishName,
+        identification.cardNumber || undefined,
+        identification.setCode || undefined,
+      );
+      if (found) {
+        router.push({ pathname: "/card/[id]", params: { id: found.id } });
+      } else {
+        Alert.alert("Not Found", "We couldn't find this card in our database. Try browsing by set name instead.");
+      }
+    } catch {
+      Alert.alert("Error", "Could not search for the card. Please try again.");
+    } finally {
+      setFinding(false);
+    }
+  };
 
   useEffect(() => {
     if (!identification.englishName) return;
@@ -684,6 +706,23 @@ function AIPriceCard({
         </Pressable>
       </View>
 
+      {/* Find card in app */}
+      <Pressable
+        style={({ pressed }) => [aiPriceStyles.findCardBtn, { backgroundColor: colors.pokemonRed + "15", borderColor: colors.pokemonRed + "40", opacity: pressed || finding ? 0.7 : 1 }]}
+        onPress={handleFindCard}
+        disabled={finding}
+      >
+        {finding ? (
+          <MaterialCommunityIcons name="pokeball" size={16} color={colors.pokemonRed} />
+        ) : (
+          <Ionicons name="search" size={16} color={colors.pokemonRed} />
+        )}
+        <Text style={[aiPriceStyles.findCardText, { color: colors.pokemonRed }]}>
+          {finding ? "Searching…" : "Find This Card in App"}
+        </Text>
+        {!finding && <Ionicons name="chevron-forward" size={14} color={colors.pokemonRed} />}
+      </Pressable>
+
       {/* No DB note */}
       <View style={[aiPriceStyles.noDbNote, { backgroundColor: colors.surfaceElevated }]}>
         <Ionicons name="information-circle-outline" size={13} color={colors.textMuted} />
@@ -734,6 +773,16 @@ const aiPriceStyles = StyleSheet.create({
     padding: 8,
   },
   noDbNoteText: { flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", lineHeight: 16 },
+  findCardBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  findCardText: { fontSize: 14, fontFamily: "Outfit_600SemiBold", flex: 1, textAlign: "center" },
 });
 
 function PCVResultCard({ card, colors }: { card: PCVCard; colors: ReturnType<typeof useThemeColors> }) {
@@ -813,21 +862,21 @@ function PCVResultCard({ card, colors }: { card: PCVCard; colors: ReturnType<typ
 
 function DatabaseMatchCard({
   card,
-  pcvCard,
+  pcvResults,
   identification,
   colors,
   onEbayListings,
   onEbaySold,
 }: {
   card: PokemonCard;
-  pcvCard: PCVCard | null;
+  pcvResults: PCVCard[];
   identification: CardIdentification;
   colors: ReturnType<typeof useThemeColors>;
   onEbayListings: () => void;
   onEbaySold: () => void;
 }) {
   const tcgPrice = getUKPrice(card);
-  const displayPrice = pcvCard?.priceGBP || tcgPrice.price;
+  const displayPrice = pcvResults[0]?.priceGBP || tcgPrice.price;
 
   const [extPrice, setExtPrice] = useState<ExtendedEbayPrice | null>(null);
   const [extLoading, setExtLoading] = useState(false);
@@ -897,6 +946,23 @@ function DatabaseMatchCard({
         </View>
       </Pressable>
 
+      {/* Variant price table — show when pokecardvalues has multiple holo types */}
+      {pcvResults.length > 1 && (
+        <View style={[dbMatchStyles.variantTable, { backgroundColor: colors.surfaceElevated, borderColor: colors.borderLight }]}>
+          <Text style={[dbMatchStyles.variantTitle, { color: colors.textMuted }]}>UK Prices by Variant</Text>
+          {pcvResults.map((v, i) => (
+            <View key={i} style={[dbMatchStyles.variantRow, i < pcvResults.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.borderLight }]}>
+              <Text style={[dbMatchStyles.variantLabel, { color: colors.textSecondary }]} numberOfLines={1}>
+                {v.holoType || "Standard"}{v.edition && v.edition !== "Unlimited" ? ` · ${v.edition}` : ""}
+              </Text>
+              <Text style={[dbMatchStyles.variantPrice, { color: v.priceGBP ? colors.success : colors.textMuted }]}>
+                {formatGBP(v.priceGBP)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Sold price breakdown */}
       <SoldPriceBreakdown ext={extPrice} loading={extLoading} colors={colors} />
 
@@ -947,6 +1013,11 @@ const dbMatchStyles = StyleSheet.create({
   ebayRow: { flexDirection: "row", gap: 8 },
   ebayBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 10, borderRadius: 10, gap: 6 },
   ebayBtnText: { fontSize: 12, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  variantTable: { borderRadius: 10, borderWidth: 1, overflow: "hidden", gap: 0 },
+  variantTitle: { fontSize: 10, fontFamily: "Outfit_700Bold", textTransform: "uppercase", letterSpacing: 0.6, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 },
+  variantRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 12, paddingVertical: 8 },
+  variantLabel: { fontSize: 13, fontFamily: "Outfit_500Medium", flex: 1 },
+  variantPrice: { fontSize: 14, fontFamily: "Outfit_700Bold" },
 });
 
 function SearchResultCard({ card, colors }: { card: PokemonCard; colors: ReturnType<typeof useThemeColors> }) {
@@ -2157,7 +2228,7 @@ export default function ScannerScreen() {
               <IdentificationCard identification={identification} colors={colors} />
               <DatabaseMatchCard
                 card={tcgApiResults[0]}
-                pcvCard={pcvResults[0] || null}
+                pcvResults={pcvResults}
                 identification={identification}
                 colors={colors}
                 onEbayListings={() => handleEbayListings(identification.englishName, identification.setName, identification.cardNumber)}
