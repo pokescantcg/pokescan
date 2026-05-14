@@ -13,6 +13,7 @@ import {
   Alert,
   Linking,
   Modal,
+  Share,
   useWindowDimensions,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -1652,7 +1653,7 @@ export default function ScannerScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user } = useUser();
+  const { user, addCard, collection } = useUser();
   const { scannerEnabled } = useAppConfig();
   const isPremium = user?.isPremium ?? false;
   const [mode, setMode] = useState<"identify" | "grade">("identify");
@@ -1733,6 +1734,11 @@ export default function ScannerScreen() {
   const [identifyError, setIdentifyError] = useState<string | null>(null);
   const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [histAddEntry, setHistAddEntry] = useState<ScanHistoryEntry | null>(null);
+  const [histAddCondition, setHistAddCondition] = useState("Near Mint");
+  const [histAddVariant, setHistAddVariant] = useState<"Non-Holo" | "Holo" | "Reverse Holo">("Non-Holo");
+  const [histAddLoading, setHistAddLoading] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -2262,53 +2268,257 @@ export default function ScannerScreen() {
               renderItem={({ item }) => {
                 const ago = formatTimeAgo(item.timestamp);
                 const scanDate = new Date(item.timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+                const isExpanded = expandedHistoryId === item.id;
+                const dbCardId = item.tcgApiResults?.[0]?.id ?? null;
+                const inCollection = dbCardId
+                  ? collection.some((c) => c.cardId === dbCardId)
+                  : collection.some(
+                      (c) =>
+                        c.cardName.toLowerCase() === item.cardName.toLowerCase() &&
+                        c.setName.toLowerCase() === item.setName.toLowerCase()
+                    );
+                const canAdd = !!(user && user.isPremium);
                 return (
-                  <Pressable
-                    style={[histStyles.historyItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
-                    onPress={() => {
-                      setShowHistory(false);
-                      setCapturedImage(null);
-                      setIdentification(item.identification);
-                      setPcvResults(item.pcvResults || []);
-                      setTcgApiResults(item.tcgApiResults || []);
-                      setSearchText(item.identification.englishName);
-                      setIdentifyError(null);
-                      setIsQuotaExceeded(false);
-                      setHasSearched(false);
-                      setResults([]);
-                    }}
-                  >
-                    <View style={[histStyles.historyThumb, { backgroundColor: colors.surface }]}>
-                      {item.thumbnail ? (
-                        <Image source={{ uri: item.thumbnail }} style={histStyles.historyThumbImg} contentFit="contain" />
-                      ) : (
-                        <MaterialCommunityIcons name="card-outline" size={28} color={colors.textMuted} />
-                      )}
-                    </View>
-                    <View style={histStyles.historyInfo}>
-                      <Text style={[histStyles.historyName, { color: colors.text }]} numberOfLines={1}>
-                        {item.cardName}
-                      </Text>
-                      <Text style={[histStyles.historySet, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {[item.setName, item.cardNumber ? `#${item.cardNumber}` : null].filter(Boolean).join(" · ")}
-                      </Text>
-                      <View style={histStyles.historyMeta}>
-                        {item.language && item.language !== "English" && (
-                          <View style={[histStyles.langTag, { backgroundColor: colors.pokemonRed + "18" }]}>
-                            <Text style={[histStyles.langTagText, { color: colors.pokemonRed }]}>{item.language}</Text>
+                  <View style={[histStyles.historyItemWrap, { borderColor: isExpanded ? colors.pokemonRed + "60" : colors.borderLight }]}>
+                    <Pressable
+                      style={[histStyles.historyItem, { backgroundColor: colors.card }]}
+                      onPress={() => {
+                        if (isExpanded) {
+                          setExpandedHistoryId(null);
+                          return;
+                        }
+                        setShowHistory(false);
+                        setCapturedImage(null);
+                        setIdentification(item.identification);
+                        setPcvResults(item.pcvResults || []);
+                        setTcgApiResults(item.tcgApiResults || []);
+                        setSearchText(item.identification.englishName);
+                        setIdentifyError(null);
+                        setIsQuotaExceeded(false);
+                        setHasSearched(false);
+                        setResults([]);
+                      }}
+                      onLongPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setExpandedHistoryId(isExpanded ? null : item.id);
+                      }}
+                    >
+                      <View style={[histStyles.historyThumb, { backgroundColor: colors.surface }]}>
+                        {item.thumbnail ? (
+                          <Image source={{ uri: item.thumbnail }} style={histStyles.historyThumbImg} contentFit="contain" />
+                        ) : (
+                          <MaterialCommunityIcons name="card-outline" size={28} color={colors.textMuted} />
+                        )}
+                        {inCollection && (
+                          <View style={[histStyles.collectionBadge, { backgroundColor: colors.success }]}>
+                            <Ionicons name="checkmark" size={10} color="#FFF" />
                           </View>
                         )}
-                        {item.priceGBP != null && (
-                          <Text style={[histStyles.historyPrice, { color: colors.success }]}>{formatGBP(item.priceGBP)}</Text>
-                        )}
-                        <Text style={[histStyles.historyTime, { color: colors.textMuted }]}>{scanDate} · {ago}</Text>
                       </View>
-                    </View>
-                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-                  </Pressable>
+                      <View style={histStyles.historyInfo}>
+                        <Text style={[histStyles.historyName, { color: colors.text }]} numberOfLines={1}>
+                          {item.cardName}
+                        </Text>
+                        <Text style={[histStyles.historySet, { color: colors.textSecondary }]} numberOfLines={1}>
+                          {[item.setName, item.cardNumber ? `#${item.cardNumber}` : null].filter(Boolean).join(" · ")}
+                        </Text>
+                        <View style={histStyles.historyMeta}>
+                          {item.language && item.language !== "English" && (
+                            <View style={[histStyles.langTag, { backgroundColor: colors.pokemonRed + "18" }]}>
+                              <Text style={[histStyles.langTagText, { color: colors.pokemonRed }]}>{item.language}</Text>
+                            </View>
+                          )}
+                          {item.priceGBP != null && (
+                            <Text style={[histStyles.historyPrice, { color: colors.success }]}>{formatGBP(item.priceGBP)}</Text>
+                          )}
+                          <Text style={[histStyles.historyTime, { color: colors.textMuted }]}>{scanDate} · {ago}</Text>
+                        </View>
+                      </View>
+                      <Ionicons name={isExpanded ? "chevron-up" : "chevron-forward"} size={16} color={colors.textMuted} />
+                    </Pressable>
+                    {isExpanded && (
+                      <View style={[histStyles.actionRow, { borderTopColor: colors.borderLight }]}>
+                        <Pressable
+                          style={({ pressed }) => [
+                            histStyles.actionBtn,
+                            { backgroundColor: canAdd ? colors.pokemonRed : colors.surface, opacity: pressed ? 0.8 : 1 },
+                          ]}
+                          onPress={() => {
+                            if (!user) {
+                              Alert.alert("Sign In Required", "Create an account to add cards to your collection.", [
+                                { text: "Cancel", style: "cancel" },
+                                { text: "Sign In", onPress: () => { setShowHistory(false); router.push("/register"); } },
+                              ]);
+                              return;
+                            }
+                            if (!user.isPremium) {
+                              Alert.alert("Premium Required", "Upgrade to Premium to save cards to your collection.", [
+                                { text: "Cancel", style: "cancel" },
+                                { text: "Upgrade", onPress: () => { setShowHistory(false); router.push("/premium"); } },
+                              ]);
+                              return;
+                            }
+                            setHistAddCondition("Near Mint");
+                            setHistAddVariant("Non-Holo");
+                            setHistAddEntry(item);
+                          }}
+                        >
+                          <Ionicons name="add-circle-outline" size={15} color={canAdd ? "#FFF" : colors.textMuted} />
+                          <Text style={[histStyles.actionBtnText, { color: canAdd ? "#FFF" : colors.textMuted }]}>Add to Collection</Text>
+                        </Pressable>
+                        <Pressable
+                          style={({ pressed }) => [
+                            histStyles.actionBtn,
+                            { backgroundColor: colors.surface, opacity: pressed ? 0.8 : 1 },
+                          ]}
+                          onPress={() => {
+                            const parts: string[] = [];
+                            if (item.cardName) parts.push(item.cardName);
+                            if (item.setName) parts.push(item.setName);
+                            if (item.cardNumber) parts.push(`#${item.cardNumber}`);
+                            if (item.priceGBP != null) parts.push(`~${formatGBP(item.priceGBP)}`);
+                            Share.share({
+                              message: parts.join(" · "),
+                              title: item.cardName,
+                            });
+                          }}
+                        >
+                          <Ionicons name="share-outline" size={15} color={colors.textSecondary} />
+                          <Text style={[histStyles.actionBtnText, { color: colors.textSecondary }]}>Share</Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
                 );
               }}
             />
+          )}
+        </View>
+      </Modal>
+
+      {/* ── Add to Collection from history ── */}
+      <Modal
+        visible={!!histAddEntry}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={() => setHistAddEntry(null)}
+      >
+        <View style={[histAddStyles.container, { backgroundColor: colors.background }]}>
+          <View style={[histAddStyles.header, { borderBottomColor: colors.borderLight }]}>
+            <Text style={[histAddStyles.title, { color: colors.text }]}>Add to Collection</Text>
+            <Pressable onPress={() => setHistAddEntry(null)} style={histAddStyles.closeBtn}>
+              <Ionicons name="close" size={22} color={colors.textMuted} />
+            </Pressable>
+          </View>
+
+          {histAddEntry && (
+            <ScrollView contentContainerStyle={histAddStyles.body}>
+              <View style={histAddStyles.cardPreview}>
+                {histAddEntry.thumbnail ? (
+                  <Image source={{ uri: histAddEntry.thumbnail }} style={histAddStyles.thumb} contentFit="contain" />
+                ) : (
+                  <View style={[histAddStyles.thumbPlaceholder, { backgroundColor: colors.surface }]}>
+                    <MaterialCommunityIcons name="card-outline" size={40} color={colors.textMuted} />
+                  </View>
+                )}
+                <View style={histAddStyles.cardMeta}>
+                  <Text style={[histAddStyles.cardName, { color: colors.text }]} numberOfLines={2}>
+                    {histAddEntry.cardName}
+                  </Text>
+                  <Text style={[histAddStyles.cardSet, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {[histAddEntry.setName, histAddEntry.cardNumber ? `#${histAddEntry.cardNumber}` : null].filter(Boolean).join(" · ")}
+                  </Text>
+                  {histAddEntry.priceGBP != null && (
+                    <Text style={[histAddStyles.cardPrice, { color: colors.success }]}>{formatGBP(histAddEntry.priceGBP)}</Text>
+                  )}
+                </View>
+              </View>
+
+              <Text style={[histAddStyles.sectionLabel, { color: colors.textMuted }]}>Variant</Text>
+              <View style={histAddStyles.chipRow}>
+                {(["Non-Holo", "Holo", "Reverse Holo"] as const).map((v) => (
+                  <Pressable
+                    key={v}
+                    style={[
+                      histAddStyles.chip,
+                      {
+                        backgroundColor: histAddVariant === v ? colors.pokemonRed : colors.surface,
+                        borderColor: histAddVariant === v ? colors.pokemonRed : colors.borderLight,
+                      },
+                    ]}
+                    onPress={() => setHistAddVariant(v)}
+                  >
+                    <Text style={[histAddStyles.chipText, { color: histAddVariant === v ? "#FFF" : colors.textSecondary }]}>{v}</Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={[histAddStyles.sectionLabel, { color: colors.textMuted }]}>Condition</Text>
+              <View style={histAddStyles.chipRow}>
+                {["Mint", "Near Mint", "Excellent", "Good", "Light Play", "Played"].map((c) => (
+                  <Pressable
+                    key={c}
+                    style={[
+                      histAddStyles.chip,
+                      {
+                        backgroundColor: histAddCondition === c ? colors.pokemonRed : colors.surface,
+                        borderColor: histAddCondition === c ? colors.pokemonRed : colors.borderLight,
+                      },
+                    ]}
+                    onPress={() => setHistAddCondition(c)}
+                  >
+                    <Text style={[histAddStyles.chipText, { color: histAddCondition === c ? "#FFF" : colors.textSecondary }]}>{c}</Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Pressable
+                style={({ pressed }) => [
+                  histAddStyles.addBtn,
+                  { backgroundColor: histAddLoading ? colors.pokemonRed + "80" : colors.pokemonRed, opacity: pressed ? 0.85 : 1 },
+                ]}
+                disabled={histAddLoading}
+                onPress={async () => {
+                  if (!histAddEntry || !user) return;
+                  setHistAddLoading(true);
+                  try {
+                    const firstTcg = histAddEntry.tcgApiResults?.[0];
+                    const cardId = firstTcg?.id ?? `ai-${histAddEntry.id}`;
+                    const cardImage = firstTcg?.images?.small ?? histAddEntry.thumbnail ?? "";
+                    const setId = firstTcg?.set?.id ?? "";
+                    await addCard({
+                      cardId,
+                      cardName: histAddEntry.cardName,
+                      cardImage,
+                      setName: histAddEntry.setName,
+                      setId,
+                      rarity: histAddEntry.identification.rarity || "Unknown",
+                      quantity: 1,
+                      condition: histAddCondition,
+                      variant: histAddVariant,
+                      priceGBP: histAddEntry.priceGBP ?? null,
+                    });
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                    setHistAddEntry(null);
+                    setExpandedHistoryId(null);
+                    Alert.alert("Added", `${histAddEntry.cardName} added to your collection.`);
+                  } catch (e: any) {
+                    Alert.alert("Error", e.message || "Could not add card. Please try again.");
+                  } finally {
+                    setHistAddLoading(false);
+                  }
+                }}
+              >
+                {histAddLoading ? (
+                  <ActivityIndicator size="small" color="#FFF" />
+                ) : (
+                  <>
+                    <Ionicons name="add-circle-outline" size={18} color="#FFF" />
+                    <Text style={histAddStyles.addBtnText}>Add to Collection</Text>
+                  </>
+                )}
+              </Pressable>
+            </ScrollView>
           )}
         </View>
       </Modal>
@@ -2935,14 +3145,44 @@ const histStyles = StyleSheet.create({
   emptyHistory: { flex: 1, justifyContent: "center", alignItems: "center", gap: 10 },
   emptyHistoryText: { fontSize: 16, fontFamily: "Outfit_500Medium" },
   historyList: { padding: 16, gap: 10 },
+  historyItemWrap: {
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
   historyItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    borderRadius: 14,
-    borderWidth: 1,
     padding: 12,
   },
+  collectionBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: "#FFF",
+  },
+  actionRow: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    gap: 0,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 11,
+    paddingHorizontal: 8,
+  },
+  actionBtnText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
   historyThumb: {
     width: 56,
     height: 76,
@@ -2961,4 +3201,40 @@ const histStyles = StyleSheet.create({
   langTagText: { fontSize: 11, fontFamily: "Outfit_600SemiBold" },
   historyTime: { fontSize: 11, fontFamily: "Outfit_400Regular" },
   historyPrice: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
+});
+
+const histAddStyles = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  title: { fontSize: 20, fontFamily: "Outfit_700Bold" },
+  closeBtn: { padding: 6 },
+  body: { padding: 20, gap: 16 },
+  cardPreview: { flexDirection: "row", gap: 14, alignItems: "flex-start" },
+  thumb: { width: 72, height: 100, borderRadius: 8 },
+  thumbPlaceholder: { width: 72, height: 100, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  cardMeta: { flex: 1, gap: 4 },
+  cardName: { fontSize: 18, fontFamily: "Outfit_700Bold" },
+  cardSet: { fontSize: 13, fontFamily: "Outfit_400Regular" },
+  cardPrice: { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  sectionLabel: { fontSize: 12, fontFamily: "Outfit_600SemiBold", textTransform: "uppercase", letterSpacing: 0.5 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 10, borderWidth: 1 },
+  chipText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
+  addBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 14,
+    marginTop: 8,
+  },
+  addBtnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#FFF" },
 });
