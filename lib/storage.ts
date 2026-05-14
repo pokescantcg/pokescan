@@ -682,7 +682,8 @@ export async function verifySuperadminOtp(email: string, code: string): Promise<
     return { ok: false, error: "Network error. Please check your connection." };
   }
 
-  await setSuperadminToken(token);
+  // Store the returned token as the active session token so API calls work.
+  await saveSessionToken(token);
 
   // Keep the currently logged-in user (so their server session stays valid for
   // chat, friends, marketplace, etc.) and just grant the superadmin flag on top.
@@ -775,11 +776,10 @@ export async function registerSocialUser(
 export async function isSuperadmin(): Promise<boolean> {
   const user = await getUser();
   if (!user) return false;
-  // Primary path — superadmin flag was granted via /admin-login.
+  // Primary path — superadmin flag was granted via /admin-login OTP flow.
   const flag = await AsyncStorage.getItem(KEYS.SUPERADMIN_FLAG);
   if (flag === "true") return true;
-  // Server login path — recognise by email or admin role.
-  if (user.email?.toLowerCase().trim() === SUPERADMIN_EMAIL) return true;
+  // Server login path — recognise by admin role assigned on the server.
   if (user.role === "admin") return true;
   return false;
 }
