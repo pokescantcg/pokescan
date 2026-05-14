@@ -101,6 +101,69 @@ function detectSetLanguage(setId: string): "english" | "japanese" | "korean" | "
   return "english";
 }
 
+// ── Set reference cache — built from DB, injected into AI prompt ────────────
+let _setRefCache: string | null = null;
+let _setRefCacheAt = 0;
+const SET_REF_TTL_MS = 60 * 60 * 1000; // rebuild once per hour
+
+async function buildSetReferencePrompt(): Promise<string> {
+  const now = Date.now();
+  if (_setRefCache && now - _setRefCacheAt < SET_REF_TTL_MS) return _setRefCache;
+
+  try {
+    const sets = await db
+      .select({
+        id: pokemonSets.id,
+        name: pokemonSets.name,
+        printedTotal: pokemonSets.printedTotal,
+        total: pokemonSets.total,
+        releaseDate: pokemonSets.releaseDate,
+      })
+      .from(pokemonSets)
+      .where(isNull(pokemonSets.deletedAt))
+      .orderBy(pokemonSets.releaseDate);
+
+    const byLang: Record<string, Array<{ id: string; name: string; printedTotal: number | null; total: number | null; releaseDate: string | null }>> = {
+      english: [], japanese: [], korean: [], chinese: [],
+    };
+    for (const s of sets) byLang[detectSetLanguage(s.id)].push(s);
+
+    const fmt = (s: { id: string; name: string; printedTotal: number | null; total: number | null; releaseDate: string | null }) => {
+      const year = s.releaseDate?.substring(0, 4) ?? "?";
+      const count = s.printedTotal ?? s.total ?? "?";
+      return `${s.id}|${s.name}|${count}|${year}`;
+    };
+
+    const lines: string[] = [
+      "KNOWN SETS DATABASE (use this to identify the exact set from what you read on the card):",
+      "Format: setCode|setName|printedTotal|year",
+      "TIP: The denominator in a collector number (e.g. the 198 in '025/198') matches printedTotal exactly.",
+      "",
+      "[ENGLISH]",
+      ...byLang.english.map(fmt),
+      "",
+      "[JAPANESE]",
+      ...byLang.japanese.map(fmt),
+      "",
+      "[KOREAN]",
+      ...byLang.korean.map(fmt),
+      "",
+      "[CHINESE]",
+      ...byLang.chinese.map(fmt),
+      "",
+      "When reporting setName, use the human-readable name column (not the code). If the card number denominator matches a printedTotal exactly, use that set — do not guess.",
+    ];
+
+    _setRefCache = lines.join("\n");
+    _setRefCacheAt = now;
+    console.log(`[SetRef] Built set reference prompt: ${sets.length} sets, ${_setRefCache.length} chars`);
+    return _setRefCache;
+  } catch (e) {
+    console.error("[SetRef] Failed to build set reference:", e);
+    return "";
+  }
+}
+
 function dbSetToApiFormat(set: typeof pokemonSets.$inferSelect) {
   return {
     id: set.id,
@@ -1115,6 +1178,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      const setReference = await buildSetReferencePrompt();
+
       let response: Awaited<ReturnType<typeof openai.chat.completions.create>>;
       try {
         const aiPromise = openai.chat.completions.create({
@@ -1150,7 +1215,9 @@ Always respond with valid JSON in this exact format:
   "notes": "Any additional identification notes"
 }
 
-The "originalName" field should contain the name exactly as printed on the card. If the card is English, originalName equals englishName. For non-English cards, translate the name to English for the "englishName" field.`
+The "originalName" field should contain the name exactly as printed on the card. If the card is English, originalName equals englishName. For non-English cards, translate the name to English for the "englishName" field.
+
+${setReference}`
             },
             {
               role: "user",
