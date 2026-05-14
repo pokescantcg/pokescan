@@ -895,6 +895,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ error: "cardName required" });
       return;
     }
+
+    async function scrapeEbaySoldPrices(query: string): Promise<number[]> {
+      const searchParams = new URLSearchParams({
+        _nkw: query,
+        _sacat: "183454",
+        LH_Complete: "1",
+        LH_Sold: "1",
+        LH_PrefLoc: "1",
+        _sop: "13",
+      });
+      const ebayUrl = `https://www.ebay.co.uk/sch/i.html?${searchParams}`;
+      const html = await fetch(ebayUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-GB,en;q=0.9",
+        },
+      }).then((r) => r.text());
+      const priceMatches = [...html.matchAll(/s-card__price">\s*£([\d,]+\.?\d*)/g)];
+      const prices: number[] = [];
+      for (const match of priceMatches) {
+        const price = parseFloat(match[1].replace(/,/g, ""));
+        if (price >= 0.5 && price <= 5000) prices.push(price);
+      }
+      return prices.slice(0, 20);
+    }
+
+    function computeStats(prices: number[]): { lowest: number | null; median: number | null; highest: number | null } {
+      if (prices.length === 0) return { lowest: null, median: null, highest: null };
+      const sorted = [...prices].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+      return {
+        lowest: Math.round(sorted[0] * 100) / 100,
+        median: Math.round(median * 100) / 100,
+        highest: Math.round(sorted[sorted.length - 1] * 100) / 100,
+      };
+    }
+
+    async function scrapeGradedMedian(baseQuery: string, grader: string, grade: number): Promise<number | null> {
+      try {
+        const altGrader = grader === "Beckett" ? "BGS" : null;
+        const query = `${baseQuery} ${altGrader ?? grader} ${grade} pokemon card`;
+        const prices = await scrapeEbaySoldPrices(query);
+        const stats = computeStats(prices);
+        return stats.median;
+      } catch {
+        return null;
+      }
+    }
+
     try {
       if (cardId) {
         const cached = await db
@@ -908,61 +959,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (cacheAge < 24 * 60 * 60 * 1000) {
             const prices = cached.map((r) => r.price).filter((p): p is number => p !== null && p > 0);
             if (prices.length > 0) {
-              const sorted = [...prices].sort((a, b) => a - b);
-              const mid = Math.floor(sorted.length / 2);
-              const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-              res.json({ price: Math.round(median * 100) / 100, source: "eBay UK (Sold)", count: prices.length, cached: true });
+              const stats = computeStats(prices);
+              const cardBase = `${cardName}${setName ? " " + setName : ""}`;
+              const [psa9, psa10, beckett9, beckett10, ace9, ace10, cgc9, cgc10] = await Promise.allSettled([
+                scrapeGradedMedian(cardBase, "PSA", 9),
+                scrapeGradedMedian(cardBase, "PSA", 10),
+                scrapeGradedMedian(cardBase, "Beckett", 9),
+                scrapeGradedMedian(cardBase, "Beckett", 10),
+                scrapeGradedMedian(cardBase, "ACE", 9),
+                scrapeGradedMedian(cardBase, "ACE", 10),
+                scrapeGradedMedian(cardBase, "CGC", 9),
+                scrapeGradedMedian(cardBase, "CGC", 10),
+              ]);
+              function getValCached(r: PromiseSettledResult<number | null>): number | null {
+                return r.status === "fulfilled" ? r.value : null;
+              }
+              const gradedPrices = {
+                PSA: { 9: getValCached(psa9), 10: getValCached(psa10) },
+                Beckett: { 9: getValCached(beckett9), 10: getValCached(beckett10) },
+                ACE: { 9: getValCached(ace9), 10: getValCached(ace10) },
+                CGC: { 9: getValCached(cgc9), 10: getValCached(cgc10) },
+              };
+              res.json({
+                price: stats.median,
+                lowestSold: stats.lowest,
+                medianSold: stats.median,
+                highestSold: stats.highest,
+                source: "eBay UK (Sold)",
+                count: prices.length,
+                cached: true,
+                gradedPrices,
+              });
               return;
             }
           }
         }
       }
 
-      let query = `pokemon tcg ${cardName}`;
-      if (setName) query += ` ${setName}`;
-      if (number) query += ` ${number}`;
+      let baseQuery = `pokemon tcg ${cardName}`;
+      if (setName) baseQuery += ` ${setName}`;
+      if (number) baseQuery += ` ${number}`;
 
-      const searchParams = new URLSearchParams({
-        _nkw: query,
-        _sacat: "183454",
-        LH_Complete: "1",
-        LH_Sold: "1",
-        LH_PrefLoc: "1",
-        _sop: "13",
-      });
+      const rawPrices = await scrapeEbaySoldPrices(baseQuery);
 
-      const ebayUrl = `https://www.ebay.co.uk/sch/i.html?${searchParams}`;
-      const html = await fetch(ebayUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "en-GB,en;q=0.9",
-        },
-      }).then((r) => r.text());
-
-      const priceMatches = [...html.matchAll(/s-card__price">\s*£([\d,]+\.?\d*)/g)];
-      const prices: number[] = [];
-      for (const match of priceMatches) {
-        const price = parseFloat(match[1].replace(/,/g, ""));
-        if (price >= 0.5 && price <= 5000) prices.push(price);
-      }
-
-      if (prices.length === 0) {
-        res.json({ price: null, source: "eBay UK (Sold)", count: 0 });
+      if (rawPrices.length === 0) {
+        res.json({ price: null, lowestSold: null, medianSold: null, highestSold: null, source: "eBay UK (Sold)", count: 0, gradedPrices: null });
         return;
       }
 
-      const recentPrices = prices.slice(0, 20);
-      const sorted = [...recentPrices].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-      const roundedPrice = Math.round(median * 100) / 100;
+      const stats = computeStats(rawPrices);
 
-      if (cardId && recentPrices.length > 0) {
+      if (cardId && rawPrices.length > 0) {
         try {
           await db.delete(ebayPrices).where(eq(ebayPrices.cardId, cardId));
           await db.insert(ebayPrices).values(
-            recentPrices.map((price) => ({
+            rawPrices.map((price) => ({
               cardId,
               price,
               currency: "GBP",
@@ -973,7 +1024,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (_) {}
       }
 
-      res.json({ price: roundedPrice, source: "eBay UK (Sold)", count: prices.length });
+      const cardBase = `${cardName}${setName ? " " + setName : ""}`;
+      const [psa9, psa10, beckett9, beckett10, ace9, ace10, cgc9, cgc10] = await Promise.allSettled([
+        scrapeGradedMedian(cardBase, "PSA", 9),
+        scrapeGradedMedian(cardBase, "PSA", 10),
+        scrapeGradedMedian(cardBase, "Beckett", 9),
+        scrapeGradedMedian(cardBase, "Beckett", 10),
+        scrapeGradedMedian(cardBase, "ACE", 9),
+        scrapeGradedMedian(cardBase, "ACE", 10),
+        scrapeGradedMedian(cardBase, "CGC", 9),
+        scrapeGradedMedian(cardBase, "CGC", 10),
+      ]);
+
+      function getVal(r: PromiseSettledResult<number | null>): number | null {
+        return r.status === "fulfilled" ? r.value : null;
+      }
+
+      const gradedPrices = {
+        PSA: { 9: getVal(psa9), 10: getVal(psa10) },
+        Beckett: { 9: getVal(beckett9), 10: getVal(beckett10) },
+        ACE: { 9: getVal(ace9), 10: getVal(ace10) },
+        CGC: { 9: getVal(cgc9), 10: getVal(cgc10) },
+      };
+
+      res.json({
+        price: stats.median,
+        lowestSold: stats.lowest,
+        medianSold: stats.median,
+        highestSold: stats.highest,
+        source: "eBay UK (Sold)",
+        count: rawPrices.length,
+        gradedPrices,
+      });
     } catch (error: any) {
       console.error("eBay price fetch error:", error);
       res.status(500).json({ error: error.message || "Failed to fetch eBay prices" });

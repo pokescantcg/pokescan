@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -34,8 +34,23 @@ import {
 } from "@/lib/pokemon-api";
 import { useUser } from "@/lib/user-context";
 import { CardVariant } from "@/lib/storage";
+import { getApiUrl } from "@/lib/query-client";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
+
+const GRADERS = ["PSA", "Beckett", "ACE", "CGC"] as const;
+
+interface ExtendedEbayPrice {
+  lowestSold: number | null;
+  medianSold: number | null;
+  highestSold: number | null;
+  gradedPrices: {
+    PSA: { 9: number | null; 10: number | null };
+    Beckett: { 9: number | null; 10: number | null };
+    ACE: { 9: number | null; 10: number | null };
+    CGC: { 9: number | null; 10: number | null };
+  } | null;
+}
 
 function PriceRow({ label, value, colors }: { label: string; value: number | null; colors: ReturnType<typeof useThemeColors> }) {
   return (
@@ -44,6 +59,96 @@ function PriceRow({ label, value, colors }: { label: string; value: number | nul
       <Text style={[styles.priceValue, { color: value ? colors.text : colors.textMuted }]}>
         {formatGBP(value)}
       </Text>
+    </View>
+  );
+}
+
+function SoldPriceBreakdown({ ext, loading, colors }: {
+  ext: ExtendedEbayPrice | null;
+  loading: boolean;
+  colors: ReturnType<typeof useThemeColors>;
+}) {
+  const [gradedOpen, setGradedOpen] = useState(false);
+  const hasAnyGraded = useMemo(() => {
+    if (!ext?.gradedPrices) return false;
+    return GRADERS.some(g => ext.gradedPrices![g][9] !== null || ext.gradedPrices![g][10] !== null);
+  }, [ext]);
+
+  if (loading) {
+    return (
+      <View style={styles.soldLoadingRow}>
+        <ActivityIndicator size="small" color={colors.pokemonRed} />
+        <Text style={[styles.soldLoadingText, { color: colors.textMuted }]}>Fetching eBay sold prices…</Text>
+      </View>
+    );
+  }
+  if (!ext || (ext.lowestSold === null && ext.medianSold === null && ext.highestSold === null)) return null;
+
+  return (
+    <View style={styles.soldBreakdownWrap}>
+      <View style={styles.soldRow}>
+        <View style={styles.soldStat}>
+          <Text style={[styles.soldStatLabel, { color: colors.textMuted }]}>Lowest Sold</Text>
+          <Text style={[styles.soldStatValue, { color: colors.pokemonBlue }]}>
+            {ext.lowestSold !== null ? formatGBP(ext.lowestSold) : "—"}
+          </Text>
+        </View>
+        <View style={[styles.soldDivider, { backgroundColor: colors.borderLight }]} />
+        <View style={styles.soldStat}>
+          <Text style={[styles.soldStatLabel, { color: colors.textMuted }]}>Median Sold</Text>
+          <Text style={[styles.soldStatValue, { color: colors.success }]}>
+            {ext.medianSold !== null ? formatGBP(ext.medianSold) : "—"}
+          </Text>
+        </View>
+        <View style={[styles.soldDivider, { backgroundColor: colors.borderLight }]} />
+        <View style={styles.soldStat}>
+          <Text style={[styles.soldStatLabel, { color: colors.textMuted }]}>Highest Sold</Text>
+          <Text style={[styles.soldStatValue, { color: colors.pokemonRed }]}>
+            {ext.highestSold !== null ? formatGBP(ext.highestSold) : "—"}
+          </Text>
+        </View>
+      </View>
+
+      <Pressable
+        style={[styles.gradedToggle, { borderTopColor: colors.borderLight }]}
+        onPress={() => setGradedOpen(v => !v)}
+      >
+        <MaterialCommunityIcons name="certificate-outline" size={14} color={colors.textMuted} />
+        <Text style={[styles.gradedToggleText, { color: colors.textMuted }]}>
+          {gradedOpen ? "Hide Graded Prices" : "Graded Prices (PSA / BGS / ACE / CGC)"}
+        </Text>
+        <Ionicons name={gradedOpen ? "chevron-up" : "chevron-down"} size={13} color={colors.textMuted} />
+      </Pressable>
+
+      {gradedOpen && (
+        <View style={styles.gradedGrid}>
+          <View style={styles.gradedHeaderRow}>
+            <View style={styles.gradedLabelCol} />
+            <Text style={[styles.gradedColHeader, { color: colors.textMuted }]}>Grade 9</Text>
+            <Text style={[styles.gradedColHeader, { color: colors.textMuted }]}>Grade 10</Text>
+          </View>
+          {GRADERS.map(grader => {
+            const g9 = ext.gradedPrices?.[grader][9] ?? null;
+            const g10 = ext.gradedPrices?.[grader][10] ?? null;
+            return (
+              <View key={grader} style={[styles.gradedRow, { borderTopColor: colors.borderLight }]}>
+                <Text style={[styles.graderName, { color: colors.text }]}>{grader}</Text>
+                <Text style={[styles.gradedPrice, { color: g9 !== null ? colors.success : colors.textMuted }]}>
+                  {g9 !== null ? formatGBP(g9) : "No data"}
+                </Text>
+                <Text style={[styles.gradedPrice, { color: g10 !== null ? colors.success : colors.textMuted }]}>
+                  {g10 !== null ? formatGBP(g10) : "No data"}
+                </Text>
+              </View>
+            );
+          })}
+          {!hasAnyGraded && (
+            <Text style={[styles.noGradedText, { color: colors.textMuted }]}>
+              No graded sold results found for this card
+            </Text>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -61,6 +166,7 @@ export default function CardDetailScreen() {
 
   const [ebayFetchedPrice, setEbayFetchedPrice] = useState<{ price: number | null; source: string } | null>(null);
   const [ebayPriceLoading, setEbayPriceLoading] = useState(false);
+  const [extEbayPrice, setExtEbayPrice] = useState<ExtendedEbayPrice | null>(null);
 
   // Listing modal state
   const [listingModalVisible, setListingModalVisible] = useState(false);
@@ -85,18 +191,26 @@ export default function CardDetailScreen() {
 
   React.useEffect(() => {
     if (!card) return;
-    const built = getUKPrice(card);
-    if (built.price !== null) return;
     setEbayFetchedPrice(null);
+    setExtEbayPrice(null);
     setEbayPriceLoading(true);
     const params = new URLSearchParams({ cardName: card.name });
     if (card.set?.name) params.set("setName", card.set.name);
     if (card.number) params.set("number", card.number);
     if (card.id) params.set("cardId", card.id);
-    fetch(`https://pokemon-card-scan.replit.app/api/ebay/sold-price?${params}`)
+    const url = new URL(`/api/ebay/sold-price?${params}`, getApiUrl());
+    fetch(url.toString())
       .then((r) => r.json())
       .then((data) => {
         if (data.price) setEbayFetchedPrice({ price: data.price, source: data.source || "eBay UK (Sold)" });
+        if (data.medianSold !== undefined || data.lowestSold !== undefined) {
+          setExtEbayPrice({
+            lowestSold: data.lowestSold ?? null,
+            medianSold: data.medianSold ?? null,
+            highestSold: data.highestSold ?? null,
+            gradedPrices: data.gradedPrices ?? null,
+          });
+        }
       })
       .catch(() => {})
       .finally(() => setEbayPriceLoading(false));
@@ -376,6 +490,9 @@ export default function CardDetailScreen() {
                 {ebayPriceLoading && !priceData.price ? "Checking eBay UK…" : `via ${priceData.source || "N/A"}`}
               </Text>
             </LinearGradient>
+
+            {/* eBay sold price breakdown */}
+            <SoldPriceBreakdown ext={extEbayPrice} loading={ebayPriceLoading} colors={colors} />
 
             {card.cardmarket?.prices && (
               <View style={styles.priceDetails}>
@@ -930,5 +1047,23 @@ const styles = StyleSheet.create({
   errorTitle: { fontSize: 18, fontFamily: "Outfit_600SemiBold", marginTop: 4 },
   errorSubtitle: { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 32 },
   retryBtn: { marginTop: 8, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 24 },
+  soldLoadingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
+  soldLoadingText: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  soldBreakdownWrap: { borderRadius: 10, borderWidth: 1, borderColor: "rgba(0,0,0,0.08)", overflow: "hidden" },
+  soldRow: { flexDirection: "row", paddingVertical: 10, paddingHorizontal: 8 },
+  soldStat: { flex: 1, alignItems: "center", gap: 2 },
+  soldStatLabel: { fontSize: 11, fontFamily: "Outfit_500Medium" },
+  soldStatValue: { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  soldDivider: { width: 1, marginVertical: 4 },
+  gradedToggle: { flexDirection: "row", alignItems: "center", gap: 6, borderTopWidth: 1, paddingVertical: 10, paddingHorizontal: 12 },
+  gradedToggleText: { flex: 1, fontSize: 12, fontFamily: "Outfit_500Medium" },
+  gradedGrid: { paddingHorizontal: 12, paddingBottom: 10, gap: 0 },
+  gradedHeaderRow: { flexDirection: "row", alignItems: "center", paddingBottom: 6 },
+  gradedLabelCol: { flex: 1 },
+  gradedColHeader: { width: 80, fontSize: 11, fontFamily: "Outfit_600SemiBold", textAlign: "center" },
+  gradedRow: { flexDirection: "row", alignItems: "center", borderTopWidth: 1, paddingVertical: 8 },
+  graderName: { flex: 1, fontSize: 13, fontFamily: "Outfit_700Bold" },
+  gradedPrice: { width: 80, fontSize: 13, fontFamily: "Outfit_600SemiBold", textAlign: "center" },
+  noGradedText: { fontSize: 12, fontFamily: "Outfit_400Regular", textAlign: "center", paddingVertical: 8 },
   retryBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
 });

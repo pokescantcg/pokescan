@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -133,6 +133,135 @@ function IdentificationCard({
   );
 }
 
+interface ExtendedEbayPrice {
+  lowestSold: number | null;
+  medianSold: number | null;
+  highestSold: number | null;
+  gradedPrices: {
+    PSA: { 9: number | null; 10: number | null };
+    Beckett: { 9: number | null; 10: number | null };
+    ACE: { 9: number | null; 10: number | null };
+    CGC: { 9: number | null; 10: number | null };
+  } | null;
+}
+
+const GRADERS = ["PSA", "Beckett", "ACE", "CGC"] as const;
+
+function SoldPriceBreakdown({ ext, loading, colors }: {
+  ext: ExtendedEbayPrice | null;
+  loading: boolean;
+  colors: ReturnType<typeof useThemeColors>;
+}) {
+  const [gradedOpen, setGradedOpen] = useState(false);
+
+  const hasAnyGraded = useMemo(() => {
+    if (!ext?.gradedPrices) return false;
+    return GRADERS.some(g => ext.gradedPrices![g][9] !== null || ext.gradedPrices![g][10] !== null);
+  }, [ext]);
+
+  if (loading) {
+    return (
+      <View style={soldStyles.loadingRow}>
+        <ActivityIndicator size="small" color={colors.pokemonRed} />
+        <Text style={[soldStyles.loadingText, { color: colors.textMuted }]}>Fetching eBay sold prices…</Text>
+      </View>
+    );
+  }
+  if (!ext || (ext.lowestSold === null && ext.medianSold === null && ext.highestSold === null)) return null;
+
+  return (
+    <View style={[soldStyles.wrap, { borderColor: colors.borderLight }]}>
+      <Text style={[soldStyles.header, { color: colors.textSecondary }]}>eBay UK Sold Prices</Text>
+      <View style={soldStyles.row}>
+        <View style={soldStyles.stat}>
+          <Text style={[soldStyles.statLabel, { color: colors.textMuted }]}>Lowest</Text>
+          <Text style={[soldStyles.statValue, { color: colors.pokemonBlue }]}>
+            {ext.lowestSold !== null ? formatGBP(ext.lowestSold) : "—"}
+          </Text>
+        </View>
+        <View style={[soldStyles.divider, { backgroundColor: colors.borderLight }]} />
+        <View style={soldStyles.stat}>
+          <Text style={[soldStyles.statLabel, { color: colors.textMuted }]}>Median</Text>
+          <Text style={[soldStyles.statValue, { color: colors.success }]}>
+            {ext.medianSold !== null ? formatGBP(ext.medianSold) : "—"}
+          </Text>
+        </View>
+        <View style={[soldStyles.divider, { backgroundColor: colors.borderLight }]} />
+        <View style={soldStyles.stat}>
+          <Text style={[soldStyles.statLabel, { color: colors.textMuted }]}>Highest</Text>
+          <Text style={[soldStyles.statValue, { color: colors.pokemonRed }]}>
+            {ext.highestSold !== null ? formatGBP(ext.highestSold) : "—"}
+          </Text>
+        </View>
+      </View>
+
+      {/* Graded prices toggle */}
+      <Pressable
+        style={[soldStyles.gradedToggle, { borderTopColor: colors.borderLight }]}
+        onPress={() => setGradedOpen(v => !v)}
+      >
+        <MaterialCommunityIcons name="certificate-outline" size={14} color={colors.textMuted} />
+        <Text style={[soldStyles.gradedToggleText, { color: colors.textMuted }]}>
+          {gradedOpen ? "Hide Graded Prices" : "Show Graded Prices"}
+        </Text>
+        <Ionicons name={gradedOpen ? "chevron-up" : "chevron-down"} size={13} color={colors.textMuted} />
+      </Pressable>
+
+      {gradedOpen && (
+        <View style={soldStyles.gradedGrid}>
+          <View style={soldStyles.gradedHeaderRow}>
+            <View style={soldStyles.gradedLabelCol} />
+            <Text style={[soldStyles.gradedColHeader, { color: colors.textMuted }]}>Grade 9</Text>
+            <Text style={[soldStyles.gradedColHeader, { color: colors.textMuted }]}>Grade 10</Text>
+          </View>
+          {GRADERS.map(grader => {
+            const g9 = ext.gradedPrices?.[grader][9] ?? null;
+            const g10 = ext.gradedPrices?.[grader][10] ?? null;
+            return (
+              <View key={grader} style={[soldStyles.gradedRow, { borderTopColor: colors.borderLight }]}>
+                <Text style={[soldStyles.graderName, { color: colors.text }]}>{grader}</Text>
+                <Text style={[soldStyles.gradedPrice, { color: g9 !== null ? colors.success : colors.textMuted }]}>
+                  {g9 !== null ? formatGBP(g9) : "No data"}
+                </Text>
+                <Text style={[soldStyles.gradedPrice, { color: g10 !== null ? colors.success : colors.textMuted }]}>
+                  {g10 !== null ? formatGBP(g10) : "No data"}
+                </Text>
+              </View>
+            );
+          })}
+          {!hasAnyGraded && (
+            <Text style={[soldStyles.noGradedText, { color: colors.textMuted }]}>
+              No graded sold results found for this card
+            </Text>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const soldStyles = StyleSheet.create({
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 8 },
+  loadingText: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  wrap: { borderRadius: 12, borderWidth: 1, overflow: "hidden" },
+  header: { fontSize: 11, fontFamily: "Outfit_600SemiBold", paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 },
+  row: { flexDirection: "row", paddingHorizontal: 8, paddingBottom: 10 },
+  stat: { flex: 1, alignItems: "center", gap: 2 },
+  statLabel: { fontSize: 11, fontFamily: "Outfit_500Medium" },
+  statValue: { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  divider: { width: 1, marginVertical: 4 },
+  gradedToggle: { flexDirection: "row", alignItems: "center", gap: 6, borderTopWidth: 1, paddingVertical: 10, paddingHorizontal: 12 },
+  gradedToggleText: { flex: 1, fontSize: 12, fontFamily: "Outfit_500Medium" },
+  gradedGrid: { paddingHorizontal: 12, paddingBottom: 10, gap: 0 },
+  gradedHeaderRow: { flexDirection: "row", alignItems: "center", paddingBottom: 6 },
+  gradedLabelCol: { flex: 1 },
+  gradedColHeader: { width: 80, fontSize: 11, fontFamily: "Outfit_600SemiBold", textAlign: "center" },
+  gradedRow: { flexDirection: "row", alignItems: "center", borderTopWidth: 1, paddingVertical: 8 },
+  graderName: { flex: 1, fontSize: 13, fontFamily: "Outfit_700Bold" },
+  gradedPrice: { width: 80, fontSize: 13, fontFamily: "Outfit_600SemiBold", textAlign: "center" },
+  noGradedText: { fontSize: 12, fontFamily: "Outfit_400Regular", textAlign: "center", paddingVertical: 8 },
+});
+
 // ─── AI Price Card (shown when no database match found) ───────────────────────
 
 function AIPriceCard({
@@ -157,6 +286,32 @@ function AIPriceCard({
       : identification.confidence === "medium"
         ? colors.pokemonYellow
         : colors.error;
+
+  const [extPrice, setExtPrice] = useState<ExtendedEbayPrice | null>(null);
+  const [extLoading, setExtLoading] = useState(false);
+
+  useEffect(() => {
+    if (!identification.englishName) return;
+    setExtLoading(true);
+    const params = new URLSearchParams({ cardName: identification.englishName });
+    if (identification.setName) params.set("setName", identification.setName);
+    if (identification.cardNumber) params.set("number", identification.cardNumber);
+    const url = new URL(`/api/ebay/sold-price?${params}`, getApiUrl());
+    fetch(url.toString())
+      .then(r => r.json())
+      .then(data => {
+        if (data.medianSold !== undefined || data.lowestSold !== undefined) {
+          setExtPrice({
+            lowestSold: data.lowestSold ?? null,
+            medianSold: data.medianSold ?? null,
+            highestSold: data.highestSold ?? null,
+            gradedPrices: data.gradedPrices ?? null,
+          });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setExtLoading(false));
+  }, [identification.englishName, identification.setName, identification.cardNumber]);
 
   return (
     <View style={[aiPriceStyles.wrap, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "50" }]}>
@@ -220,13 +375,16 @@ function AIPriceCard({
         </View>
       </View>
 
+      {/* Sold price breakdown */}
+      <SoldPriceBreakdown ext={extPrice} loading={extLoading} colors={colors} />
+
       {/* Price context note */}
-      {topPrice && pcvResults.length > 1 && (
+      {!extLoading && !extPrice && topPrice && pcvResults.length > 1 && (
         <Text style={[aiPriceStyles.priceNote, { color: colors.textMuted }]}>
           Best UK price from {pcvResults.length} variant{pcvResults.length > 1 ? "s" : ""} · tap eBay for live market prices
         </Text>
       )}
-      {!topPrice && (
+      {!extLoading && !extPrice && !topPrice && (
         <Text style={[aiPriceStyles.priceNote, { color: colors.textMuted }]}>
           No UK database price found — use eBay UK below to check current market value
         </Text>
@@ -397,6 +555,32 @@ function DatabaseMatchCard({
   const tcgPrice = getUKPrice(card);
   const displayPrice = pcvCard?.priceGBP || tcgPrice.price;
 
+  const [extPrice, setExtPrice] = useState<ExtendedEbayPrice | null>(null);
+  const [extLoading, setExtLoading] = useState(false);
+
+  useEffect(() => {
+    setExtLoading(true);
+    const params = new URLSearchParams({ cardName: card.name });
+    if (card.set?.name) params.set("setName", card.set.name);
+    if (card.number) params.set("number", card.number);
+    if (card.id) params.set("cardId", card.id);
+    const url = new URL(`/api/ebay/sold-price?${params}`, getApiUrl());
+    fetch(url.toString())
+      .then(r => r.json())
+      .then(data => {
+        if (data.medianSold !== undefined || data.lowestSold !== undefined) {
+          setExtPrice({
+            lowestSold: data.lowestSold ?? null,
+            medianSold: data.medianSold ?? null,
+            highestSold: data.highestSold ?? null,
+            gradedPrices: data.gradedPrices ?? null,
+          });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setExtLoading(false));
+  }, [card.id]);
+
   return (
     <View style={[dbMatchStyles.wrap, { backgroundColor: colors.card, borderColor: colors.success + "60" }]}>
       <LinearGradient colors={[colors.success + "18", "transparent"]} style={dbMatchStyles.gradient} />
@@ -435,6 +619,9 @@ function DatabaseMatchCard({
           </View>
         </View>
       </Pressable>
+
+      {/* Sold price breakdown */}
+      <SoldPriceBreakdown ext={extPrice} loading={extLoading} colors={colors} />
 
       <View style={dbMatchStyles.ebayRow}>
         <Pressable
