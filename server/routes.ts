@@ -1154,11 +1154,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/identify-card", express.json({ limit: "15mb" }), async (req: Request, res: Response) => {
     try {
-      const { imageBase64 } = req.body;
+      const { imageBase64, mode } = req.body;
       if (!imageBase64) {
         res.status(400).json({ error: "imageBase64 is required" });
         return;
       }
+
+      const isNumberStripMode = mode === "number-strip";
 
       // ── Scan quota enforcement (free users only) ──────────────────────────
       const authToken = req.headers.authorization?.replace("Bearer ", "");
@@ -1176,6 +1178,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return;
           }
         }
+      }
+
+      // ── Number-strip mode: focused prompt just for reading the collector number ──
+      if (isNumberStripMode) {
+        let stripResponse: Awaited<ReturnType<typeof openai.chat.completions.create>>;
+        try {
+          const stripPromise = openai.chat.completions.create({
+            model: "gpt-5.2",
+            messages: [
+              {
+                role: "system",
+                content: `You are a Pokémon TCG expert. You are looking at a close-up photo of the bottom strip of a Pokémon card. Your ONLY task is to read the collector number printed there.
+
+The collector number appears as one of these formats:
+- "025/198" (number / total)
+- "SV049" (prefix + number)
+- "TG15/TG30" (two-part code)
+- "001/071" (zero-padded)
+- "SWSH001" (era prefix)
+
+Look carefully at the bottom-left or bottom-centre of the image for this number. It may be partially obscured — read as much as you can.
+
+Respond with valid JSON in this EXACT format:
+{
+  "cardNumber": "025/198",
+  "confidence": "high",
+  "notes": "Any relevant observation about legibility"
+}
+
+- Set confidence to "high" if you can clearly read the full number.
+- Set confidence to "medium" if you can read part of it but some digits are unclear.
+- Set confidence to "low" if you genuinely cannot make out a number.
+- Leave cardNumber as an empty string only if confidence is "low". Never guess a number you are not reasonably certain about.`
+              },
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: "Read the collector number from this close-up of a Pokémon card's bottom strip. Return the JSON response."
+                  },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
+                      detail: "high"
+                    }
+                  }
+                ]
+              }
+            ],
+            response_format: { type: "json_object" },
+            max_completion_tokens: 200,
+          });
+          const stripTimeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(Object.assign(new Error("AI identification timed out. Please try again."), { isTimeout: true })), 30000)
+          );
+          stripResponse = await Promise.race([stripPromise, stripTimeoutPromise]);
+        } catch (aiErr: any) {
+          if (aiErr.isTimeout || aiErr.name === "AbortError" || aiErr.code === "ERR_CANCELED") {
+            res.status(408).json({ error: aiErr.message || "AI identification timed out. Please try again." });
+            return;
+          }
+          throw aiErr;
+        }
+        const stripContent = stripResponse.choices[0]?.message?.content;
+        if (!stripContent) {
+          res.status(500).json({ error: "AI returned empty response" });
+          return;
+        }
+        const stripResult = JSON.parse(stripContent);
+        res.json({ cardNumber: stripResult.cardNumber || "", confidence: stripResult.confidence || "low", notes: stripResult.notes || "" });
+        return;
       }
 
       const setReference = await buildSetReferencePrompt();

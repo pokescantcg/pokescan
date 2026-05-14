@@ -36,6 +36,7 @@ import {
   getUKPrice,
   formatGBP,
   identifyCard,
+  scanNumberStrip,
   CardIdentification,
   PCVCard,
   generateEbaySearchUrl,
@@ -148,6 +149,106 @@ function ScannerCameraModal({
     </Modal>
   );
 }
+
+function NumberStripCameraModal({
+  visible,
+  onClose,
+  onCapture,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onCapture: (uri: string, base64: string | undefined) => void;
+}) {
+  const cameraRef = useRef<CameraView>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [isCapturing, setIsCapturing] = useState(false);
+  const { width: sw } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const frameW = sw * 0.88;
+  const frameH = frameW * 0.28;
+
+  const handleCapture = async () => {
+    if (!cameraRef.current || isCapturing) return;
+    setIsCapturing(true);
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.92, base64: true });
+      if (photo) {
+        onCapture(photo.uri, photo.base64);
+        onClose();
+      }
+    } catch (e) {
+      console.error("Strip camera capture error:", e);
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "#000" }}>
+        {permission?.granted ? (
+          <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back">
+            <View style={camStyles.overlay}>
+              <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                <View style={[stripCamStyles.dim, { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }]} />
+                <View style={[stripCamStyles.frame, { width: frameW, height: frameH }]}>
+                  <View style={[camStyles.corner, camStyles.cornerTL]} />
+                  <View style={[camStyles.corner, camStyles.cornerTR]} />
+                  <View style={[camStyles.corner, camStyles.cornerBL]} />
+                  <View style={[camStyles.corner, camStyles.cornerBR]} />
+                </View>
+                <Text style={stripCamStyles.hint}>Align the number strip along the bottom of your card</Text>
+                <Text style={stripCamStyles.hintSub}>Hold steady · Good lighting · Fill the frame</Text>
+              </View>
+              <View style={[stripCamStyles.bottomRow, { paddingBottom: insets.bottom + 24 }]}>
+                <Pressable onPress={onClose} style={camStyles.closeBtn} hitSlop={10}>
+                  <Ionicons name="close" size={28} color="#FFF" />
+                </Pressable>
+                <Pressable
+                  onPress={handleCapture}
+                  disabled={isCapturing}
+                  style={[camStyles.shutter, { opacity: isCapturing ? 0.5 : 1 }]}
+                >
+                  <View style={camStyles.shutterInner} />
+                </Pressable>
+                <View style={{ width: 52 }} />
+              </View>
+            </View>
+          </CameraView>
+        ) : (
+          <View style={camStyles.permView}>
+            <Ionicons name="camera-outline" size={48} color="#FFF" style={{ opacity: 0.7 }} />
+            <Text style={camStyles.permText}>Camera access is needed to scan cards</Text>
+            <Pressable onPress={requestPermission} style={camStyles.permBtn}>
+              <Text style={camStyles.permBtnText}>Grant Permission</Text>
+            </Pressable>
+            <Pressable onPress={onClose} style={[camStyles.permBtn, { backgroundColor: "#333", marginTop: 8 }]}>
+              <Text style={camStyles.permBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+const stripCamStyles = StyleSheet.create({
+  dim: { backgroundColor: "rgba(0,0,0,0.72)" },
+  frame: {
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "#FFD700",
+    position: "relative",
+    backgroundColor: "transparent",
+    zIndex: 1,
+  },
+  hint: { fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF", textAlign: "center", marginTop: 20, paddingHorizontal: 20, textShadowColor: "rgba(0,0,0,0.8)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  hintSub: { fontSize: 12, fontFamily: "Outfit_400Regular", color: "rgba(255,255,255,0.75)", textAlign: "center", marginTop: 6 },
+  bottomRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingTop: 20 },
+});
 
 const camStyles = StyleSheet.create({
   overlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
@@ -1623,6 +1724,9 @@ export default function ScannerScreen() {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isIdentifying, setIsIdentifying] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
+  const [showNumberStripModal, setShowNumberStripModal] = useState(false);
+  const [isStripScanning, setIsStripScanning] = useState(false);
+  const [stripScanError, setStripScanError] = useState<string | null>(null);
   const [identification, setIdentification] = useState<CardIdentification | null>(null);
   const [pcvResults, setPcvResults] = useState<PCVCard[]>([]);
   const [tcgApiResults, setTcgApiResults] = useState<PokemonCard[]>([]);
@@ -1786,6 +1890,72 @@ export default function ScannerScreen() {
     }
   }, [processImageFromBase64]);
 
+  const handleNumberStripCapture = useCallback(async (uri: string, base64Data: string | null | undefined) => {
+    setIsStripScanning(true);
+    setStripScanError(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      let base64: string;
+      if (base64Data) {
+        base64 = base64Data.startsWith("data:") ? base64Data : `data:image/jpeg;base64,${base64Data}`;
+      } else if (Platform.OS === "web") {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        const fileBase64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+        base64 = `data:image/jpeg;base64,${fileBase64}`;
+      }
+      const result = await scanNumberStrip(base64);
+      if (result.cardNumber) {
+        setIdentification((prev) =>
+          prev
+            ? { ...prev, cardNumber: result.cardNumber, confidence: result.confidence }
+            : prev
+        );
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        setStripScanError("Could not read the number from that photo. Try again with better lighting.");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    } catch (e: any) {
+      setStripScanError(e.message || "Failed to read card number");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsStripScanning(false);
+    }
+  }, []);
+
+  const handleNumberStripOpen = useCallback(async () => {
+    if (Platform.OS === "web") {
+      try {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permission Required", "Camera access is needed to scan cards.");
+          return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+          quality: 0.92,
+          allowsEditing: true,
+          aspect: [4, 1],
+          base64: true,
+        });
+        if (!result.canceled && result.assets[0]) {
+          handleNumberStripCapture(result.assets[0].uri, result.assets[0].base64);
+        }
+      } catch (e) {
+        console.error("Strip camera error (web):", e);
+      }
+    } else {
+      setShowNumberStripModal(true);
+    }
+  }, [handleNumberStripCapture]);
+
   const handleEbayListings = useCallback((name: string, setName?: string, number?: string) => {
     const url = generateEbaySearchUrl(name, setName, number);
     Linking.openURL(url);
@@ -1806,6 +1976,7 @@ export default function ScannerScreen() {
     setResults([]);
     setHasSearched(false);
     setSearchText("");
+    setStripScanError(null);
   }, []);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -1894,13 +2065,32 @@ export default function ScannerScreen() {
               · Hold steady and keep the phone parallel to the card (not angled)
             </Text>
           </View>
-          <Pressable
-            style={[styles.retakeBtn, { backgroundColor: colors.pokemonRed }]}
-            onPress={() => { clearAll(); handleCameraCapture(); }}
-          >
-            <Ionicons name="camera" size={15} color="#FFF" />
-            <Text style={styles.retakeBtnText}>Retake Photo</Text>
-          </Pressable>
+          <View style={styles.retakeBtnRow}>
+            <Pressable
+              style={[styles.retakeBtn, { backgroundColor: colors.pokemonRed, flex: 1 }]}
+              onPress={() => { clearAll(); handleCameraCapture(); }}
+            >
+              <Ionicons name="camera" size={15} color="#FFF" />
+              <Text style={styles.retakeBtnText}>Retake Photo</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.retakeBtn, { backgroundColor: colors.pokemonYellow, flex: 1 }]}
+              onPress={handleNumberStripOpen}
+              disabled={isStripScanning}
+            >
+              {isStripScanning ? (
+                <ActivityIndicator size="small" color="#1A1A2E" />
+              ) : (
+                <MaterialCommunityIcons name="numeric" size={16} color="#1A1A2E" />
+              )}
+              <Text style={[styles.retakeBtnText, { color: "#1A1A2E" }]}>
+                {isStripScanning ? "Reading..." : "Scan Number Strip"}
+              </Text>
+            </Pressable>
+          </View>
+          {stripScanError && (
+            <Text style={[styles.stripScanError, { color: colors.error }]}>{stripScanError}</Text>
+          )}
         </View>
       )}
 
@@ -2013,6 +2203,15 @@ export default function ScannerScreen() {
         visible={showCameraModal}
         onClose={() => setShowCameraModal(false)}
         onCapture={handleCameraModalCapture}
+      />
+
+      <NumberStripCameraModal
+        visible={showNumberStripModal}
+        onClose={() => setShowNumberStripModal(false)}
+        onCapture={(uri, base64) => {
+          setShowNumberStripModal(false);
+          handleNumberStripCapture(uri, base64);
+        }}
       />
 
       {/* ── Scan History Modal ── */}
@@ -2617,6 +2816,11 @@ const styles = StyleSheet.create({
   retakeBannerSubtitle: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
   retakeTipsList: { gap: 4 },
   retakeTip: { fontSize: 12, fontFamily: "Outfit_400Regular", lineHeight: 18 },
+  retakeBtnRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 2,
+  },
   retakeBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -2624,9 +2828,9 @@ const styles = StyleSheet.create({
     gap: 7,
     paddingVertical: 10,
     borderRadius: 10,
-    marginTop: 2,
   },
   retakeBtnText: { fontSize: 13, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  stripScanError: { fontSize: 12, fontFamily: "Outfit_400Regular", textAlign: "center", marginTop: 6 },
   alignmentGuide: {
     borderRadius: 14,
     padding: 12,

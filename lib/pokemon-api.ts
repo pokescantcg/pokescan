@@ -363,6 +363,47 @@ export async function identifyCard(imageBase64: string): Promise<IdentifyCardRes
   }
 }
 
+export interface NumberStripResult {
+  cardNumber: string;
+  confidence: "high" | "medium" | "low";
+  notes?: string;
+}
+
+export async function scanNumberStrip(imageBase64: string): Promise<NumberStripResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  try {
+    const token = await getSessionToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${API_URL}/api/identify-card`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ imageBase64, mode: "number-strip" }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      let errMsg = "Failed to read card number";
+      try {
+        const errBody = await res.json();
+        errMsg = errBody.error || errMsg;
+      } catch {
+        const errText = await res.text().catch(() => "");
+        errMsg = errText || errMsg;
+      }
+      throw new Error(errMsg);
+    }
+    return res.json();
+  } catch (e: any) {
+    clearTimeout(timeout);
+    if (e.name === "AbortError") {
+      throw new Error("Connection timed out. Please check your signal and try again.");
+    }
+    throw e;
+  }
+}
+
 export function formatGBP(price: number | null): string {
   if (price === null || price === undefined) return "N/A";
   return `\u00A3${price.toFixed(2)}`;
