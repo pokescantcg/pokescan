@@ -2091,17 +2091,29 @@ If you cannot identify the card, set confidence to "low" and provide your best g
 
       const { id } = req.params;
       const { status, reviewNote } = req.body ?? {};
-      if (status !== "approved" && status !== "rejected") {
+
+      if (status !== undefined && status !== "approved" && status !== "rejected") {
         res.status(400).json({ error: "status must be 'approved' or 'rejected'" }); return;
       }
 
-      const result = await pool.query(
-        `UPDATE pokescan_market_listings
-            SET status = $1, reviewed_by = $2, reviewed_at = NOW(), review_note = $3
-          WHERE id = $4
-          RETURNING *`,
-        [status, user.id, reviewNote ?? null, id]
-      );
+      let result;
+      if (status !== undefined) {
+        result = await pool.query(
+          `UPDATE pokescan_market_listings
+              SET status = $1, reviewed_by = $2, reviewed_at = NOW(), review_note = $3
+            WHERE id = $4
+            RETURNING *`,
+          [status, user.id, reviewNote ?? null, id]
+        );
+      } else {
+        result = await pool.query(
+          `UPDATE pokescan_market_listings
+              SET review_note = $1
+            WHERE id = $2
+            RETURNING *`,
+          [reviewNote ?? null, id]
+        );
+      }
       if (result.rows.length === 0) { res.status(404).json({ error: "Listing not found" }); return; }
       res.json({ listing: rowToListing(result.rows[0]) });
     } catch (err: any) {

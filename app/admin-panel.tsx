@@ -372,6 +372,7 @@ function ListingDetailModal({
   onReject,
   onMessage,
   onRemove,
+  onSaveNote,
 }: {
   listing: MarketListing | null;
   colors: ReturnType<typeof useThemeColors>;
@@ -380,7 +381,12 @@ function ListingDetailModal({
   onReject: () => void;
   onMessage: () => void;
   onRemove: () => void;
+  onSaveNote: (note: string | null) => Promise<void>;
 }) {
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+
   if (!listing) return null;
   const status = listing.status ?? "approved";
   const statusColor =
@@ -467,12 +473,78 @@ function ListingDetailModal({
             </View>
           )}
 
-          {listing.reviewNote ? (
-            <View style={{ backgroundColor: statusColor + "15", borderColor: statusColor, borderWidth: 1, padding: 12, borderRadius: 10, gap: 4 }}>
-              <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: statusColor, letterSpacing: 1 }}>REVIEW NOTE</Text>
-              <Text style={{ fontSize: 14, fontFamily: "Outfit_400Regular", color: colors.text }}>{listing.reviewNote}</Text>
+          {/* Review note — editable for approved/rejected listings */}
+          {status !== "pending" && (
+            <View style={{ backgroundColor: editingNote ? colors.card : statusColor + "15", borderColor: editingNote ? colors.borderLight : statusColor, borderWidth: 1, padding: 12, borderRadius: 10, gap: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: editingNote ? colors.textMuted : statusColor, letterSpacing: 1 }}>REVIEW NOTE</Text>
+                {!editingNote && (
+                  <Pressable
+                    hitSlop={8}
+                    onPress={() => { setNoteText(listing.reviewNote ?? ""); setEditingNote(true); }}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                  >
+                    <Ionicons name="pencil-outline" size={13} color={colors.textMuted} />
+                    <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textMuted }}>
+                      {listing.reviewNote ? "Edit" : "Add note"}
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+              {editingNote ? (
+                <>
+                  <TextInput
+                    value={noteText}
+                    onChangeText={setNoteText}
+                    placeholder="Leave a note for the seller (optional)"
+                    placeholderTextColor={colors.textMuted}
+                    multiline
+                    style={{
+                      backgroundColor: colors.surface,
+                      color: colors.text,
+                      borderRadius: 8,
+                      padding: 10,
+                      fontSize: 14,
+                      fontFamily: "Outfit_400Regular",
+                      minHeight: 72,
+                      textAlignVertical: "top",
+                      borderWidth: 1,
+                      borderColor: colors.borderLight,
+                    }}
+                  />
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <Pressable
+                      onPress={() => setEditingNote(false)}
+                      style={{ flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight }}
+                    >
+                      <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={savingNote}
+                      onPress={async () => {
+                        setSavingNote(true);
+                        try {
+                          await onSaveNote(noteText.trim() || null);
+                          setEditingNote(false);
+                        } finally {
+                          setSavingNote(false);
+                        }
+                      }}
+                      style={{ flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: "center", backgroundColor: colors.pokemonBlue }}
+                    >
+                      <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" }}>
+                        {savingNote ? "Saving…" : "Save Note"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <Text style={{ fontSize: 14, fontFamily: "Outfit_400Regular", color: listing.reviewNote ? colors.text : colors.textMuted, fontStyle: listing.reviewNote ? "normal" : "italic" }}>
+                  {listing.reviewNote ?? "No note — tap Edit to add one"}
+                </Text>
+              )}
             </View>
-          ) : null}
+          )}
 
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
             {status === "pending" && (
@@ -951,6 +1023,33 @@ export default function AdminPanelScreen() {
       }
     },
     [listingFilter, refreshPendingListingCount]
+  );
+
+  const handleSaveNote = useCallback(
+    async (listing: MarketListing, note: string | null) => {
+      try {
+        const url = new URL(`/api/admin/listings/${listing.id}`, getApiUrl());
+        const res = await fetch(url.toString(), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", ...(await requireAdminAuthHeader()) },
+          body: JSON.stringify({ reviewNote: note }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Server error ${res.status}`);
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setAdminListings((prev) =>
+          prev.map((l) => (l.id === listing.id ? { ...l, reviewNote: note } : l))
+        );
+        setSelectedListing((prev) =>
+          prev && prev.id === listing.id ? { ...prev, reviewNote: note } : prev
+        );
+      } catch (e: any) {
+        Alert.alert("Error", e.message || "Could not update note");
+      }
+    },
+    []
   );
 
   const promptAndModerate = useCallback((listing: MarketListing, status: "approved" | "rejected") => {
@@ -1709,6 +1808,7 @@ export default function AdminPanelScreen() {
             handleRemoveListing(l);
           }
         }}
+        onSaveNote={(note) => selectedListing ? handleSaveNote(selectedListing, note) : Promise.resolve()}
       />
 
       <Modal
