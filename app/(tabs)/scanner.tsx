@@ -2857,42 +2857,44 @@ export default function ScannerScreen() {
           <MaterialCommunityIcons name="pokeball" size={40} color={colors.pokemonRed} />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Searching...</Text>
         </View>
-      ) : hasIdentifiedResults && pcvResults.length > 0 ? (
-        <FlatList
-          data={pcvResults}
-          renderItem={({ item }) => <PCVResultCard card={item} colors={colors} />}
-          keyExtractor={(item, i) => `${item.url}-${i}`}
-          contentContainerStyle={[styles.resultsList, { paddingBottom: 100 }]}
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={renderHeader}
-        />
-      ) : hasIdentifiedResults && tcgApiResults.length > 1 ? (
-        <FlatList
-          data={tcgApiResults.slice(1)}
-          renderItem={({ item }) => <SearchResultCard card={item} colors={colors} />}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={[styles.resultsList, { paddingBottom: 100 }]}
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={() => (
-            <>
-              {renderHeader()}
-              <View style={styles.resultsHeaderRow}>
-                <View style={[styles.resultsHeaderDot, { backgroundColor: colors.pokemonBlue }]} />
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                  Other Versions ({tcgApiResults.length - 1})
-                </Text>
-              </View>
-            </>
-          )}
-        />
-      ) : hasIdentifiedResults ? (
-        <FlatList
-          data={[]}
-          renderItem={() => null}
-          contentContainerStyle={[styles.resultsList, { paddingBottom: 100 }]}
-          showsVerticalScrollIndicator={false}
-          ListHeaderComponent={renderHeader}
-        />
+      ) : hasIdentifiedResults ? (() => {
+        // Build unified list: all pcvResults + separator + all tcgApiResults.slice(1)
+        type ScanItem =
+          | { kind: "pcv"; card: PCVCard; key: string }
+          | { kind: "separator"; title: string; key: string }
+          | { kind: "tcg"; card: PokemonCard; key: string };
+
+        const combined: ScanItem[] = [];
+        pcvResults.forEach((c, i) => combined.push({ kind: "pcv", card: c, key: `pcv-${i}` }));
+        if (tcgApiResults.length > 1) {
+          combined.push({
+            kind: "separator",
+            title: `Other Versions (${tcgApiResults.length - 1})`,
+            key: "sep-tcg",
+          });
+          tcgApiResults.slice(1).forEach((c) => combined.push({ kind: "tcg", card: c, key: `tcg-${c.id}` }));
+        }
+
+        return (
+          <FlatList
+            data={combined}
+            keyExtractor={(item) => item.key}
+            contentContainerStyle={[styles.resultsList, { paddingBottom: 100 }]}
+            showsVerticalScrollIndicator={false}
+            ListHeaderComponent={renderHeader}
+            renderItem={({ item }) => {
+              if (item.kind === "pcv") return <PCVResultCard card={item.card} colors={colors} />;
+              if (item.kind === "tcg") return <SearchResultCard card={item.card} colors={colors} />;
+              return (
+                <View style={styles.resultsHeaderRow}>
+                  <View style={[styles.resultsHeaderDot, { backgroundColor: colors.pokemonBlue }]} />
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>{item.title}</Text>
+                </View>
+              );
+            }}
+          />
+        );
+      })()
       ) : allSearchShown ? (
         <FlatList
           data={results}
