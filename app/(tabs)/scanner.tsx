@@ -1818,12 +1818,17 @@ export default function ScannerScreen() {
         const firstTcg = (result.tcgApiResults || [])[0] ?? null;
         const firstPcv = (result.pcvResults || [])[0] ?? null;
         const thumbnail = firstTcg?.images?.small ?? firstPcv?.imageUrl ?? null;
+        const tcgGbp = firstTcg ? getUKPrice(firstTcg).price : null;
+        const bestPrice: number | null = (firstPcv?.priceGBP != null && typeof firstPcv.priceGBP === "number")
+          ? firstPcv.priceGBP
+          : (typeof tcgGbp === "number" ? tcgGbp : null);
         addScanToHistory(user.id, {
           cardName: result.identification.englishName,
           setName: result.identification.setName || "",
           cardNumber: result.identification.cardNumber || "",
           language: result.identification.language || "",
           thumbnail,
+          priceGBP: bestPrice,
           identification: result.identification,
           tcgApiResults: result.tcgApiResults || [],
           pcvResults: result.pcvResults || [],
@@ -2256,6 +2261,7 @@ export default function ScannerScreen() {
               showsVerticalScrollIndicator={false}
               renderItem={({ item }) => {
                 const ago = formatTimeAgo(item.timestamp);
+                const scanDate = new Date(item.timestamp).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
                 return (
                   <Pressable
                     style={[histStyles.historyItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
@@ -2292,7 +2298,10 @@ export default function ScannerScreen() {
                             <Text style={[histStyles.langTagText, { color: colors.pokemonRed }]}>{item.language}</Text>
                           </View>
                         )}
-                        <Text style={[histStyles.historyTime, { color: colors.textMuted }]}>{ago}</Text>
+                        {item.priceGBP != null && (
+                          <Text style={[histStyles.historyPrice, { color: colors.success }]}>{formatGBP(item.priceGBP)}</Text>
+                        )}
+                        <Text style={[histStyles.historyTime, { color: colors.textMuted }]}>{scanDate} · {ago}</Text>
                       </View>
                     </View>
                     <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
@@ -2951,4 +2960,5 @@ const histStyles = StyleSheet.create({
   langTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
   langTagText: { fontSize: 11, fontFamily: "Outfit_600SemiBold" },
   historyTime: { fontSize: 11, fontFamily: "Outfit_400Regular" },
+  historyPrice: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
 });

@@ -94,6 +94,7 @@ export interface ScanHistoryEntry {
   cardNumber: string;
   language: string;
   thumbnail: string | null;
+  priceGBP: number | null;
   identification: {
     englishName: string;
     cardNumber: string;
