@@ -883,6 +883,8 @@ export default function AdminPanelScreen() {
     isSuperadminUser,
     logout,
     refreshUsers,
+    pendingListingCount,
+    refreshPendingListingCount,
   } = useUser();
   const [activeTab, setActiveTab] = useState<Tab>("listings");
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
@@ -943,11 +945,12 @@ export default function AdminPanelScreen() {
             : prev.filter((l) => l.id !== listing.id)
         );
         setSelectedListing((prev) => (prev && prev.id === listing.id ? { ...prev, status, reviewNote } : prev));
+        refreshPendingListingCount().catch(() => {});
       } catch (e: any) {
         Alert.alert("Error", e.message || "Could not update listing");
       }
     },
-    [listingFilter]
+    [listingFilter, refreshPendingListingCount]
   );
 
   const promptAndModerate = useCallback((listing: MarketListing, status: "approved" | "rejected") => {
@@ -992,20 +995,7 @@ export default function AdminPanelScreen() {
     if (activeTab === "listings") loadAdminListings();
   }, [activeTab, loadAdminListings]);
 
-  // Lightweight pending count for the tab badge (independent of the
-  // currently-selected filter so mods always see how many need review).
-  const [pendingListingCount, setPendingListingCount] = useState<number>(0);
-  const loadPendingListingCount = useCallback(async () => {
-    try {
-      const url = new URL("/api/admin/listings", getApiUrl());
-      url.searchParams.set("status", "pending");
-      const res = await fetch(url.toString(), { headers: await requireAdminAuthHeader() });
-      if (!res.ok) return;
-      const data = await res.json();
-      setPendingListingCount((data.listings || []).length);
-    } catch { /* non-critical */ }
-  }, []);
-  React.useEffect(() => { loadPendingListingCount(); }, [loadPendingListingCount, adminListings]);
+  // pendingListingCount comes from shared UserContext so profile badge stays in sync.
 
   const handleAddFriend = useCallback(async (targetUserId: string) => {
     setAddingFriendId(targetUserId);

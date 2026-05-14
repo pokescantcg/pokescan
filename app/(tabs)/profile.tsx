@@ -46,7 +46,7 @@ export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user, collection, collectionValue, listings, logout, isStaff, isSuperadminUser, updateAvatar, revokePremium } = useUser();
+  const { user, collection, collectionValue, listings, logout, isStaff, isSuperadminUser, updateAvatar, revokePremium, pendingListingCount, refreshPendingListingCount } = useUser();
   const { cacheStatus, isDownloading, downloadPercent, progress, startDownload, clearCardCache, refreshStatus, selectedLanguages, setSelectedLanguages } = useCardCache();
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -74,7 +74,8 @@ export default function ProfileScreen() {
     useCallback(() => {
       if (!user) return;
       socialApi.getUnreadCount().then(d => setUnreadCount(d.count)).catch(() => {});
-    }, [user])
+      if (isStaff) refreshPendingListingCount().catch(() => {});
+    }, [user, isStaff, refreshPendingListingCount])
   );
 
   const handleMessageSupport = useCallback(async () => {
@@ -597,7 +598,16 @@ export default function ProfileScreen() {
               style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "30" }]}
               onPress={() => router.push("/admin-panel")}
             >
-              <Ionicons name="shield-checkmark" size={22} color={colors.pokemonRed} />
+              <View style={{ position: "relative" }}>
+                <Ionicons name="shield-checkmark" size={22} color={colors.pokemonRed} />
+                {pendingListingCount > 0 && (
+                  <View style={[styles.adminBadge, { backgroundColor: colors.pokemonRed }]}>
+                    <Text style={styles.adminBadgeText}>
+                      {pendingListingCount > 99 ? "99+" : pendingListingCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
               <Text style={[styles.menuText, { color: colors.text }]}>
                 {isSuperadminUser ? "Superadmin Panel" : user.role === "admin" ? "Admin Panel" : "Moderator Panel"}
               </Text>
@@ -1114,6 +1124,8 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
   mailBadge: { position: "absolute", top: -5, right: -7, minWidth: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center", paddingHorizontal: 3 },
   mailBadgeText: { fontSize: 9, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  adminBadge: { position: "absolute", top: -6, right: -8, minWidth: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center", paddingHorizontal: 3 },
+  adminBadgeText: { fontSize: 9, fontFamily: "Outfit_700Bold", color: "#FFF" },
   title: { fontSize: 28, fontFamily: "Outfit_700Bold" },
   eeveeDecor: { width: 64, height: 64 },
   profileSection: { alignItems: "center", marginBottom: 4 },

@@ -43,7 +43,9 @@ import {
   sendOtpForLogin,
   updateUserAvatar,
   fetchAllUsersFromServer,
+  getSessionToken,
 } from "./storage";
+import { getApiUrl } from "@/lib/query-client";
 
 interface UserContextValue {
   user: UserProfile | null;
@@ -77,6 +79,8 @@ interface UserContextValue {
   deleteUserAccount: (userId: string) => Promise<void>;
   refreshData: () => Promise<void>;
   refreshUsers: () => Promise<void>;
+  pendingListingCount: number;
+  refreshPendingListingCount: () => Promise<void>;
   isStaff: boolean;
   isAdminUser: boolean;
   isSuperadminUser: boolean;
@@ -91,6 +95,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [listings, setListings] = useState<MarketListing[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [superadminFlag, setSuperadminFlag] = useState(false);
+  const [pendingListingCount, setPendingListingCount] = useState(0);
 
   const loadData = useCallback(async () => {
     try {
@@ -327,6 +332,31 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const isStaff = useMemo(() => isAdminOrMod(user), [user]);
   const isAdminUser = useMemo(() => isAdmin(user), [user]);
 
+  const refreshPendingListingCount = useCallback(async () => {
+    if (!isStaff) {
+      setPendingListingCount(0);
+      return;
+    }
+    try {
+      const token = await getSessionToken();
+      if (!token) { setPendingListingCount(0); return; }
+      const url = new URL("/api/admin/listings", getApiUrl());
+      url.searchParams.set("status", "pending");
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return; // preserve last known count on transient server errors
+      const data = await res.json();
+      setPendingListingCount((data.listings || []).length);
+    } catch {
+      // preserve last known count on transient network failures
+    }
+  }, [isStaff]);
+
+  useEffect(() => {
+    refreshPendingListingCount();
+  }, [refreshPendingListingCount]);
+
   const value = useMemo(
     () => ({
       user,
@@ -360,11 +390,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
       deleteUserAccount: handleDeleteUserAccount,
       refreshData: loadData,
       refreshUsers: handleRefreshUsers,
+      pendingListingCount,
+      refreshPendingListingCount,
       isStaff,
       isAdminUser,
       isSuperadminUser: superadminFlag,
     }),
-    [user, isLoading, collection, listings, collectionValue, allUsers, register, registerWithPassword, loginWithPassword, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleRequestAdminOtp, handleVerifyAdminOtp, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleUpdateListingDetails, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, handleRefreshUsers, isStaff, isAdminUser, superadminFlag]
+    [user, isLoading, collection, listings, collectionValue, allUsers, register, registerWithPassword, loginWithPassword, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleRequestAdminOtp, handleVerifyAdminOtp, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleUpdateListingDetails, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, handleRefreshUsers, pendingListingCount, refreshPendingListingCount, isStaff, isAdminUser, superadminFlag]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
