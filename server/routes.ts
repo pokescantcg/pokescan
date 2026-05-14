@@ -4191,7 +4191,7 @@ Return ONLY valid JSON in exactly this format:
     if (Object.prototype.hasOwnProperty.call(updates, "supertype")) drizzleUpdates.supertype = updates.supertype;
     if (Object.prototype.hasOwnProperty.call(updates, "subtypes")) drizzleUpdates.subtypes = updates.subtypes;
     if (Object.prototype.hasOwnProperty.call(updates, "description")) drizzleUpdates.description = updates.description;
-    const [updated] = await db.update(pokemonCards).set(drizzleUpdates).where(eq(pokemonCards.id, id)).returning();
+    const [updated] = await db.update(pokemonCards).set(drizzleUpdates).where(and(eq(pokemonCards.id, id), isNull(pokemonCards.deletedAt))).returning();
     if (!updated) { res.status(404).json({ error: "Card not found" }); return; }
     res.json({ card: updated });
   });
@@ -4233,7 +4233,7 @@ Return ONLY valid JSON in exactly this format:
     if (typeof releaseDate === "string") updates.releaseDate = releaseDate.trim() || null;
     if (typeof hidden === "boolean") updates.hidden = hidden;
     if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
-    const [updated] = await db.update(pokemonSets).set(updates).where(eq(pokemonSets.id, id)).returning();
+    const [updated] = await db.update(pokemonSets).set(updates).where(and(eq(pokemonSets.id, id), isNull(pokemonSets.deletedAt))).returning();
     if (!updated) { res.status(404).json({ error: "Set not found" }); return; }
     res.json({ set: updated });
   });
