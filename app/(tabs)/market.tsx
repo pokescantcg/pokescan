@@ -871,6 +871,7 @@ export default function MarketScreen() {
   const insets = useSafeAreaInsets();
   const { user, listings, deleteListing, updateListingDetails, isStaff, refreshData } = useUser();
   const [filter, setFilter] = useState<"all" | "sale" | "trade">("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedListing, setSelectedListing] = useState<MarketListing | null>(null);
 
@@ -884,8 +885,16 @@ export default function MarketScreen() {
   }, [refreshData]);
 
   const filtered = listings.filter((l) => {
-    if (filter === "all") return true;
-    return l.type === filter;
+    if (filter !== "all" && l.type !== filter) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      return (
+        l.cardName.toLowerCase().includes(q) ||
+        l.setName.toLowerCase().includes(q) ||
+        l.userName.toLowerCase().includes(q)
+      );
+    }
+    return true;
   });
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -1058,6 +1067,24 @@ export default function MarketScreen() {
             </Pressable>
           ))}
         </View>
+        <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          <Ionicons name="search" size={16} color={colors.textMuted} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search cards, sets or sellers…"
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
+              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+            </Pressable>
+          )}
+        </View>
       </LinearGradient>
 
       <FlatList
@@ -1090,11 +1117,23 @@ export default function MarketScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="pricetags-outline" size={56} color={colors.textMuted} />
-            <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No Listings Yet</Text>
-            <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
-              Open a card from your collection and tap "List for Sale" or "List for Trade"
-            </Text>
+            {searchQuery.trim() ? (
+              <>
+                <Ionicons name="search-outline" size={52} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No Results</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
+                  No listings match "{searchQuery.trim()}"
+                </Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="pricetags-outline" size={56} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No Listings Yet</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
+                  Open a card from your collection and tap "List for Sale" or "List for Trade"
+                </Text>
+              </>
+            )}
           </View>
         }
       />
@@ -1149,6 +1188,17 @@ const styles = StyleSheet.create({
   filterRow: { flexDirection: "row", gap: 8 },
   filterBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   filterBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: "Outfit_400Regular", padding: 0 },
   listContent: { paddingHorizontal: 16, paddingTop: 8 },
   disclaimer: {
     flexDirection: "row",

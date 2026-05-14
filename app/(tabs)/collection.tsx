@@ -220,6 +220,7 @@ export default function CollectionScreen() {
   const insets = useSafeAreaInsets();
   const { user, collection, collectionValue, removeCard, updateQuantity, updateGrading } = useUser();
   const [sortBy, setSortBy] = useState<"name" | "value" | "recent">("recent");
+  const [searchQuery, setSearchQuery] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [collapsedSets, setCollapsedSets] = useState<Set<string>>(new Set());
 
@@ -317,12 +318,27 @@ export default function CollectionScreen() {
     return result;
   }, [collection, sortBy]);
 
+  const filteredSections: SetSection[] = useMemo(() => {
+    if (!searchQuery.trim()) return rawSections;
+    const q = searchQuery.trim().toLowerCase();
+    return rawSections
+      .map((section) => {
+        const setMatches = section.setName.toLowerCase().includes(q);
+        const matchingCards = section.data.filter(
+          (item) => setMatches || item.cardName.toLowerCase().includes(q)
+        );
+        if (matchingCards.length === 0) return null;
+        return { ...section, data: matchingCards };
+      })
+      .filter((s): s is SetSection => s !== null);
+  }, [rawSections, searchQuery]);
+
   const sections = useMemo(() =>
-    rawSections.map(s => ({
+    filteredSections.map(s => ({
       ...s,
-      data: collapsedSets.has(s.setId) ? ([] as CollectionItem[]) : s.data,
+      data: (searchQuery.trim() || !collapsedSets.has(s.setId)) ? s.data : ([] as CollectionItem[]),
     })),
-    [rawSections, collapsedSets]
+    [filteredSections, collapsedSets, searchQuery]
   );
 
   const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
@@ -448,6 +464,24 @@ export default function CollectionScreen() {
             </Pressable>
           ))}
         </View>
+        <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          <Ionicons name="search" size={16} color={colors.textMuted} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search cards or sets…"
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            returnKeyType="search"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery("")} hitSlop={8}>
+              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+            </Pressable>
+          )}
+        </View>
       </LinearGradient>
 
       <SectionList
@@ -493,17 +527,29 @@ export default function CollectionScreen() {
         )}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Image
-              source={{ uri: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/143.png" }}
-              style={styles.emptyPokemon}
-              contentFit="contain"
-            />
-            <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
-              Your collection is sleeping...
-            </Text>
-            <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
-              Browse sets or scan cards to add them to your collection
-            </Text>
+            {searchQuery.trim() ? (
+              <>
+                <Ionicons name="search-outline" size={52} color={colors.textMuted} />
+                <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No Results</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
+                  No cards or sets match "{searchQuery.trim()}"
+                </Text>
+              </>
+            ) : (
+              <>
+                <Image
+                  source={{ uri: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/143.png" }}
+                  style={styles.emptyPokemon}
+                  contentFit="contain"
+                />
+                <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
+                  Your collection is sleeping...
+                </Text>
+                <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
+                  Browse sets or scan cards to add them to your collection
+                </Text>
+              </>
+            )}
           </View>
         }
       />
@@ -619,6 +665,17 @@ const styles = StyleSheet.create({
   sortRow: { flexDirection: "row", gap: 8 },
   sortBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   sortBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  searchInput: { flex: 1, fontSize: 14, fontFamily: "Outfit_400Regular", padding: 0 },
   listContent: { paddingHorizontal: 16, paddingTop: 8 },
   setHeader: {
     flexDirection: "row",
