@@ -94,6 +94,7 @@ export const pokemonCards = pgTable("pokemon_cards", {
   artist: text("artist"),
   hp: text("hp"),
   nationalPokedexNumbers: text("national_pokedex_numbers"),
+  description: text("description"),
   syncedAt: timestamp("synced_at").default(sql`CURRENT_TIMESTAMP`),
 });
 

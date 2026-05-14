@@ -229,6 +229,22 @@ function issueSuperadminToken(): string {
   return token;
 }
 
+// Strict superadmin-only check: requires a valid session token AND
+// the authenticated user must be the designated superadmin account.
+// The database has no separate "superadmin" role; the superadmin user
+// has role === "admin" and username === "superadmin".
+async function isSuperadminSessionOnly(req: Request): Promise<boolean> {
+  const auth = req.headers.authorization || "";
+  if (!auth.startsWith("Bearer ")) return false;
+  const token = auth.slice(7).trim();
+  try {
+    const user = await storage.validateSession(token);
+    return !!(user && user.role === "admin" && user.username === "superadmin");
+  } catch {
+    return false;
+  }
+}
+
 async function isSuperadminAuthorized(req: Request): Promise<boolean> {
   const auth = req.headers.authorization || "";
   if (auth.startsWith("Bearer ")) {
@@ -311,6 +327,7 @@ async function runSchemaMigrations(): Promise<void> {
       ALTER TABLE pokescan_collections ADD COLUMN IF NOT EXISTS grade VARCHAR(16);
       ALTER TABLE pokescan_collections ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE;
       ALTER TABLE pokescan_users ADD COLUMN IF NOT EXISTS is_verified_collector BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE pokemon_cards ADD COLUMN IF NOT EXISTS description TEXT;
       CREATE TABLE IF NOT EXISTS pokescan_collector_verifications (
         id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::varchar,
         user_id VARCHAR(36) NOT NULL REFERENCES pokescan_users(id) ON DELETE CASCADE,
@@ -4091,6 +4108,121 @@ Return ONLY valid JSON in exactly this format:
       console.error("Unban error:", error);
       res.status(500).json({ error: error.message || "Failed to unban user" });
     }
+  });
+
+  // ─── Admin DB Editor ─────────────────────────────────────────────────────────
+
+  app.get("/api/admin/db/cards", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+    const pageSize = Math.min(100, Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)));
+    const search = (req.query.search as string || "").trim();
+    const setIdFilter = (req.query.setId as string || "").trim();
+    const offset = (page - 1) * pageSize;
+    let condition;
+    if (search && setIdFilter) {
+      condition = and(
+        or(ilike(pokemonCards.name, `%${search}%`), ilike(pokemonCards.id, `%${search}%`)),
+        eq(pokemonCards.setId, setIdFilter)
+      );
+    } else if (search) {
+      condition = or(ilike(pokemonCards.name, `%${search}%`), ilike(pokemonCards.id, `%${search}%`));
+    } else if (setIdFilter) {
+      condition = eq(pokemonCards.setId, setIdFilter);
+    }
+    const [countResult, rows] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(pokemonCards).where(condition),
+      db.select({
+        id: pokemonCards.id,
+        setId: pokemonCards.setId,
+        setName: pokemonSets.name,
+        name: pokemonCards.name,
+        number: pokemonCards.number,
+        rarity: pokemonCards.rarity,
+        supertype: pokemonCards.supertype,
+        subtypes: pokemonCards.subtypes,
+        imageSmall: pokemonCards.imageSmall,
+        imageLarge: pokemonCards.imageLarge,
+        artist: pokemonCards.artist,
+        hp: pokemonCards.hp,
+        nationalPokedexNumbers: pokemonCards.nationalPokedexNumbers,
+        description: pokemonCards.description,
+      }).from(pokemonCards)
+        .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
+        .where(condition).orderBy(pokemonCards.number).limit(pageSize).offset(offset),
+    ]);
+    res.json({ cards: rows, total: countResult[0]?.count ?? 0, page, pageSize });
+  });
+
+  app.patch("/api/admin/db/cards/:id", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const { id } = req.params;
+    const { name, number, rarity, imageSmall, imageLarge, artist, hp, supertype, subtypes, description } = req.body;
+    const updates: Record<string, any> = {};
+    if (typeof name === "string") { if (!name.trim()) { res.status(400).json({ error: "Card name cannot be empty" }); return; } updates.name = name.trim(); }
+    if (typeof number === "string") updates.number = number.trim() || undefined;
+    if (Object.prototype.hasOwnProperty.call(req.body, "rarity")) updates.rarity = typeof rarity === "string" ? (rarity.trim() || null) : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "imageSmall")) updates.image_small = typeof imageSmall === "string" ? (imageSmall.trim() || null) : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "imageLarge")) updates.image_large = typeof imageLarge === "string" ? (imageLarge.trim() || null) : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "artist")) updates.artist = typeof artist === "string" ? (artist.trim() || null) : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "hp")) updates.hp = typeof hp === "string" ? (hp.trim() || null) : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "supertype")) updates.supertype = typeof supertype === "string" ? (supertype.trim() || null) : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "subtypes")) updates.subtypes = typeof subtypes === "string" ? (subtypes.trim() || null) : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "description")) updates.description = typeof description === "string" ? (description.trim() || null) : null;
+    if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
+    const drizzleUpdates: Partial<typeof pokemonCards.$inferInsert> = {};
+    if (updates.name !== undefined) drizzleUpdates.name = updates.name;
+    if (updates.number !== undefined) drizzleUpdates.number = updates.number;
+    if (Object.prototype.hasOwnProperty.call(updates, "rarity")) drizzleUpdates.rarity = updates.rarity;
+    if (Object.prototype.hasOwnProperty.call(updates, "image_small")) drizzleUpdates.imageSmall = updates.image_small;
+    if (Object.prototype.hasOwnProperty.call(updates, "image_large")) drizzleUpdates.imageLarge = updates.image_large;
+    if (Object.prototype.hasOwnProperty.call(updates, "artist")) drizzleUpdates.artist = updates.artist;
+    if (Object.prototype.hasOwnProperty.call(updates, "hp")) drizzleUpdates.hp = updates.hp;
+    if (Object.prototype.hasOwnProperty.call(updates, "supertype")) drizzleUpdates.supertype = updates.supertype;
+    if (Object.prototype.hasOwnProperty.call(updates, "subtypes")) drizzleUpdates.subtypes = updates.subtypes;
+    if (Object.prototype.hasOwnProperty.call(updates, "description")) drizzleUpdates.description = updates.description;
+    const [updated] = await db.update(pokemonCards).set(drizzleUpdates).where(eq(pokemonCards.id, id)).returning();
+    if (!updated) { res.status(404).json({ error: "Card not found" }); return; }
+    res.json({ card: updated });
+  });
+
+  app.get("/api/admin/db/sets", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+    const pageSize = Math.min(50, Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)));
+    const search = (req.query.search as string || "").trim();
+    const offset = (page - 1) * pageSize;
+    const condition = search
+      ? or(ilike(pokemonSets.name, `%${search}%`), ilike(pokemonSets.id, `%${search}%`))
+      : undefined;
+    const [countResult, sets] = await Promise.all([
+      db.select({ count: sql<number>`count(*)::int` }).from(pokemonSets).where(condition),
+      db.select({
+        id: pokemonSets.id, name: pokemonSets.name, series: pokemonSets.series,
+        releaseDate: pokemonSets.releaseDate, hidden: pokemonSets.hidden, total: pokemonSets.total,
+        cardCount: sql<number>`count(${pokemonCards.id})::int`,
+      }).from(pokemonSets)
+        .leftJoin(pokemonCards, eq(pokemonCards.setId, pokemonSets.id))
+        .where(condition)
+        .groupBy(pokemonSets.id)
+        .orderBy(desc(pokemonSets.releaseDate))
+        .limit(pageSize).offset(offset),
+    ]);
+    res.json({ sets, total: countResult[0]?.count ?? 0, page, pageSize });
+  });
+
+  app.patch("/api/admin/db/sets/:id", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const { id } = req.params;
+    const { name, releaseDate, hidden } = req.body;
+    const updates: Partial<typeof pokemonSets.$inferInsert> = {};
+    if (typeof name === "string") { if (!name.trim()) { res.status(400).json({ error: "Set name cannot be empty" }); return; } updates.name = name.trim(); }
+    if (typeof releaseDate === "string") updates.releaseDate = releaseDate.trim() || null;
+    if (typeof hidden === "boolean") updates.hidden = hidden;
+    if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
+    const [updated] = await db.update(pokemonSets).set(updates).where(eq(pokemonSets.id, id)).returning();
+    if (!updated) { res.status(404).json({ error: "Set not found" }); return; }
+    res.json({ set: updated });
   });
 
   const httpServer = createServer(app);

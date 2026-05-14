@@ -1112,6 +1112,681 @@ function AdminDropdown<T extends string>({
   );
 }
 
+// ─── DB Browser ──────────────────────────────────────────────────────────────
+
+interface DbCard {
+  id: string;
+  setId: string;
+  setName: string | null;
+  name: string;
+  number: string;
+  rarity: string | null;
+  supertype: string | null;
+  subtypes: string | null;
+  imageSmall: string | null;
+  imageLarge: string | null;
+  artist: string | null;
+  hp: string | null;
+  nationalPokedexNumbers: string | null;
+  description: string | null;
+}
+
+function getSetLang(id: string): string {
+  if (id.includes("_ja")) return "JP";
+  if (id.includes("_ko")) return "KO";
+  if (id.includes("_zh")) return "ZH";
+  return "EN";
+}
+
+interface DbSet {
+  id: string;
+  name: string;
+  series: string;
+  releaseDate: string | null;
+  hidden: boolean | null;
+  total: number | null;
+  cardCount: number;
+}
+
+function EditCardModal({
+  card,
+  colors,
+  visible,
+  onClose,
+  onSaved,
+}: {
+  card: DbCard | null;
+  colors: ReturnType<typeof useThemeColors>;
+  visible: boolean;
+  onClose: () => void;
+  onSaved: (updated: DbCard) => void;
+}) {
+  const [setNameVal, setSetNameVal] = useState("");
+  const [name, setName] = useState("");
+  const [number, setNumber] = useState("");
+  const [rarity, setRarity] = useState("");
+  const [supertype, setSupertype] = useState("");
+  const [subtypes, setSubtypes] = useState("");
+  const [description, setDescription] = useState("");
+  const [imageSmall, setImageSmall] = useState("");
+  const [imageLarge, setImageLarge] = useState("");
+  const [artist, setArtist] = useState("");
+  const [hp, setHp] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  React.useEffect(() => {
+    if (card) {
+      setSetNameVal(card.setName ?? card.setId);
+      setName(card.name);
+      setNumber(card.number);
+      setRarity(card.rarity ?? "");
+      setSupertype(card.supertype ?? "");
+      setSubtypes(card.subtypes ?? "");
+      setDescription(card.description ?? "");
+      setImageSmall(card.imageSmall ?? "");
+      setImageLarge(card.imageLarge ?? "");
+      setArtist(card.artist ?? "");
+      setHp(card.hp ?? "");
+    }
+  }, [card?.id]);
+
+  const handleSave = async () => {
+    if (!card) return;
+    if (!name.trim()) { Alert.alert("Validation", "Card name cannot be empty."); return; }
+    setSaving(true);
+    try {
+      const headers = await requireAdminAuthHeader();
+      const cardUrl = new URL(`/api/admin/db/cards/${card.id}`, getApiUrl()).toString();
+      const cardRes = await fetch(cardUrl, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name, number, rarity: rarity || null, supertype: supertype || null, subtypes: subtypes || null, description: description || null, imageSmall: imageSmall || null, imageLarge: imageLarge || null, artist: artist || null, hp: hp || null }),
+      });
+      const cardData = await cardRes.json();
+      if (!cardRes.ok) throw new Error(cardData.error || "Failed to save card");
+      const newSetName = setNameVal.trim();
+      if (newSetName && newSetName !== (card.setName ?? card.setId)) {
+        const setUrl = new URL(`/api/admin/db/sets/${card.setId}`, getApiUrl()).toString();
+        const setRes = await fetch(setUrl, {
+          method: "PATCH",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ name: newSetName }),
+        });
+        if (!setRes.ok) {
+          const setData = await setRes.json();
+          throw new Error(setData.error || "Card saved but failed to update set name");
+        }
+      }
+      onSaved({ ...cardData.card, setName: newSetName || card.setName });
+      onClose();
+      Alert.alert("Saved", "Card updated successfully.");
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to save card.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!card) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={editStyles.overlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined}>
+            <ScrollView style={{ width: "100%" }} contentContainerStyle={{ paddingBottom: 20 }}>
+              <View style={[editStyles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={editStyles.header}>
+                  <Text style={[editStyles.title, { color: colors.text }]}>Edit Card</Text>
+                  <Pressable onPress={onClose} style={editStyles.closeBtn}>
+                    <Ionicons name="close" size={22} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+                <Text style={[editStyles.subtitle, { color: colors.textMuted }]}>{card.id}</Text>
+
+                <Text style={[editStyles.label, { color: colors.textSecondary }]}>Set Name</Text>
+                <TextInput
+                  style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                  value={setNameVal}
+                  onChangeText={setSetNameVal}
+                  placeholder="Set name"
+                  placeholderTextColor={colors.textMuted}
+                  autoCorrect={false}
+                />
+                <Text style={{ color: colors.textMuted, fontFamily: "Outfit_400Regular", fontSize: 11, marginBottom: 8, marginTop: -4 }}>
+                  Editing renames the parent set · {card.setId} · {getSetLang(card.setId)}
+                </Text>
+
+                <Text style={[editStyles.label, { color: colors.textSecondary }]}>Description</Text>
+                <TextInput
+                  style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, minHeight: 64 }]}
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Card flavour text / description"
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  autoCorrect={false}
+                />
+
+                {(["Name", "Number", "Rarity", "Supertype", "Subtypes", "Artist", "HP"] as const).map((label) => {
+                  const field = label.toLowerCase() as "name" | "number" | "rarity" | "supertype" | "subtypes" | "artist" | "hp";
+                  const valMap: Record<string, string> = { name, number, rarity, supertype, subtypes, artist, hp };
+                  const setterMap: Record<string, (v: string) => void> = { name: setName, number: setNumber, rarity: setRarity, supertype: setSupertype, subtypes: setSubtypes, artist: setArtist, hp: setHp };
+                  return (
+                    <React.Fragment key={label}>
+                      <Text style={[editStyles.label, { color: colors.textSecondary }]}>{label}</Text>
+                      <TextInput
+                        style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                        value={valMap[field]}
+                        onChangeText={setterMap[field]}
+                        placeholder={label}
+                        placeholderTextColor={colors.textMuted}
+                        autoCorrect={false}
+                      />
+                    </React.Fragment>
+                  );
+                })}
+
+                <Text style={[editStyles.label, { color: colors.textSecondary }]}>Small Image URL</Text>
+                <TextInput
+                  style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                  value={imageSmall}
+                  onChangeText={setImageSmall}
+                  placeholder="https://..."
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                <Text style={[editStyles.label, { color: colors.textSecondary }]}>Large Image URL</Text>
+                <TextInput
+                  style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                  value={imageLarge}
+                  onChangeText={setImageLarge}
+                  placeholder="https://..."
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+
+                <View style={[editStyles.btnRow, { marginTop: 6 }]}>
+                  <Pressable style={[editStyles.cancelBtn, { borderColor: colors.border }]} onPress={onClose}>
+                    <Text style={[editStyles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                  </Pressable>
+                  <Pressable style={[editStyles.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+                    <Ionicons name="checkmark" size={16} color="#FFF" />
+                    <Text style={editStyles.saveBtnText}>{saving ? "Saving…" : "Save"}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+function EditSetModal({
+  set,
+  colors,
+  visible,
+  onClose,
+  onSaved,
+}: {
+  set: DbSet | null;
+  colors: ReturnType<typeof useThemeColors>;
+  visible: boolean;
+  onClose: () => void;
+  onSaved: (updated: DbSet) => void;
+}) {
+  const [name, setName] = useState("");
+  const [releaseDate, setReleaseDate] = useState("");
+  const [hidden, setHidden] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [setCards, setSetCards] = useState<{ id: string; name: string; number: string; rarity: string | null }[]>([]);
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [showCards, setShowCards] = useState(false);
+
+  React.useEffect(() => {
+    if (set) {
+      setName(set.name);
+      setReleaseDate(set.releaseDate ?? "");
+      setHidden(set.hidden ?? false);
+      setSetCards([]);
+      setShowCards(false);
+    }
+  }, [set?.id]);
+
+  const loadSetCards = useCallback(async () => {
+    if (!set || cardsLoading) return;
+    setCardsLoading(true);
+    try {
+      const url = new URL("/api/admin/db/cards", getApiUrl());
+      url.searchParams.set("setId", set.id);
+      url.searchParams.set("pageSize", "100");
+      const headers = await requireAdminAuthHeader();
+      const res = await fetch(url.toString(), { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSetCards(data.cards ?? []);
+    } catch {
+      setSetCards([]);
+    } finally {
+      setCardsLoading(false);
+    }
+  }, [set?.id]);
+
+  const handleToggleCards = () => {
+    const next = !showCards;
+    setShowCards(next);
+    if (next && setCards.length === 0) loadSetCards();
+  };
+
+  const handleSave = async () => {
+    if (!set) return;
+    if (!name.trim()) { Alert.alert("Validation", "Set name cannot be empty."); return; }
+    setSaving(true);
+    try {
+      const url = new URL(`/api/admin/db/sets/${set.id}`, getApiUrl()).toString();
+      const headers = await requireAdminAuthHeader();
+      const res = await fetch(url, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name, releaseDate: releaseDate || null, hidden }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save");
+      onSaved({ ...set, ...data.set, cardCount: set.cardCount });
+      onClose();
+      Alert.alert("Saved", "Set updated successfully.");
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to save set.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!set) return null;
+
+  const lang = getSetLang(set.id);
+  const langColor = lang === "JP" ? "#E53935" : lang === "KO" ? "#1565C0" : lang === "ZH" ? "#F57F17" : "#2E7D32";
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={editStyles.overlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ width: "100%" }}>
+            <ScrollView style={{ width: "100%" }} contentContainerStyle={{ paddingBottom: 20 }}>
+              <View style={[editStyles.sheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={editStyles.header}>
+                  <Text style={[editStyles.title, { color: colors.text }]}>Edit Set</Text>
+                  <Pressable onPress={onClose} style={editStyles.closeBtn}>
+                    <Ionicons name="close" size={22} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <Text style={[editStyles.subtitle, { color: colors.textMuted, marginBottom: 0 }]}>{set.id} · {set.cardCount} cards</Text>
+                  <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: langColor + "22", borderWidth: 1, borderColor: langColor }}>
+                    <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: langColor }}>{lang}</Text>
+                  </View>
+                </View>
+
+                <Text style={[editStyles.label, { color: colors.textSecondary }]}>Name</Text>
+                <TextInput
+                  style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Set name"
+                  placeholderTextColor={colors.textMuted}
+                  autoCorrect={false}
+                />
+
+                <Text style={[editStyles.label, { color: colors.textSecondary }]}>Release Date (YYYY/MM/DD)</Text>
+                <TextInput
+                  style={[editStyles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border }]}
+                  value={releaseDate}
+                  onChangeText={setReleaseDate}
+                  placeholder="e.g. 2024/01/01"
+                  placeholderTextColor={colors.textMuted}
+                  autoCorrect={false}
+                />
+
+                <Pressable
+                  onPress={() => setHidden(!hidden)}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 18, paddingVertical: 4 }}
+                >
+                  <View style={{
+                    width: 22, height: 22, borderRadius: 6, borderWidth: 2,
+                    borderColor: hidden ? "#E65100" : colors.borderLight,
+                    backgroundColor: hidden ? "#E65100" : "transparent",
+                    alignItems: "center", justifyContent: "center",
+                  }}>
+                    {hidden && <Ionicons name="checkmark" size={13} color="#FFF" />}
+                  </View>
+                  <Text style={{ fontSize: 14, fontFamily: "Outfit_500Medium", color: colors.text }}>
+                    Hidden from users
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={handleToggleCards}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10, paddingVertical: 6, paddingHorizontal: 10, backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.borderLight }}
+                >
+                  <Ionicons name={showCards ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+                  <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>
+                    {showCards ? "Hide" : "Show"} Cards in Set ({set.cardCount})
+                  </Text>
+                </Pressable>
+
+                {showCards && (
+                  <View style={{ maxHeight: 200, marginBottom: 12, backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.borderLight, overflow: "hidden" }}>
+                    <ScrollView nestedScrollEnabled showsVerticalScrollIndicator>
+                      {cardsLoading ? (
+                        <Text style={{ padding: 12, textAlign: "center", color: colors.textMuted, fontFamily: "Outfit_400Regular", fontSize: 13 }}>Loading cards…</Text>
+                      ) : setCards.length === 0 ? (
+                        <Text style={{ padding: 12, textAlign: "center", color: colors.textMuted, fontFamily: "Outfit_400Regular", fontSize: 13 }}>No cards found</Text>
+                      ) : setCards.map(c => (
+                        <View key={c.id} style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.borderLight }}>
+                          <Text style={{ width: 36, fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textMuted }}>#{c.number}</Text>
+                          <Text style={{ flex: 1, fontSize: 13, fontFamily: "Outfit_500Medium", color: colors.text }} numberOfLines={1}>{c.name}</Text>
+                          {c.rarity ? <Text style={{ fontSize: 10, fontFamily: "Outfit_400Regular", color: colors.textMuted }} numberOfLines={1}>{c.rarity}</Text> : null}
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                <View style={editStyles.btnRow}>
+                  <Pressable style={[editStyles.cancelBtn, { borderColor: colors.border }]} onPress={onClose}>
+                    <Text style={[editStyles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                  </Pressable>
+                  <Pressable style={[editStyles.saveBtn, saving && { opacity: 0.6 }]} onPress={handleSave} disabled={saving}>
+                    <Ionicons name="checkmark" size={16} color="#FFF" />
+                    <Text style={editStyles.saveBtnText}>{saving ? "Saving…" : "Save"}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      </TouchableWithoutFeedback>
+    </Modal>
+  );
+}
+
+function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<typeof useThemeColors>; onSwitchToUsers: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [activeType, setActiveType] = useState<"cards" | "sets" | "users">("cards");
+
+  const [cards, setCards] = useState<DbCard[]>([]);
+  const [cardsTotal, setCardsTotal] = useState(0);
+  const [cardsPage, setCardsPage] = useState(1);
+  const [cardsSearch, setCardsSearch] = useState("");
+  const [cardsLoading, setCardsLoading] = useState(false);
+  const [editingCard, setEditingCard] = useState<DbCard | null>(null);
+
+  const [sets, setSets] = useState<DbSet[]>([]);
+  const [setsTotal, setSetsTotal] = useState(0);
+  const [setsPage, setSetsPage] = useState(1);
+  const [setsSearch, setSetsSearch] = useState("");
+  const [setsLoading, setSetsLoading] = useState(false);
+  const [editingSet, setEditingSet] = useState<DbSet | null>(null);
+
+  const loadCards = useCallback(async (page: number, search: string, append = false) => {
+    setCardsLoading(true);
+    try {
+      const url = new URL("/api/admin/db/cards", getApiUrl());
+      url.searchParams.set("page", String(page));
+      url.searchParams.set("pageSize", "50");
+      if (search) url.searchParams.set("search", search);
+      const headers = await requireAdminAuthHeader();
+      const res = await fetch(url.toString(), { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setCardsTotal(data.total);
+      setCardsPage(page);
+      setCards(prev => append ? [...prev, ...data.cards] : data.cards);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to load cards");
+    } finally {
+      setCardsLoading(false);
+    }
+  }, []);
+
+  const loadSets = useCallback(async (page: number, search: string, append = false) => {
+    setSetsLoading(true);
+    try {
+      const url = new URL("/api/admin/db/sets", getApiUrl());
+      url.searchParams.set("page", String(page));
+      url.searchParams.set("pageSize", "50");
+      if (search) url.searchParams.set("search", search);
+      const headers = await requireAdminAuthHeader();
+      const res = await fetch(url.toString(), { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setSetsTotal(data.total);
+      setSetsPage(page);
+      setSets(prev => append ? [...prev, ...data.sets] : data.sets);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to load sets");
+    } finally {
+      setSetsLoading(false);
+    }
+  }, []);
+
+  const handleTypeChange = (t: "cards" | "sets" | "users") => {
+    setActiveType(t);
+    if (t === "cards" && cards.length === 0) loadCards(1, "");
+    if (t === "sets" && sets.length === 0) loadSets(1, "");
+  };
+
+  const handleExpand = () => {
+    const next = !expanded;
+    setExpanded(next);
+    if (next && cards.length === 0) loadCards(1, "");
+  };
+
+  return (
+    <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.borderLight }}>
+      <Pressable onPress={handleExpand} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#0288D122", alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="server-outline" size={20} color="#0288D1" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 16, fontFamily: "Outfit_700Bold", color: colors.text }}>Browse & Edit</Text>
+          <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>Directly edit cards, sets, or users</Text>
+        </View>
+        <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textMuted} />
+      </Pressable>
+
+      {expanded && (
+        <View style={{ marginTop: 14, gap: 12 }}>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            {(["cards", "sets", "users"] as const).map(t => (
+              <Pressable
+                key={t}
+                onPress={() => handleTypeChange(t)}
+                style={{
+                  flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center",
+                  backgroundColor: activeType === t ? "#0288D1" : colors.background,
+                  borderWidth: 1, borderColor: activeType === t ? "#0288D1" : colors.borderLight,
+                }}
+              >
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: activeType === t ? "#FFF" : colors.textMuted }}>
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {activeType === "cards" && (
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TextInput
+                  style={{ flex: 1, backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.text }}
+                  placeholder="Search by name or ID…"
+                  placeholderTextColor={colors.textMuted}
+                  value={cardsSearch}
+                  onChangeText={setCardsSearch}
+                  onSubmitEditing={() => { setCards([]); loadCards(1, cardsSearch); }}
+                  returnKeyType="search"
+                />
+                <Pressable
+                  onPress={() => { setCards([]); loadCards(1, cardsSearch); }}
+                  style={{ paddingHorizontal: 14, backgroundColor: "#0288D1", borderRadius: 10, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Ionicons name="search" size={18} color="#FFF" />
+                </Pressable>
+              </View>
+              <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>
+                {cardsTotal.toLocaleString()} cards total
+              </Text>
+              <View style={{ maxHeight: 360 }}>
+                <ScrollView showsVerticalScrollIndicator nestedScrollEnabled>
+                  {cards.map(card => (
+                    <Pressable
+                      key={card.id}
+                      onPress={() => setEditingCard(card)}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.background, borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: colors.borderLight }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text }} numberOfLines={1}>{card.name}</Text>
+                        <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }} numberOfLines={1}>
+                          {card.id} · #{card.number}{card.rarity ? ` · ${card.rarity}` : ""}
+                        </Text>
+                      </View>
+                      <Ionicons name="pencil-outline" size={16} color="#0288D1" />
+                    </Pressable>
+                  ))}
+                  {cardsLoading && (
+                    <Text style={{ textAlign: "center", color: colors.textMuted, fontFamily: "Outfit_400Regular", fontSize: 13, paddingVertical: 8 }}>Loading…</Text>
+                  )}
+                  {!cardsLoading && cards.length < cardsTotal && (
+                    <Pressable
+                      onPress={() => loadCards(cardsPage + 1, cardsSearch, true)}
+                      style={{ paddingVertical: 10, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight, alignItems: "center", marginTop: 4 }}
+                    >
+                      <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Load More</Text>
+                    </Pressable>
+                  )}
+                </ScrollView>
+              </View>
+            </View>
+          )}
+
+          {activeType === "sets" && (
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TextInput
+                  style={{ flex: 1, backgroundColor: colors.background, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.text }}
+                  placeholder="Search by name or ID…"
+                  placeholderTextColor={colors.textMuted}
+                  value={setsSearch}
+                  onChangeText={setSetsSearch}
+                  onSubmitEditing={() => { setSets([]); loadSets(1, setsSearch); }}
+                  returnKeyType="search"
+                />
+                <Pressable
+                  onPress={() => { setSets([]); loadSets(1, setsSearch); }}
+                  style={{ paddingHorizontal: 14, backgroundColor: "#0288D1", borderRadius: 10, alignItems: "center", justifyContent: "center" }}
+                >
+                  <Ionicons name="search" size={18} color="#FFF" />
+                </Pressable>
+              </View>
+              <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>
+                {setsTotal.toLocaleString()} sets total
+              </Text>
+              <View style={{ maxHeight: 360 }}>
+                <ScrollView showsVerticalScrollIndicator nestedScrollEnabled>
+                  {sets.map(s => (
+                    <Pressable
+                      key={s.id}
+                      onPress={() => setEditingSet(s)}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.background, borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: s.hidden ? "#E6510044" : colors.borderLight }}
+                    >
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: s.hidden ? "#E65100" : "#27AE60" }} />
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text, flexShrink: 1 }} numberOfLines={1}>{s.name}</Text>
+                          {(() => {
+                            const lang = getSetLang(s.id);
+                            const lc = lang === "JP" ? "#E53935" : lang === "KO" ? "#1565C0" : lang === "ZH" ? "#F57F17" : "#2E7D32";
+                            return (
+                              <View style={{ paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, backgroundColor: lc + "22", borderWidth: 1, borderColor: lc }}>
+                                <Text style={{ fontSize: 9, fontFamily: "Outfit_700Bold", color: lc }}>{lang}</Text>
+                              </View>
+                            );
+                          })()}
+                        </View>
+                        <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }} numberOfLines={1}>
+                          {s.id} · {s.cardCount} cards{s.hidden ? " · HIDDEN" : ""}
+                        </Text>
+                      </View>
+                      <Ionicons name="pencil-outline" size={16} color="#0288D1" />
+                    </Pressable>
+                  ))}
+                  {setsLoading && (
+                    <Text style={{ textAlign: "center", color: colors.textMuted, fontFamily: "Outfit_400Regular", fontSize: 13, paddingVertical: 8 }}>Loading…</Text>
+                  )}
+                  {!setsLoading && sets.length < setsTotal && (
+                    <Pressable
+                      onPress={() => loadSets(setsPage + 1, setsSearch, true)}
+                      style={{ paddingVertical: 10, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight, alignItems: "center", marginTop: 4 }}
+                    >
+                      <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Load More</Text>
+                    </Pressable>
+                  )}
+                </ScrollView>
+              </View>
+            </View>
+          )}
+
+          {activeType === "users" && (
+            <View style={{ padding: 16, backgroundColor: colors.background, borderRadius: 12, borderWidth: 1, borderColor: colors.borderLight, gap: 10, alignItems: "center" }}>
+              <Ionicons name="people-outline" size={32} color={colors.textMuted} />
+              <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, textAlign: "center" }}>
+                User management is in the Users tab
+              </Text>
+              <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted, textAlign: "center" }}>
+                Search, edit roles, toggle premium, and manage accounts from the dedicated Users tab.
+              </Text>
+              <Pressable
+                onPress={onSwitchToUsers}
+                style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 18, paddingVertical: 10, backgroundColor: "#0288D1", borderRadius: 10, marginTop: 4 }}
+              >
+                <Ionicons name="people" size={16} color="#FFF" />
+                <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" }}>Go to Users Tab</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      )}
+
+      <EditCardModal
+        card={editingCard}
+        colors={colors}
+        visible={!!editingCard}
+        onClose={() => setEditingCard(null)}
+        onSaved={(updated) => {
+          setCards(prev => prev.map(c => c.id === updated.id ? updated : c));
+          setEditingCard(null);
+        }}
+      />
+      <EditSetModal
+        set={editingSet}
+        colors={colors}
+        visible={!!editingSet}
+        onClose={() => setEditingSet(null)}
+        onSaved={(updated) => {
+          setSets(prev => prev.map(s => s.id === updated.id ? updated : s));
+          setEditingSet(null);
+        }}
+      />
+    </View>
+  );
+}
+
 export default function AdminPanelScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
@@ -2864,6 +3539,9 @@ export default function AdminPanelScreen() {
               </Pressable>
             </View>
           </View>
+
+          {/* ─── Browse & Edit ─── */}
+          <DbBrowserSection colors={colors} onSwitchToUsers={() => setActiveTab("users")} />
 
           {/* ─── Set Visibility Management ─── */}
           <View style={[{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.borderLight }]}>
