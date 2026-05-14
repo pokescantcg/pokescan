@@ -135,6 +135,27 @@ function ListingDetailModal({
     }
   };
 
+  const handleTakePhoto = async () => {
+    if (editPhotos.length >= 6) {
+      Alert.alert("Max Photos", "You can add up to 6 photos per listing.");
+      return;
+    }
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow camera access to take photos.");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: "images",
+      allowsEditing: false,
+      quality: 0.6,
+      base64: true,
+    });
+    if (!result.canceled && result.assets[0]?.base64) {
+      setEditPhotos((prev) => [...prev, `data:image/jpeg;base64,${result.assets[0].base64}`]);
+    }
+  };
+
   const handleRemovePhoto = (index: number) => {
     setEditPhotos((prev) => prev.filter((_, i) => i !== index));
   };
@@ -297,15 +318,26 @@ function ListingDetailModal({
                   </View>
                 ))}
                 {editPhotos.length < 6 && (
-                  <Pressable
-                    style={[modalStyles.editPhotoAddBtn, { borderColor: colors.borderLight, backgroundColor: colors.background }]}
-                    onPress={handleAddPhoto}
-                  >
-                    <Ionicons name="camera-outline" size={22} color={colors.textMuted} />
-                    <Text style={[{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textMuted, marginTop: 4 }]}>
-                      Add Photo
-                    </Text>
-                  </Pressable>
+                  <>
+                    <Pressable
+                      style={[modalStyles.editPhotoAddBtn, { borderColor: colors.borderLight, backgroundColor: colors.background }]}
+                      onPress={handleAddPhoto}
+                    >
+                      <Ionicons name="images-outline" size={22} color={colors.textMuted} />
+                      <Text style={[{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textMuted, marginTop: 4 }]}>
+                        Add Photo
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[modalStyles.editPhotoAddBtn, { borderColor: colors.borderLight, backgroundColor: colors.background }]}
+                      onPress={handleTakePhoto}
+                    >
+                      <Ionicons name="camera-outline" size={22} color={colors.textMuted} />
+                      <Text style={[{ fontSize: 11, fontFamily: "Outfit_500Medium", color: colors.textMuted, marginTop: 4 }]}>
+                        Take Photo
+                      </Text>
+                    </Pressable>
+                  </>
                 )}
               </ScrollView>
             </View>
