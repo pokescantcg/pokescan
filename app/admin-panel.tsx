@@ -3987,6 +3987,22 @@ export default function AdminPanelScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ padding: 16, paddingBottom: 120, gap: 14 }}
         >
+          <Pressable
+            onPress={() => router.push("/admin-db" as any)}
+            style={({ pressed }) => [{ backgroundColor: pressed ? colors.surface : colors.card, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.borderLight, flexDirection: "row", alignItems: "center", gap: 12 }]}
+          >
+            <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: "#5B2D8E22", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="server" size={24} color="#5B2D8E" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 17, color: colors.text }}>Database Editor</Text>
+              <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 13, color: colors.textMuted, marginTop: 2 }}>
+                Browse, edit and delete rows across all 18 tables
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          </Pressable>
+
           <View style={[{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.borderLight }]}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 }}>
               <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "#CC0000" + "22", alignItems: "center", justifyContent: "center" }}>

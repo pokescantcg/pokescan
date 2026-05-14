@@ -5312,6 +5312,126 @@ Return ONLY valid JSON in exactly this format with no markdown:
     res.json({ success: true });
   });
 
+  // ── Generic Database Admin Endpoints (superadmin only) ───────────────────────
+  const ADMIN_DB_TABLES: Record<string, { pk: string; searchCols: string[] }> = {
+    pokescan_users:                   { pk: "id",    searchCols: ["username", "email", "display_name"] },
+    pokescan_blocked_credentials:     { pk: "id",    searchCols: ["email", "mobile_number", "reason"] },
+    pokescan_sessions:                { pk: "token", searchCols: ["user_id"] },
+    pokemon_sets:                     { pk: "id",    searchCols: ["name", "series"] },
+    pokemon_cards:                    { pk: "id",    searchCols: ["name", "set_id"] },
+    card_pricing:                     { pk: "id",    searchCols: ["card_id"] },
+    ebay_prices:                      { pk: "id",    searchCols: ["card_id", "title"] },
+    pokescan_friendships:             { pk: "id",    searchCols: ["requester_id", "addressee_id", "status"] },
+    pokescan_messages:                { pk: "id",    searchCols: ["sender_id", "recipient_id", "subject", "body"] },
+    pokescan_reports:                 { pk: "id",    searchCols: ["reason", "content_type", "status"] },
+    pokescan_market_listings:         { pk: "id",    searchCols: ["card_name", "user_name", "status"] },
+    pokescan_collections:             { pk: "id",    searchCols: ["card_name", "user_id", "set_name"] },
+    pokescan_chatroom_messages:       { pk: "id",    searchCols: ["sender_username", "body"] },
+    pokescan_admin_activity_log:      { pk: "id",    searchCols: ["action", "target_username", "listing_name"] },
+    pokescan_collector_verifications: { pk: "id",    searchCols: ["user_id", "card_name", "status"] },
+    pokescan_scan_history:            { pk: "id",    searchCols: ["card_name", "set_name"] },
+    sync_status:                      { pk: "id",    searchCols: [] },
+    users:                            { pk: "id",    searchCols: ["username"] },
+  };
+
+  app.get("/api/admin/db/table/:tableName/schema", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const { tableName } = req.params;
+    if (!ADMIN_DB_TABLES[tableName]) { res.status(400).json({ error: "Unknown table" }); return; }
+    const result = await pool.query(
+      `SELECT column_name, data_type, is_nullable, column_default
+       FROM information_schema.columns
+       WHERE table_name = $1 AND table_schema = 'public'
+       ORDER BY ordinal_position`,
+      [tableName]
+    );
+    res.json({ columns: result.rows, pk: ADMIN_DB_TABLES[tableName].pk });
+  });
+
+  app.get("/api/admin/db/table/:tableName", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const { tableName } = req.params;
+    const tbl = ADMIN_DB_TABLES[tableName];
+    if (!tbl) { res.status(400).json({ error: "Unknown table" }); return; }
+    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+    const pageSize = Math.min(100, Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)));
+    const search = ((req.query.search as string) || "").trim();
+    const offset = (page - 1) * pageSize;
+    const values: any[] = [];
+    let whereClause = "";
+    if (search && tbl.searchCols.length > 0) {
+      const conditions = tbl.searchCols.map((col, i) => `"${col}"::text ILIKE $${i + 1}`);
+      whereClause = `WHERE (${conditions.join(" OR ")})`;
+      values.push(...tbl.searchCols.map(() => `%${search}%`));
+    }
+    const countResult = await pool.query(`SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`, values);
+    const dataResult = await pool.query(
+      `SELECT * FROM "${tableName}" ${whereClause} ORDER BY "${tbl.pk}" DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      [...values, pageSize, offset]
+    );
+    res.json({ rows: dataResult.rows, total: parseInt(countResult.rows[0].count, 10), page, pageSize });
+  });
+
+  app.get("/api/admin/db/tables", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const tables = await Promise.all(
+      Object.keys(ADMIN_DB_TABLES).map(async (t) => {
+        const r = await pool.query(`SELECT COUNT(*) as count FROM "${t}"`);
+        return { name: t, rowCount: parseInt(r.rows[0].count, 10) };
+      })
+    );
+    res.json({ tables });
+  });
+
+  app.patch("/api/admin/db/table/:tableName/:id", express.json({ limit: "2mb" }), async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const { tableName, id } = req.params;
+    const tbl = ADMIN_DB_TABLES[tableName];
+    if (!tbl) { res.status(400).json({ error: "Unknown table" }); return; }
+    const body = req.body as Record<string, any>;
+    const schemaResult = await pool.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
+      [tableName]
+    );
+    const validCols = new Set<string>(schemaResult.rows.map((r: any) => r.column_name as string));
+    const updates = Object.entries(body).filter(([k]) => k !== tbl.pk && validCols.has(k));
+    if (updates.length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
+    const setClauses = updates.map(([col], i) => `"${col}" = $${i + 1}`);
+    const values: any[] = [...updates.map(([, v]) => (v === "" ? null : v)), id];
+    await pool.query(`UPDATE "${tableName}" SET ${setClauses.join(", ")} WHERE "${tbl.pk}" = $${values.length}`, values);
+    const updated = await pool.query(`SELECT * FROM "${tableName}" WHERE "${tbl.pk}" = $1`, [id]);
+    res.json({ row: updated.rows[0] || null });
+  });
+
+  app.delete("/api/admin/db/table/:tableName/:id", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const { tableName, id } = req.params;
+    const tbl = ADMIN_DB_TABLES[tableName];
+    if (!tbl) { res.status(400).json({ error: "Unknown table" }); return; }
+    await pool.query(`DELETE FROM "${tableName}" WHERE "${tbl.pk}" = $1`, [id]);
+    res.json({ success: true });
+  });
+
+  app.post("/api/admin/db/table/:tableName", express.json({ limit: "2mb" }), async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const { tableName } = req.params;
+    const tbl = ADMIN_DB_TABLES[tableName];
+    if (!tbl) { res.status(400).json({ error: "Unknown table" }); return; }
+    const body = req.body as Record<string, any>;
+    const schemaResult = await pool.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
+      [tableName]
+    );
+    const validCols = new Set<string>(schemaResult.rows.map((r: any) => r.column_name as string));
+    const entries = Object.entries(body).filter(([k]) => validCols.has(k) && body[k] !== "" && body[k] !== null && body[k] !== undefined);
+    if (entries.length === 0) { res.status(400).json({ error: "No valid fields provided" }); return; }
+    const cols = entries.map(([k]) => `"${k}"`).join(", ");
+    const placeholders = entries.map((_, i) => `$${i + 1}`).join(", ");
+    const values = entries.map(([, v]) => v);
+    const result = await pool.query(`INSERT INTO "${tableName}" (${cols}) VALUES (${placeholders}) RETURNING *`, values);
+    res.json({ row: result.rows[0] });
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
