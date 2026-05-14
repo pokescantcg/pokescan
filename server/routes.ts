@@ -1320,35 +1320,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
             messages: [
               {
                 role: "system",
-                content: `You are a Pokémon TCG expert. You are looking at a close-up photo of the bottom strip of a Pokémon card. Your ONLY task is to read the collector number printed there.
+                content: `You are examining a close-up photo of the bottom edge of a Pokémon card. This strip contains the collector number and possibly a set code and regulation mark.
 
-The collector number appears as one of these formats:
-- "025/198" (number / total)
-- "SV049" (prefix + number)
-- "TG15/TG30" (two-part code)
-- "001/071" (zero-padded)
-- "SWSH001" (era prefix)
+READ THESE THREE ELEMENTS:
 
-Look carefully at the bottom-left or bottom-centre of the image for this number. It may be partially obscured — read as much as you can.
+1. COLLECTOR NUMBER (bottom-left area of the strip):
+   Formats: "025/198" · "001/078" · "SV049" · "TG15/TG30" · "SWSH001"
+   Japanese modern format: "A5C 043/066" — the letters/numbers BEFORE the space are the SET CODE, the "043/066" is the collector number.
+   Read each digit carefully. Common confusions: 0↔8, 6↔9, 1↔7 — look at the shape.
+
+2. SET CODE (short alphanumeric code near the collector number):
+   Examples: "A5C" "A3a" "B3a" "A1" "SV09" "sv6pt5" "SWSH" "XY" "BW"
+   Usually 2-6 characters. May appear before the slash number (Japanese) or stamped near it (English).
+   Report EXACTLY what is printed — do not invent a code.
+
+3. REGULATION MARK (a single letter inside a rounded box or circle):
+   Letters used: A B C D E F G H
+   Located near the collector number. Very small but clearly stamped.
 
 Respond with valid JSON in this EXACT format:
 {
-  "cardNumber": "025/198",
+  "cardNumber": "043/066",
+  "setCode": "A5C",
+  "regulationMark": "H",
   "confidence": "high",
-  "notes": "Any relevant observation about legibility"
+  "notes": "Set code A5C clearly printed before the number"
 }
 
-- Set confidence to "high" if you can clearly read the full number.
-- Set confidence to "medium" if you can read part of it but some digits are unclear.
-- Set confidence to "low" if you genuinely cannot make out a number.
-- Leave cardNumber as an empty string only if confidence is "low". Never guess a number you are not reasonably certain about.`
+Rules:
+- "cardNumber": full collector number as printed. Empty string ONLY if truly unreadable.
+- "setCode": code as printed if visible, otherwise "".
+- "regulationMark": single letter if visible, otherwise "".
+- "confidence": "high"=fully clear · "medium"=some digits uncertain · "low"=unreadable.
+- NEVER invent digits you cannot see. If a digit is uncertain, use "medium" and note which one.`
               },
               {
                 role: "user",
                 content: [
                   {
                     type: "text",
-                    text: "Read the collector number from this close-up of a Pokémon card's bottom strip. Return the JSON response."
+                    text: "Read the collector number, set code, and regulation mark from this Pokémon card bottom strip. Return the JSON."
                   },
                   {
                     type: "image_url",
@@ -1361,7 +1372,7 @@ Respond with valid JSON in this EXACT format:
               }
             ],
             response_format: { type: "json_object" },
-            max_completion_tokens: 200,
+            max_completion_tokens: 300,
           });
           const stripTimeoutPromise = new Promise<never>((_, reject) =>
             setTimeout(() => reject(Object.assign(new Error("AI identification timed out. Please try again."), { isTimeout: true })), 30000)
@@ -1380,7 +1391,13 @@ Respond with valid JSON in this EXACT format:
           return;
         }
         const stripResult = JSON.parse(stripContent);
-        res.json({ cardNumber: stripResult.cardNumber || "", confidence: stripResult.confidence || "low", notes: stripResult.notes || "" });
+        res.json({
+          cardNumber: stripResult.cardNumber || "",
+          setCode: stripResult.setCode || "",
+          regulationMark: stripResult.regulationMark || "",
+          confidence: stripResult.confidence || "low",
+          notes: stripResult.notes || "",
+        });
         return;
       }
 
@@ -1393,41 +1410,85 @@ Respond with valid JSON in this EXACT format:
           messages: [
             {
               role: "system",
-              content: `You are a Pokémon Trading Card Game expert with encyclopedic knowledge of every card ever printed in English, Japanese, Korean, and Chinese. Your task is to precisely identify a Pokémon card from a photo.
+              content: `You are a Pokémon TCG card identification system. Your job is to read what is physically printed on the card and return it as structured JSON. Study every visible detail of the image carefully.
 
-IDENTIFICATION STEPS — examine the card image carefully in this order:
-1. COLLECTOR NUMBER: Look at the very bottom of the card (below the card art and text box). You will see a number like "025/198", "SV049", "TG15/TG30", or "001/071". This is the single most important identifier — read it exactly.
-2. SET SYMBOL: Look at the bottom-right corner of the artwork box (just above the card text). This small icon identifies the expansion set.
-3. CARD NAME: Read the name printed at the top of the card. For non-English cards, also note the original-language name.
-4. COPYRIGHT YEAR: The fine print at the bottom usually contains a year (e.g. "©2023") — use this to narrow down the era and set.
-5. HP and type: Note the HP number and energy type shown on the card.
-6. HOLO FINISH: Determine if the card is Full Art, Secret Rare, Holo, Reverse Holo, or Non-Holo based on the card's visual finish.
+══ CARD LAYOUT — WHERE EACH ELEMENT LIVES ══
 
-CONFIDENCE RULES:
-- Set confidence to "high" only if you can clearly read the collector number AND the card name.
-- Set confidence to "medium" if you can read the name but the number is partially obscured or ambiguous.
-- Set confidence to "low" if the card is blurry, angled, cut off, or you cannot read the key identifiers. Do not guess a number — leave cardNumber empty if unsure.
+BOTTOM STRIP (examine this area FIRST and most carefully):
+┌──────────────────────────────────────────────────────────────┐
+│ [SET CODE] [Collector No.]   [Rarity ●◆★]  [Reg. Mark ©]   │
+│ e.g.  "A5C  043/066"   or   "025/198"   or   "SV049"        │
+└──────────────────────────────────────────────────────────────┘
+• The COLLECTOR NUMBER is at the bottom-LEFT in small (~8pt) text.
+• English format: "025/198" · "TG15/TG30" · "SV049" · "SWSH001"
+• Japanese/Asian format: a short SET CODE (e.g. "A5C") appears directly BEFORE the slash number — e.g. "A5C 043/066". The code before the space IS the setCode.
+• REGULATION MARK: a single letter (A–H) stamped in a rounded box near the number.
 
-CARD BACK DETECTION — check this FIRST before anything else:
-If the image shows the BACK of a Pokémon card (the classic design with a blue/dark background, a Poké Ball in the centre, and "Pokémon" branding), set "isCardBack" to true and return immediately with all other fields as empty strings. Do NOT attempt identification.
+SET SYMBOL (expansion icon):
+• English cards: small logo icon at the BOTTOM-RIGHT of the illustration window (between art and card text).
+• Japanese cards: small icon near the collector number strip.
 
-Always respond with valid JSON in this exact format:
+CARD NAME: large text at the very TOP of the card.
+HP: large number at the top-right (e.g. "120 HP"). Do NOT confuse with collector number.
+
+══ LANGUAGE DETECTION — DO THIS FIRST ══
+• English: Latin script, "Illus." credit
+• Japanese: hiragana / katakana / kanji characters
+• Korean: Hangul (가나다 style)
+• Chinese (Traditional): Chinese characters, typically no furigana
+
+══ STEP-BY-STEP IDENTIFICATION ══
+
+Step 1 — LANGUAGE: Identify from the script on the card.
+
+Step 2 — COLLECTOR NUMBER: Read the bottom-left text digit by digit.
+  • 0 is perfectly round, 8 has two distinct loops, 6 opens to the right, 9 opens to the left, 1 is straight.
+  • Write both parts: e.g. "043" and "066" → "043/066". Include leading zeros.
+  • If the format has a prefix (like "SV" or "SWSH"), include it: "SV049".
+
+Step 3 — SET CODE: Report the short printed code (2–6 alphanumeric chars) if visible.
+  • Japanese/Korean/Chinese modern: code before the slash number (A5C, A3a, B3a, A1, A2a…)
+  • English: code may be printed near the regulation mark (sv1, sv4pt5, swsh1, xy1, bw1…)
+  • Copy it EXACTLY as printed — do not guess or invent a code.
+
+Step 4 — CARD NAME: Read from the top of the card exactly as printed.
+
+Step 5 — HOLO TYPE from the card's surface finish:
+  • Non-Holo: completely flat/matte
+  • Holo: shiny holographic illustration, matte border
+  • Reverse Holo: shiny/sparkly border, flat illustration
+  • Full Art: illustration bleeds to card edges, no standard border
+  • Special Art Rare / Illustration Rare: large painted full-bleed illustration
+  • Secret Rare / Rainbow Rare / Gold: gold or rainbow texture
+
+══ CONFIDENCE ══
+• "high": clearly read the full collector number AND card name; set identified
+• "medium": name is clear but number is partially obscured, or set is uncertain
+• "low": image is too blurry, angled, or cut off — never invent a number
+
+══ CARD BACK ══
+If the image shows the Pokémon card back (blue oval, Poké Ball, "Pokémon" text), return:
+{"isCardBack":true,"englishName":"","cardNumber":"","setCode":"","setName":"","language":"","holoType":"","rarity":"","confidence":"low","originalName":"","notes":"Card back"}
+
+══ RESPONSE FORMAT ══
 {
   "isCardBack": false,
   "englishName": "Pikachu",
   "cardNumber": "025/198",
+  "setCode": "sv1",
   "setName": "Scarlet & Violet",
   "language": "English",
   "holoType": "Holo",
   "rarity": "Rare",
   "confidence": "high",
   "originalName": "ピカチュウ",
-  "notes": "Any additional identification notes"
+  "notes": "Regulation mark G; set code sv1 visible near number"
 }
 
-Set "isCardBack" to true ONLY when the image clearly shows the standard Pokémon card back. For all other images (front of card, blurry, unclear), set "isCardBack" to false and attempt identification normally.
-
-The "originalName" field should contain the name exactly as printed on the card. If the card is English, originalName equals englishName. For non-English cards, translate the name to English for the "englishName" field.
+• "englishName": English translation of the card name
+• "originalName": name exactly as printed on the card
+• "setCode": the short printed code (2–6 chars). Empty string "" if not visible.
+• "notes": include regulation mark letter, any codes spotted, legibility observations
 
 ${setReference}`
             },
@@ -1436,7 +1497,7 @@ ${setReference}`
               content: [
                 {
                   type: "text",
-                  text: "Identify this Pokémon card. Focus on reading the collector number at the bottom, the set symbol, and the card name. Return the JSON response."
+                  text: "Identify this Pokémon card. Start by zooming into the BOTTOM-LEFT corner to read the small collector number (e.g. '025/198'). Then read the card name from the top. Return the JSON."
                 },
                 {
                   type: "image_url",
@@ -1449,7 +1510,7 @@ ${setReference}`
             }
           ],
           response_format: { type: "json_object" },
-          max_completion_tokens: 600,
+          max_completion_tokens: 800,
         });
         const timeoutPromise = new Promise<never>((_, reject) =>
           setTimeout(() => reject(Object.assign(new Error("AI identification timed out. Please try again."), { isTimeout: true })), 30000)
@@ -1547,7 +1608,17 @@ ${setReference}`
               return base;
             });
 
-            // 1a. Filter by set name if AI identified one (prefer exact set)
+            // 1a. Filter by set CODE (most precise — exact ID match)
+            if (identification.setCode && formatted.length > 1) {
+              const aiCode = identification.setCode.toLowerCase().trim();
+              const codeMatch = formatted.filter((c: any) => {
+                const dbId = (c.set?.id ?? "").toLowerCase();
+                return dbId === aiCode || dbId.startsWith(aiCode) || aiCode.startsWith(dbId);
+              });
+              if (codeMatch.length > 0) formatted = codeMatch;
+            }
+
+            // 1b. Filter by set name if still multiple matches
             if (identification.setName && formatted.length > 1) {
               const aiSet = identification.setName.toLowerCase();
               const setMatch = formatted.filter((c: any) => {
@@ -1557,7 +1628,7 @@ ${setReference}`
               if (setMatch.length > 0) formatted = setMatch;
             }
 
-            // 1b. Filter by card number
+            // 1c. Filter by card number
             if (identification.cardNumber && formatted.length > 1) {
               const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
               const exactMatch = formatted.filter((c: any) => {

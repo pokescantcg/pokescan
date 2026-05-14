@@ -59,7 +59,7 @@ function formatTimeAgo(isoString: string): string {
 }
 
 /** Resize a photo URI to at most maxDim on the longer side and return base64. */
-async function resizeForAI(uri: string, w: number, h: number, maxDim = 1500): Promise<{ uri: string; base64: string | undefined }> {
+async function resizeForAI(uri: string, w: number, h: number, maxDim = 2048): Promise<{ uri: string; base64: string | undefined }> {
   const scale = Math.min(maxDim / w, maxDim / h, 1);
   const actions: ImageManipulator.Action[] = scale < 1
     ? [{ resize: { width: Math.round(w * scale), height: Math.round(h * scale) } }]
@@ -1951,7 +1951,12 @@ export default function ScannerScreen() {
       if (result.cardNumber) {
         setIdentification((prev) =>
           prev
-            ? { ...prev, cardNumber: result.cardNumber, confidence: result.confidence }
+            ? {
+                ...prev,
+                cardNumber: result.cardNumber,
+                confidence: result.confidence,
+                ...(result.setCode ? { setCode: result.setCode } : {}),
+              }
             : prev
         );
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

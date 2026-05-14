@@ -310,6 +310,7 @@ export function getUKPrice(card: PokemonCard): { price: number | null; source: s
 export interface CardIdentification {
   englishName: string;
   cardNumber: string;
+  setCode: string;
   setName: string;
   language: string;
   holoType: string;
@@ -366,6 +367,8 @@ export async function identifyCard(imageBase64: string): Promise<IdentifyCardRes
 
 export interface NumberStripResult {
   cardNumber: string;
+  setCode?: string;
+  regulationMark?: string;
   confidence: "high" | "medium" | "low";
   notes?: string;
 }
