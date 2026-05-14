@@ -188,6 +188,42 @@ function langFlag(lang: string): string {
   return "🇬🇧";
 }
 
+function ConfidenceBadge({
+  confidence,
+  colors,
+}: {
+  confidence: string;
+  colors: ReturnType<typeof useThemeColors>;
+}) {
+  const isHigh = confidence === "high";
+  const isMed = confidence === "medium";
+  const bg = isHigh ? colors.success : isMed ? colors.pokemonYellow : colors.error;
+  const icon = isHigh
+    ? ("checkmark-circle" as const)
+    : isMed
+      ? ("alert-circle" as const)
+      : ("close-circle" as const);
+  const label = isHigh ? "High" : isMed ? "Medium" : "Low";
+  return (
+    <View style={[confBadgeStyles.wrap, { backgroundColor: bg }]}>
+      <Ionicons name={icon} size={12} color="#FFF" />
+      <Text style={confBadgeStyles.text}>{label} confidence</Text>
+    </View>
+  );
+}
+
+const confBadgeStyles = StyleSheet.create({
+  wrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  text: { fontSize: 11, fontFamily: "Outfit_700Bold", color: "#FFF" },
+});
+
 function IdentificationCard({
   identification,
   colors,
@@ -200,13 +236,6 @@ function IdentificationCard({
   const isChinese = identification.language === "Chinese";
   const isForeign = isJapanese || isKorean || isChinese;
 
-  const confidenceColor =
-    identification.confidence === "high"
-      ? colors.success
-      : identification.confidence === "medium"
-        ? colors.pokemonYellow
-        : colors.error;
-
   return (
     <View style={[styles.idCard, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "60" }]}>
       <LinearGradient
@@ -218,9 +247,7 @@ function IdentificationCard({
           <MaterialCommunityIcons name="robot" size={18} color={colors.pokemonRed} />
         </View>
         <Text style={[styles.idTitle, { color: colors.text }]}>AI Identification</Text>
-        <View style={[styles.confidenceBadge, { backgroundColor: confidenceColor }]}>
-          <Text style={styles.confidenceText}>{identification.confidence}</Text>
-        </View>
+        <ConfidenceBadge confidence={identification.confidence} colors={colors} />
       </View>
 
       <View style={styles.idRow}>
@@ -419,12 +446,6 @@ function AIPriceCard({
   const isForeign = ["Japanese", "Korean", "Chinese"].includes(identification.language);
   const flag = langFlag(identification.language);
   const topPrice = pcvResults.length > 0 ? pcvResults[0].priceGBP : null;
-  const confidenceColor =
-    identification.confidence === "high"
-      ? colors.success
-      : identification.confidence === "medium"
-        ? colors.pokemonYellow
-        : colors.error;
 
   const [extPrice, setExtPrice] = useState<ExtendedEbayPrice | null>(null);
   const [extLoading, setExtLoading] = useState(false);
@@ -463,9 +484,7 @@ function AIPriceCard({
             <MaterialCommunityIcons name="robot" size={13} color={colors.pokemonRed} />
             <Text style={[aiPriceStyles.aiBadgeText, { color: colors.pokemonRed }]}>AI Result</Text>
           </View>
-          <View style={[aiPriceStyles.confBadge, { backgroundColor: confidenceColor }]}>
-            <Text style={aiPriceStyles.confBadgeText}>{identification.confidence}</Text>
-          </View>
+          <ConfidenceBadge confidence={identification.confidence} colors={colors} />
         </View>
         {topPrice ? (
           <Text style={[aiPriceStyles.priceText, { color: colors.success }]}>{formatGBP(topPrice)}</Text>
@@ -565,8 +584,6 @@ const aiPriceStyles = StyleSheet.create({
   badgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   aiBadge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   aiBadgeText: { fontSize: 11, fontFamily: "Outfit_700Bold" },
-  confBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
-  confBadgeText: { fontSize: 11, fontFamily: "Outfit_700Bold", color: "#FFF", textTransform: "capitalize" },
   priceText: { fontSize: 22, fontFamily: "Outfit_700Bold" },
   noPriceBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   noPriceText: { fontSize: 12, fontFamily: "Outfit_500Medium" },
@@ -725,9 +742,12 @@ function DatabaseMatchCard({
       <LinearGradient colors={[colors.success + "18", "transparent"]} style={dbMatchStyles.gradient} />
 
       <View style={dbMatchStyles.header}>
-        <View style={[dbMatchStyles.badgeBg, { backgroundColor: colors.success + "20" }]}>
-          <Ionicons name="checkmark-circle" size={14} color={colors.success} />
-          <Text style={[dbMatchStyles.badgeText, { color: colors.success }]}>Database Match</Text>
+        <View style={dbMatchStyles.headerLeft}>
+          <View style={[dbMatchStyles.badgeBg, { backgroundColor: colors.success + "20" }]}>
+            <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+            <Text style={[dbMatchStyles.badgeText, { color: colors.success }]}>Database Match</Text>
+          </View>
+          <ConfidenceBadge confidence={identification.confidence} colors={colors} />
         </View>
         {displayPrice ? (
           <Text style={[dbMatchStyles.price, { color: colors.success }]}>{formatGBP(displayPrice)}</Text>
@@ -793,6 +813,7 @@ const dbMatchStyles = StyleSheet.create({
   },
   gradient: { position: "absolute", top: 0, left: 0, right: 0, height: 70 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
   badgeBg: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   badgeText: { fontSize: 12, fontFamily: "Outfit_700Bold" },
   price: { fontSize: 20, fontFamily: "Outfit_700Bold" },
@@ -2467,12 +2488,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   idTitle: { flex: 1, fontSize: 15, fontFamily: "Outfit_700Bold" },
-  confidenceBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  confidenceText: { fontSize: 11, fontFamily: "Outfit_700Bold", color: "#FFF", textTransform: "uppercase" },
   idRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 3 },
   idLabel: { fontSize: 13, fontFamily: "Outfit_400Regular" },
   idValue: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
