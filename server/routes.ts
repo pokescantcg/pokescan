@@ -331,6 +331,8 @@ async function runSchemaMigrations(): Promise<void> {
       ALTER TABLE pokescan_collections ADD COLUMN IF NOT EXISTS grading_company VARCHAR(32);
       ALTER TABLE pokescan_collections ADD COLUMN IF NOT EXISTS grade VARCHAR(16);
       ALTER TABLE pokescan_collections ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE pokescan_collections ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE pokescan_collections ADD COLUMN IF NOT EXISTS verified_at TIMESTAMPTZ;
       ALTER TABLE pokescan_users ADD COLUMN IF NOT EXISTS is_verified_collector BOOLEAN NOT NULL DEFAULT FALSE;
       ALTER TABLE pokemon_cards ADD COLUMN IF NOT EXISTS description TEXT;
       ALTER TABLE pokemon_cards ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
@@ -2580,6 +2582,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         priceGBP: r.price_gbp,
         gradingCompany: r.grading_company || null,
         grade: r.grade || null,
+        isVerified: r.is_verified ?? false,
+        verifiedAt: r.verified_at || null,
         addedAt: r.added_at,
       }));
       res.json({ collection: items });
@@ -2642,6 +2646,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         priceGBP: r.price_gbp,
         gradingCompany: r.grading_company || null,
         grade: r.grade || null,
+        isVerified: r.is_verified ?? false,
+        verifiedAt: r.verified_at || null,
         addedAt: r.added_at,
       }));
       res.json({ collection: items });
@@ -2688,6 +2694,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         priceGBP: r.price_gbp,
         gradingCompany: r.grading_company || null,
         grade: r.grade || null,
+        isVerified: r.is_verified ?? false,
+        verifiedAt: r.verified_at || null,
         addedAt: r.added_at,
       }));
       res.json({ collection: items });
@@ -2724,12 +2732,90 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         priceGBP: r.price_gbp,
         gradingCompany: r.grading_company || null,
         grade: r.grade || null,
+        isVerified: r.is_verified ?? false,
+        verifiedAt: r.verified_at || null,
         addedAt: r.added_at,
       }));
       res.json({ collection: items });
     } catch (error: any) {
       console.error("Collection delete error:", error);
       res.status(500).json({ error: error.message || "Failed to remove card" });
+    }
+  });
+
+  // ─── Card photo verification ──────────────────────────────────────────────
+  app.post("/api/collection/:id/verify", express.json({ limit: "25mb" }), async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid session" }); return; }
+
+      const { id } = req.params;
+      const { frontImageBase64, backImageBase64 } = req.body;
+      if (!frontImageBase64 || !backImageBase64) {
+        res.status(400).json({ error: "Both frontImageBase64 and backImageBase64 are required" }); return;
+      }
+
+      const row = await db.execute(
+        sql`SELECT card_name, set_name, card_id, card_image FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`
+      );
+      if (!row.rows.length) { res.status(404).json({ error: "Collection item not found" }); return; }
+      const card = row.rows[0] as any;
+
+      // Extract card number from card ID (e.g. "sv4-25" → "25")
+      const cardNumber = card.card_id?.split("-").pop() || "";
+
+      const prompt = `You are a Pokémon TCG card verification expert. A user claims this physical card is:
+Card Name: ${card.card_name}
+Set Name: ${card.set_name}
+Card Number: ${cardNumber}
+
+You have been given TWO photos: the first is the FRONT of the physical card, the second is the BACK.
+
+Examine both images carefully and determine whether the physical card shown matches the claimed card.
+Check: the card name printed on the card, the artwork/illustration, set symbol, collector number, and overall appearance.
+The card back should show the standard Pokémon TCG card back design (red/blue Poké Ball pattern).
+
+Return ONLY valid JSON with no markdown:
+{"matches": true, "confidence": "high", "reason": "The card name, artwork and set symbol all match exactly."}
+
+confidence must be "high", "medium", or "low".
+matches must be true or false.`;
+
+      const aiRes = await openai.chat.completions.create({
+        model: "gpt-4o",
+        max_tokens: 200,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: frontImageBase64, detail: "high" } },
+            { type: "image_url", image_url: { url: backImageBase64, detail: "low" } },
+          ],
+        }],
+      });
+
+      const raw = aiRes.choices[0]?.message?.content?.trim() || "";
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("AI returned invalid response");
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      const verified = !!(parsed.matches && parsed.confidence !== "low");
+      if (verified) {
+        await db.execute(
+          sql`UPDATE pokescan_collections SET is_verified = true, verified_at = NOW() WHERE id = ${id} AND user_id = ${user.id}`
+        );
+      }
+
+      res.json({
+        verified,
+        confidence: parsed.confidence || "low",
+        reason: parsed.reason || "Unable to determine.",
+      });
+    } catch (err: any) {
+      console.error("Card verify error:", err);
+      res.status(500).json({ error: "Verification failed" });
     }
   });
 
@@ -2806,6 +2892,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         priceGBP: r.price_gbp,
         gradingCompany: r.grading_company || null,
         grade: r.grade || null,
+        isVerified: r.is_verified ?? false,
+        verifiedAt: r.verified_at || null,
         addedAt: r.added_at,
       }));
       res.json({ collection: items, owner: { id: target.id, displayName: target.displayName, username: target.username, avatarUrl: target.avatarUrl, isVerifiedCollector: target.isVerifiedCollector ?? false } });
@@ -2891,6 +2979,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         priceGBP: r.price_gbp,
         gradingCompany: r.grading_company || null,
         grade: r.grade || null,
+        isVerified: r.is_verified ?? false,
+        verifiedAt: r.verified_at || null,
         addedAt: r.added_at,
       }));
       res.json({

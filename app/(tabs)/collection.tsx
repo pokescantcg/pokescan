@@ -14,17 +14,21 @@ import {
   TextInput,
   ScrollView,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
-import { CollectionItem } from "@/lib/storage";
+import { CollectionItem, getSessionToken } from "@/lib/storage";
+import { getApiUrl } from "@/lib/query-client";
 import PokeBackground from "@/components/PokeBackground";
 
 function setLogoUrl(setId: string) {
@@ -40,48 +44,86 @@ function CollectionCard({
   onRemove,
   onUpdateQty,
   onEditGrading,
+  onVerify,
+  localVerified,
 }: {
   item: CollectionItem;
   colors: ReturnType<typeof useThemeColors>;
   onRemove: () => void;
   onUpdateQty: (qty: number) => void;
   onEditGrading: () => void;
+  onVerify: () => void;
+  localVerified: boolean;
 }) {
+  const verified = item.isVerified || localVerified;
   return (
     <Pressable
       style={({ pressed }) => [
         styles.cardItem,
-        { backgroundColor: colors.card, borderColor: colors.borderLight, opacity: pressed ? 0.9 : 1 },
+        {
+          backgroundColor: colors.card,
+          borderColor: verified ? "#2ECC71" + "60" : colors.borderLight,
+          opacity: pressed ? 0.9 : 1,
+        },
       ]}
       onPress={() => router.push({ pathname: "/card/[id]", params: { id: item.cardId } })}
     >
-      <Image source={{ uri: item.cardImage }} style={styles.cardImage} contentFit="contain" />
+      {/* Card thumbnail with optional verified overlay */}
+      <View style={{ position: "relative" }}>
+        <Image source={{ uri: item.cardImage }} style={styles.cardImage} contentFit="contain" />
+        {verified && (
+          <View style={styles.verifiedBadgeImg}>
+            <Ionicons name="checkmark-circle" size={16} color="#2ECC71" />
+          </View>
+        )}
+      </View>
+
       <View style={styles.cardInfo}>
-        <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={1}>
-          {item.cardName}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <Text style={[styles.cardName, { color: colors.text, flex: 1 }]} numberOfLines={1}>
+            {item.cardName}
+          </Text>
+          {verified && (
+            <View style={[styles.verifiedPill, { backgroundColor: "#2ECC7115" }]}>
+              <Ionicons name="shield-checkmark" size={10} color="#2ECC71" />
+              <Text style={[styles.verifiedPillText, { color: "#2ECC71" }]}>Verified</Text>
+            </View>
+          )}
+        </View>
         <Text style={[styles.cardCondition, { color: colors.textMuted }]}>
           {item.variant && item.variant !== "Non-Holo" ? `${item.variant} · ` : ""}{item.condition}
         </Text>
-        <Pressable
-          onPress={(e) => { e.stopPropagation(); onEditGrading(); }}
-          hitSlop={6}
-          style={{ alignSelf: "flex-start", marginTop: 2 }}
-        >
-          {item.gradingCompany && item.grade ? (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#3498DB22", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
-              <Text style={{ fontSize: 10, fontFamily: "Outfit_700Bold", color: "#3498DB" }}>
-                {item.gradingCompany} {item.grade}
-              </Text>
-              <Ionicons name="pencil" size={9} color="#3498DB" />
-            </View>
-          ) : (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: colors.surfaceElevated, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6 }}>
-              <Ionicons name="ribbon-outline" size={9} color={colors.textMuted} />
-              <Text style={{ fontSize: 9, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>Add grade</Text>
-            </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+          <Pressable
+            onPress={(e) => { e.stopPropagation(); onEditGrading(); }}
+            hitSlop={6}
+          >
+            {item.gradingCompany && item.grade ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#3498DB22", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                <Text style={{ fontSize: 10, fontFamily: "Outfit_700Bold", color: "#3498DB" }}>
+                  {item.gradingCompany} {item.grade}
+                </Text>
+                <Ionicons name="pencil" size={9} color="#3498DB" />
+              </View>
+            ) : (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: colors.surfaceElevated, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6 }}>
+                <Ionicons name="ribbon-outline" size={9} color={colors.textMuted} />
+                <Text style={{ fontSize: 9, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>Add grade</Text>
+              </View>
+            )}
+          </Pressable>
+          {!verified && (
+            <Pressable
+              onPress={(e) => { e.stopPropagation(); onVerify(); }}
+              hitSlop={6}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: "#2ECC7115", paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6 }}>
+                <Ionicons name="shield-outline" size={9} color="#2ECC71" />
+                <Text style={{ fontSize: 9, fontFamily: "Outfit_600SemiBold", color: "#2ECC71" }}>Verify</Text>
+              </View>
+            </Pressable>
           )}
-        </Pressable>
+        </View>
         <Text style={[styles.cardPrice, { color: item.priceGBP ? colors.success : colors.textMuted }]}>
           {formatGBP(item.priceGBP)} each
         </Text>
@@ -111,6 +153,219 @@ function CollectionCard({
           <Ionicons name="add" size={16} color={colors.text} />
         </Pressable>
       </View>
+    </Pressable>
+  );
+}
+
+// ─── Verify Card Modal ────────────────────────────────────────────────────────
+
+interface VerifyCaptured { uri: string; base64: string }
+
+async function pickVerifyImage(source: "camera" | "gallery"): Promise<VerifyCaptured | null> {
+  if (source === "camera") {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") { Alert.alert("Permission Required", "Camera access is needed."); return null; }
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true, aspect: [3, 4], base64: true });
+    if (res.canceled || !res.assets[0]) return null;
+    const a = res.assets[0];
+    const b64 = a.base64 ? (a.base64.startsWith("data:") ? a.base64 : `data:image/jpeg;base64,${a.base64}`)
+      : `data:image/jpeg;base64,${await FileSystem.readAsStringAsync(a.uri, { encoding: "base64" as any })}`;
+    return { uri: a.uri, base64: b64 };
+  } else {
+    const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.8, allowsEditing: true, aspect: [3, 4], base64: true });
+    if (res.canceled || !res.assets[0]) return null;
+    const a = res.assets[0];
+    let b64: string;
+    if (a.base64) {
+      b64 = a.base64.startsWith("data:") ? a.base64 : `data:image/jpeg;base64,${a.base64}`;
+    } else if (Platform.OS === "web") {
+      const resp = await fetch(a.uri); const blob = await resp.blob();
+      b64 = await new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onloadend = () => resolve(r.result as string); r.onerror = reject; r.readAsDataURL(blob); });
+    } else {
+      b64 = `data:image/jpeg;base64,${await FileSystem.readAsStringAsync(a.uri, { encoding: "base64" as any })}`;
+    }
+    return { uri: a.uri, base64: b64 };
+  }
+}
+
+function VerifyCardModal({
+  item,
+  colors,
+  insets,
+  onClose,
+  onVerified,
+}: {
+  item: CollectionItem;
+  colors: ReturnType<typeof useThemeColors>;
+  insets: ReturnType<typeof import("react-native-safe-area-context").useSafeAreaInsets>;
+  onClose: () => void;
+  onVerified: (itemId: string) => void;
+}) {
+  const [front, setFront] = useState<VerifyCaptured | null>(null);
+  const [back, setBack]   = useState<VerifyCaptured | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ verified: boolean; reason: string } | null>(null);
+
+  const capture = async (side: "front" | "back", source: "camera" | "gallery") => {
+    try {
+      const img = await pickVerifyImage(source);
+      if (!img) return;
+      if (side === "front") setFront(img);
+      else setBack(img);
+      setResult(null);
+    } catch {}
+  };
+
+  const handleVerify = async () => {
+    if (!front || !back || !item.id) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const token = await getSessionToken();
+      const url = new URL(`/api/collection/${item.id}/verify`, getApiUrl());
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ frontImageBase64: front.base64, backImageBase64: back.base64 }),
+      });
+      const data = await res.json();
+      setResult({ verified: !!data.verified, reason: data.reason || "" });
+      if (data.verified) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        onVerified(item.id!);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    } catch {
+      Alert.alert("Error", "Verification failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const canVerify = !!(front && back && !loading);
+
+  return (
+    <Pressable style={verifyStyles.overlay} onPress={onClose}>
+      <Pressable
+        onPress={() => {}}
+        style={[verifyStyles.sheet, { backgroundColor: colors.surface, paddingBottom: insets.bottom + 24 }]}
+      >
+        <View style={[verifyStyles.handle, { backgroundColor: colors.borderLight }]} />
+
+        {/* Header */}
+        <View style={verifyStyles.header}>
+          <View style={[verifyStyles.headerIcon, { backgroundColor: "#2ECC7120" }]}>
+            <Ionicons name="shield-checkmark" size={20} color="#2ECC71" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[verifyStyles.title, { color: colors.text }]}>Verify Card</Text>
+            <Text style={[verifyStyles.subtitle, { color: colors.textMuted }]} numberOfLines={1}>
+              {item.cardName} · {item.setName}
+            </Text>
+          </View>
+          <Pressable onPress={onClose} hitSlop={10}>
+            <Ionicons name="close" size={22} color={colors.textMuted} />
+          </Pressable>
+        </View>
+
+        {/* Database card reference */}
+        <View style={[verifyStyles.referenceRow, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          <Image source={{ uri: item.cardImage }} style={verifyStyles.referenceImage} contentFit="contain" />
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={[verifyStyles.refLabel, { color: colors.textMuted }]}>Database Card</Text>
+            <Text style={[verifyStyles.refName, { color: colors.text }]}>{item.cardName}</Text>
+            <Text style={[verifyStyles.refSet, { color: colors.textMuted }]}>{item.setName}</Text>
+            <Text style={[verifyStyles.refHint, { color: colors.textMuted }]}>
+              Your photos must match this card exactly
+            </Text>
+          </View>
+        </View>
+
+        {/* Photo panels */}
+        <Text style={[verifyStyles.sectionLabel, { color: colors.textSecondary }]}>
+          Your Physical Card Photos
+        </Text>
+        <View style={verifyStyles.panelsRow}>
+          {(["front", "back"] as const).map((side) => {
+            const img = side === "front" ? front : back;
+            return (
+              <View key={side} style={verifyStyles.panel}>
+                <Text style={[verifyStyles.panelLabel, { color: colors.textMuted }]}>
+                  {side === "front" ? "Front" : "Back"}
+                </Text>
+                {img ? (
+                  <View style={[verifyStyles.panelImg, { borderColor: "#2ECC7180" }]}>
+                    <Image source={{ uri: img.uri }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+                    <Pressable style={verifyStyles.panelClear} onPress={() => side === "front" ? setFront(null) : setBack(null)}>
+                      <Ionicons name="close-circle" size={20} color="#FFF" />
+                    </Pressable>
+                  </View>
+                ) : (
+                  <View style={[verifyStyles.panelPlaceholder, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+                    <Ionicons name="card-outline" size={28} color={colors.textMuted} />
+                  </View>
+                )}
+                <View style={verifyStyles.panelBtns}>
+                  <Pressable style={[verifyStyles.panelBtn, { backgroundColor: colors.pokemonRed }]} onPress={() => capture(side, "camera")} disabled={loading}>
+                    <Ionicons name="camera" size={14} color="#FFF" />
+                  </Pressable>
+                  <Pressable style={[verifyStyles.panelBtn, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight }]} onPress={() => capture(side, "gallery")} disabled={loading}>
+                    <Ionicons name="images" size={14} color={colors.text} />
+                  </Pressable>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Result */}
+        {result && (
+          <View style={[verifyStyles.resultBox, {
+            backgroundColor: result.verified ? "#2ECC7115" : "#E74C3C15",
+            borderColor: result.verified ? "#2ECC7160" : "#E74C3C60",
+          }]}>
+            <Ionicons name={result.verified ? "shield-checkmark" : "close-circle"} size={20} color={result.verified ? "#2ECC71" : "#E74C3C"} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontFamily: "Outfit_700Bold", color: result.verified ? "#2ECC71" : "#E74C3C" }}>
+                {result.verified ? "Card Verified" : "Could Not Verify"}
+              </Text>
+              <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textSecondary, marginTop: 2, lineHeight: 17 }}>
+                {result.reason}
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Verify button */}
+        {!result?.verified && (
+          <Pressable
+            style={({ pressed }) => [verifyStyles.verifyBtn, { opacity: (!canVerify || pressed) ? 0.6 : 1 }]}
+            onPress={handleVerify}
+            disabled={!canVerify}
+          >
+            <LinearGradient colors={["#27AE60", "#1E8449"]} style={verifyStyles.verifyBtnInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+              {loading ? (
+                <><ActivityIndicator color="#FFF" size="small" /><Text style={verifyStyles.verifyBtnText}>AI Checking…</Text></>
+              ) : (
+                <><Ionicons name="shield-checkmark" size={18} color="#FFF" /><Text style={verifyStyles.verifyBtnText}>Verify Card</Text></>
+              )}
+            </LinearGradient>
+          </Pressable>
+        )}
+        {result?.verified && (
+          <Pressable style={[verifyStyles.verifyBtn]} onPress={onClose}>
+            <LinearGradient colors={["#27AE60", "#1E8449"]} style={verifyStyles.verifyBtnInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+              <Ionicons name="checkmark" size={18} color="#FFF" />
+              <Text style={verifyStyles.verifyBtnText}>Done</Text>
+            </LinearGradient>
+          </Pressable>
+        )}
+
+        <Text style={[verifyStyles.disclaimer, { color: colors.textMuted }]}>
+          AI checks that your photo matches the database card. Both sides must be clearly visible.
+        </Text>
+      </Pressable>
     </Pressable>
   );
 }
@@ -229,6 +484,10 @@ export default function CollectionScreen() {
   const [editCompany, setEditCompany] = useState("");
   const [editGrade, setEditGrade] = useState("");
   const [gradingSaving, setGradingSaving] = useState(false);
+
+  // Verify modal
+  const [verifyItem, setVerifyItem] = useState<CollectionItem | null>(null);
+  const [localVerifiedIds, setLocalVerifiedIds] = useState<Set<string>>(new Set());
 
   const openGradingModal = useCallback((item: CollectionItem) => {
     setGradingItem(item);
@@ -523,6 +782,8 @@ export default function CollectionScreen() {
             }}
             onUpdateQty={(qty) => updateQuantity(item.cardId, item.condition, qty, item.variant, item.id)}
             onEditGrading={() => openGradingModal(item)}
+            onVerify={() => setVerifyItem(item)}
+            localVerified={item.id ? localVerifiedIds.has(item.id) : false}
           />
         )}
         ListEmptyComponent={
@@ -553,6 +814,22 @@ export default function CollectionScreen() {
           </View>
         }
       />
+
+      {/* Verify card modal */}
+      {verifyItem && (
+        <Modal visible transparent animationType="slide" onRequestClose={() => setVerifyItem(null)}>
+          <VerifyCardModal
+            item={verifyItem}
+            colors={colors}
+            insets={insets}
+            onClose={() => setVerifyItem(null)}
+            onVerified={(itemId) => {
+              setLocalVerifiedIds((prev) => new Set([...prev, itemId]));
+              setVerifyItem(null);
+            }}
+          />
+        </Modal>
+      )}
 
       {/* Grading Edit Modal */}
       <Modal visible={!!gradingItem} animationType="slide" transparent presentationStyle="overFullScreen" onRequestClose={closeGradingModal}>
@@ -732,4 +1009,128 @@ const styles = StyleSheet.create({
   signInBtn: { marginTop: 8 },
   signInGradient: { paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12, alignItems: "center" },
   signInBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+  verifiedBadgeImg: {
+    position: "absolute",
+    bottom: 2,
+    right: 2,
+    backgroundColor: "#1A1A2E",
+    borderRadius: 8,
+    padding: 1,
+  },
+  verifiedPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  verifiedPillText: { fontSize: 9, fontFamily: "Outfit_700Bold" },
+});
+
+const verifyStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
+  sheet: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 24,
+    gap: 16,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 4,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  headerIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: { fontSize: 18, fontFamily: "Outfit_700Bold" },
+  subtitle: { fontSize: 12, fontFamily: "Outfit_400Regular", marginTop: 1 },
+  referenceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+  },
+  referenceImage: { width: 52, height: 74, borderRadius: 6 },
+  refLabel: { fontSize: 10, fontFamily: "Outfit_400Regular", textTransform: "uppercase", letterSpacing: 0.5 },
+  refName: { fontSize: 14, fontFamily: "Outfit_700Bold" },
+  refSet: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  refHint: { fontSize: 11, fontFamily: "Outfit_400Regular", fontStyle: "italic", marginTop: 2 },
+  sectionLabel: { fontSize: 12, fontFamily: "Outfit_600SemiBold", textTransform: "uppercase", letterSpacing: 0.5 },
+  panelsRow: { flexDirection: "row", gap: 12 },
+  panel: { flex: 1, alignItems: "center", gap: 8 },
+  panelLabel: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
+  panelImg: {
+    width: "100%",
+    aspectRatio: 3 / 4,
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 2,
+    position: "relative",
+  },
+  panelPlaceholder: {
+    width: "100%",
+    aspectRatio: 3 / 4,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  panelClear: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 10,
+  },
+  panelBtns: { flexDirection: "row", gap: 8 },
+  panelBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  resultBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  verifyBtn: { borderRadius: 14, overflow: "hidden" },
+  verifyBtnInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 16,
+  },
+  verifyBtnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  disclaimer: {
+    fontSize: 11,
+    fontFamily: "Outfit_400Regular",
+    textAlign: "center",
+    lineHeight: 16,
+  },
 });

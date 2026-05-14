@@ -46,6 +46,8 @@ export interface CollectionItem {
   priceGBP: number | null;
   gradingCompany?: string | null;
   grade?: string | null;
+  isVerified?: boolean;
+  verifiedAt?: string | null;
 }
 
 export interface MarketListing {
