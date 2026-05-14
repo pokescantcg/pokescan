@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useMemo } from "react";
 import {
   StyleSheet,
+  StyleProp,
+  ViewStyle,
   Text,
   View,
   FlatList,
@@ -949,6 +951,13 @@ function CreateUserModal({
   );
 }
 
+type IonName = React.ComponentProps<typeof Ionicons>["name"];
+type MccName = React.ComponentProps<typeof MaterialCommunityIcons>["name"];
+
+type DropdownOption<T extends string> =
+  | { value: T; label: string; iconLib: "mcc"; icon: MccName }
+  | { value: T; label: string; iconLib?: "ion"; icon?: IonName };
+
 function AdminDropdown<T extends string>({
   value,
   options,
@@ -958,14 +967,24 @@ function AdminDropdown<T extends string>({
   style,
 }: {
   value: T;
-  options: { value: T; label: string; icon?: string; iconLib?: "ion" | "mcc" }[];
+  options: DropdownOption<T>[];
   onChange: (v: T) => void;
   colors: ReturnType<typeof useThemeColors>;
-  icon?: string;
-  style?: object;
+  icon?: IonName;
+  style?: StyleProp<ViewStyle>;
 }) {
   const [open, setOpen] = useState(false);
   const selected = options.find((o) => o.value === value);
+
+  function renderIcon(opt: DropdownOption<T> | undefined, size: number, color: string) {
+    if (!opt?.icon) {
+      return icon ? <Ionicons name={icon} size={size} color={color} /> : null;
+    }
+    if (opt.iconLib === "mcc") {
+      return <MaterialCommunityIcons name={opt.icon} size={size} color={color} />;
+    }
+    return <Ionicons name={opt.icon} size={size} color={color} />;
+  }
 
   return (
     <>
@@ -986,17 +1005,7 @@ function AdminDropdown<T extends string>({
           style,
         ]}
       >
-        {selected?.iconLib === "mcc" ? (
-          <MaterialCommunityIcons
-            name={selected.icon as any}
-            size={18}
-            color={colors.pokemonRed}
-          />
-        ) : selected?.icon ? (
-          <Ionicons name={selected.icon as any} size={18} color={colors.pokemonRed} />
-        ) : icon ? (
-          <Ionicons name={icon as any} size={18} color={colors.pokemonRed} />
-        ) : null}
+        {renderIcon(selected, 18, colors.pokemonRed)}
         <Text
           style={{
             flex: 1,
@@ -1047,19 +1056,7 @@ function AdminDropdown<T extends string>({
                       borderTopColor: colors.borderLight,
                     }}
                   >
-                    {opt.iconLib === "mcc" ? (
-                      <MaterialCommunityIcons
-                        name={opt.icon as any}
-                        size={20}
-                        color={isActive ? colors.pokemonRed : colors.textMuted}
-                      />
-                    ) : opt.icon ? (
-                      <Ionicons
-                        name={opt.icon as any}
-                        size={20}
-                        color={isActive ? colors.pokemonRed : colors.textMuted}
-                      />
-                    ) : null}
+                    {renderIcon(opt, 20, isActive ? colors.pokemonRed : colors.textMuted)}
                     <Text
                       style={{
                         flex: 1,
