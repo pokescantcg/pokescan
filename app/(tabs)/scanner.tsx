@@ -716,15 +716,34 @@ interface GradingResult {
   breakdown: { centering: number; corners: number; edges: number; surface: number };
   aiAssessed?: boolean;
   aiNotes?: string | null;
+  centeringRatios?: {
+    topPct: number;
+    bottomPct: number;
+    leftPct: number;
+    rightPct: number;
+  } | null;
+  findings?: {
+    centering?: string;
+    corners?: string;
+    edges?: string;
+    frontSurface?: string;
+    backSurface?: string;
+  } | null;
+  gradingComments?: string | null;
+}
+
+interface CapturedImage {
+  uri: string;
+  base64: string;
 }
 
 const CONDITION_LEVELS = [
-  { value: 0, label: "Perfect", color: "#27AE60" },
-  { value: 1, label: "Minimal", color: "#52BE80" },
-  { value: 2, label: "Slight",  color: "#F39C12" },
+  { value: 0, label: "Perfect",  color: "#27AE60" },
+  { value: 1, label: "Minimal",  color: "#52BE80" },
+  { value: 2, label: "Slight",   color: "#F39C12" },
   { value: 3, label: "Moderate", color: "#E67E22" },
-  { value: 4, label: "Heavy",   color: "#E74C3C" },
-  { value: 5, label: "Severe",  color: "#922B21" },
+  { value: 4, label: "Heavy",    color: "#E74C3C" },
+  { value: 5, label: "Severe",   color: "#922B21" },
 ];
 
 function gradeColor(grade: number): string {
@@ -733,6 +752,114 @@ function gradeColor(grade: number): string {
   if (grade >= 6.0) return "#F39C12";
   if (grade >= 4.0) return "#E67E22";
   return "#E74C3C";
+}
+
+function centeringEdgeColor(pct: number): string {
+  const offset = Math.abs(pct - 50);
+  if (offset <= 3)  return "#27AE60";
+  if (offset <= 8)  return "#F39C12";
+  return "#E74C3C";
+}
+
+function CenteringOverlay({
+  imageUri,
+  ratios,
+}: {
+  imageUri: string;
+  ratios: NonNullable<GradingResult["centeringRatios"]>;
+}) {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const VF = 0.20;
+  const HF = 0.17;
+  const topH    = size.h * VF * (ratios.topPct    / 100);
+  const bottomH = size.h * VF * (ratios.bottomPct / 100);
+  const leftW   = size.w * HF * (ratios.leftPct   / 100);
+  const rightW  = size.w * HF * (ratios.rightPct  / 100);
+  const vColor  = centeringEdgeColor(ratios.topPct);
+  const hColor  = centeringEdgeColor(ratios.leftPct);
+
+  return (
+    <View
+      style={gradingStyles.overlayContainer}
+      onLayout={(e) => setSize({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+    >
+      <Image source={{ uri: imageUri }} style={{ width: "100%", height: "100%" }} contentFit="cover" />
+      {size.w > 0 && (
+        <>
+          <View style={[gradingStyles.overlayStrip, { top: 0, left: 0, right: 0, height: topH, backgroundColor: vColor + "55" }]}>
+            <Text style={gradingStyles.overlayLabel}>{ratios.topPct}%</Text>
+          </View>
+          <View style={[gradingStyles.overlayStrip, { bottom: 0, left: 0, right: 0, height: bottomH, backgroundColor: vColor + "55" }]}>
+            <Text style={gradingStyles.overlayLabel}>{ratios.bottomPct}%</Text>
+          </View>
+          <View style={[gradingStyles.overlayStrip, { top: topH, bottom: bottomH, left: 0, width: leftW, backgroundColor: hColor + "55" }]}>
+            <Text style={[gradingStyles.overlayLabel, { transform: [{ rotate: "-90deg" }] }]}>{ratios.leftPct}%</Text>
+          </View>
+          <View style={[gradingStyles.overlayStrip, { top: topH, bottom: bottomH, right: 0, width: rightW, backgroundColor: hColor + "55" }]}>
+            <Text style={[gradingStyles.overlayLabel, { transform: [{ rotate: "90deg" }] }]}>{ratios.rightPct}%</Text>
+          </View>
+        </>
+      )}
+    </View>
+  );
+}
+
+function ImageCapturePanel({
+  label,
+  image,
+  onCamera,
+  onGallery,
+  onClear,
+  colors,
+  disabled,
+}: {
+  label: string;
+  image: CapturedImage | null;
+  onCamera: () => void;
+  onGallery: () => void;
+  onClear: () => void;
+  colors: ReturnType<typeof useThemeColors>;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={gradingStyles.panelWrap}>
+      <Text style={[gradingStyles.panelLabel, { color: colors.textSecondary }]}>{label}</Text>
+      {image ? (
+        <View style={[gradingStyles.panelImageWrap, { borderColor: colors.success + "80" }]}>
+          <Image source={{ uri: image.uri }} style={gradingStyles.panelImage} contentFit="cover" />
+          <Pressable style={gradingStyles.panelClearBtn} onPress={onClear}>
+            <Ionicons name="close-circle" size={22} color="#FFF" />
+          </Pressable>
+          <View style={[gradingStyles.panelTick, { backgroundColor: colors.success }]}>
+            <Ionicons name="checkmark" size={12} color="#FFF" />
+          </View>
+        </View>
+      ) : (
+        <View style={[gradingStyles.panelPlaceholder, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
+          <Ionicons name="card-outline" size={32} color={colors.textMuted} />
+          <Text style={[gradingStyles.panelPlaceholderText, { color: colors.textMuted }]}>
+            {label === "Front" ? "Card Front" : "Card Back"}
+          </Text>
+        </View>
+      )}
+      <View style={gradingStyles.panelBtns}>
+        <Pressable
+          style={({ pressed }) => [gradingStyles.panelBtn, { backgroundColor: colors.pokemonRed, opacity: pressed || disabled ? 0.7 : 1 }]}
+          onPress={onCamera}
+          disabled={!!disabled}
+        >
+          <Ionicons name="camera" size={15} color="#FFF" />
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [gradingStyles.panelBtn, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight, opacity: pressed || disabled ? 0.7 : 1 }]}
+          onPress={onGallery}
+          disabled={!!disabled}
+        >
+          <Ionicons name="images" size={15} color={colors.text} />
+        </Pressable>
+      </View>
+    </View>
+  );
 }
 
 function ConditionRow({
@@ -766,7 +893,7 @@ function ConditionRow({
               gradingStyles.condBtn,
               {
                 backgroundColor: value === lvl.value ? lvl.color : colors.surface,
-                borderColor: value === lvl.value ? lvl.color : colors.borderLight,
+                borderColor:     value === lvl.value ? lvl.color : colors.borderLight,
               },
             ]}
           >
@@ -780,12 +907,53 @@ function ConditionRow({
   );
 }
 
+async function pickImage(source: "camera" | "gallery"): Promise<CapturedImage | null> {
+  if (source === "camera") {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission Required", "Camera access is needed to grade cards.");
+      return null;
+    }
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.7, allowsEditing: true, aspect: [3, 4], base64: true });
+    if (res.canceled || !res.assets[0]) return null;
+    const asset = res.assets[0];
+    const b64 = asset.base64
+      ? (asset.base64.startsWith("data:") ? asset.base64 : `data:image/jpeg;base64,${asset.base64}`)
+      : await (async () => {
+          const raw = await FileSystem.readAsStringAsync(asset.uri, { encoding: "base64" as any });
+          return `data:image/jpeg;base64,${raw}`;
+        })();
+    return { uri: asset.uri, base64: b64 };
+  } else {
+    const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsEditing: true, aspect: [3, 4], base64: true });
+    if (res.canceled || !res.assets[0]) return null;
+    const asset = res.assets[0];
+    const b64 = asset.base64
+      ? (asset.base64.startsWith("data:") ? asset.base64 : `data:image/jpeg;base64,${asset.base64}`)
+      : await (async () => {
+          if (Platform.OS === "web") {
+            const resp = await fetch(asset.uri);
+            const blob = await resp.blob();
+            return new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+          }
+          const raw = await FileSystem.readAsStringAsync(asset.uri, { encoding: "base64" as any });
+          return `data:image/jpeg;base64,${raw}`;
+        })();
+    return { uri: asset.uri, base64: b64 };
+  }
+}
+
 function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useThemeColors>; isPremium: boolean }) {
-  const [gradeImage, setGradeImage] = useState<string | null>(null);
+  const [frontImage, setFrontImage] = useState<CapturedImage | null>(null);
+  const [backImage, setBackImage]   = useState<CapturedImage | null>(null);
   const [isAiGrading, setIsAiGrading] = useState(false);
   const [result, setResult] = useState<GradingResult | null>(null);
   const [showManual, setShowManual] = useState(false);
-  // Manual sliders
   const [centering, setCentering] = useState(0);
   const [cornerDamage, setCornerDamage] = useState(0);
   const [edgeDamage, setEdgeDamage] = useState(0);
@@ -793,7 +961,8 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
   const [manualLoading, setManualLoading] = useState(false);
 
   const resetAll = () => {
-    setGradeImage(null);
+    setFrontImage(null);
+    setBackImage(null);
     setResult(null);
     setCentering(0);
     setCornerDamage(0);
@@ -801,35 +970,28 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
     setSurfaceDamage(0);
   };
 
-  const gradeFromImage = async (uri: string, base64Data: string | null | undefined) => {
-    setGradeImage(uri);
+  const handleCapture = async (side: "front" | "back", source: "camera" | "gallery") => {
+    try {
+      const img = await pickImage(source);
+      if (!img) return;
+      if (side === "front") setFrontImage(img);
+      else setBackImage(img);
+    } catch (e) {
+      console.error("Image pick error:", e);
+    }
+  };
+
+  const handleAiGrade = async () => {
+    if (!frontImage || !backImage) return;
     setResult(null);
     setIsAiGrading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
     try {
-      let base64: string;
-      if (base64Data) {
-        base64 = base64Data.startsWith("data:") ? base64Data : `data:image/jpeg;base64,${base64Data}`;
-      } else if (Platform.OS === "web") {
-        const response = await fetch(uri);
-        const blob = await response.blob();
-        base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-      } else {
-        const fileBase64 = await FileSystem.readAsStringAsync(uri, { encoding: "base64" as any });
-        base64 = `data:image/jpeg;base64,${fileBase64}`;
-      }
-
       const url = new URL("/api/grade", getApiUrl());
       const res = await fetch(url.toString(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: base64 }),
+        body: JSON.stringify({ frontImageBase64: frontImage.base64, backImageBase64: backImage.base64 }),
       });
       const data: GradingResult = await res.json();
       setResult(data);
@@ -839,33 +1001,6 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsAiGrading(false);
-    }
-  };
-
-  const handleCameraGrade = async () => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission Required", "Camera access is needed to grade cards.");
-        return;
-      }
-      const picked = await ImagePicker.launchCameraAsync({ quality: 0.7, allowsEditing: true, aspect: [3, 4], base64: true });
-      if (!picked.canceled && picked.assets[0]) {
-        gradeFromImage(picked.assets[0].uri, picked.assets[0].base64);
-      }
-    } catch (e) {
-      console.error("Camera error:", e);
-    }
-  };
-
-  const handleGalleryGrade = async () => {
-    try {
-      const picked = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsEditing: true, aspect: [3, 4], base64: true });
-      if (!picked.canceled && picked.assets[0]) {
-        gradeFromImage(picked.assets[0].uri, picked.assets[0].base64);
-      }
-    } catch (e) {
-      console.error("Gallery error:", e);
     }
   };
 
@@ -910,10 +1045,13 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
     );
   }
 
+  const canGrade = !!(frontImage && backImage);
+  const bothScanned = canGrade;
+
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={gradingStyles.scrollContent}>
 
-      {/* ── Camera scan section ── */}
+      {/* ── Scan panel ── */}
       <View style={[gradingStyles.card, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "50" }]}>
         <LinearGradient colors={[colors.pokemonRed + "12", "transparent"]} style={gradingStyles.cardGrad} />
 
@@ -922,7 +1060,7 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
             <MaterialCommunityIcons name="certificate" size={16} color={colors.pokemonRed} />
             <Text style={[gradingStyles.headerBadgeText, { color: colors.pokemonRed }]}>AI Card Grader</Text>
           </View>
-          {(gradeImage || result) && (
+          {(frontImage || backImage || result) && (
             <Pressable onPress={resetAll}>
               <Text style={[gradingStyles.resetText, { color: colors.textMuted }]}>Reset</Text>
             </Pressable>
@@ -930,41 +1068,64 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
         </View>
 
         <Text style={[gradingStyles.cardHint, { color: colors.textMuted }]}>
-          Take a clear photo of your card — AI analyses centering, corners, edges & surface
+          Scan both sides of your card for an accurate AI grade
         </Text>
 
-        {/* Image preview */}
-        {gradeImage && (
-          <View style={gradingStyles.gradeImageWrap}>
-            <Image source={{ uri: gradeImage }} style={gradingStyles.gradeImage} contentFit="contain" />
-            {isAiGrading && (
-              <View style={gradingStyles.gradeImageOverlay}>
-                <ActivityIndicator color="#FFF" size="large" />
-                <Text style={gradingStyles.gradeImageOverlayText}>AI Analysing…</Text>
-              </View>
-            )}
+        <View style={gradingStyles.panelsRow}>
+          <ImageCapturePanel
+            label="Front"
+            image={frontImage}
+            onCamera={() => handleCapture("front", "camera")}
+            onGallery={() => handleCapture("front", "gallery")}
+            onClear={() => { setFrontImage(null); setResult(null); }}
+            colors={colors}
+            disabled={isAiGrading}
+          />
+          <ImageCapturePanel
+            label="Back"
+            image={backImage}
+            onCamera={() => handleCapture("back", "camera")}
+            onGallery={() => handleCapture("back", "gallery")}
+            onClear={() => { setBackImage(null); setResult(null); }}
+            colors={colors}
+            disabled={isAiGrading}
+          />
+        </View>
+
+        {!bothScanned && (
+          <View style={[gradingStyles.scanHintRow, { backgroundColor: colors.surface }]}>
+            <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
+            <Text style={[gradingStyles.scanHintText, { color: colors.textMuted }]}>
+              {!frontImage && !backImage
+                ? "Scan the front and back of your card to begin"
+                : !frontImage
+                ? "Still need the card front"
+                : "Still need the card back"}
+            </Text>
           </View>
         )}
 
-        {/* Camera / Gallery buttons */}
-        <View style={gradingStyles.scanBtns}>
-          <Pressable style={({ pressed }) => [gradingStyles.scanBtn, { opacity: pressed ? 0.85 : 1 }]} onPress={handleCameraGrade} disabled={isAiGrading}>
-            <LinearGradient colors={["#CC0000", "#8B0000"]} style={gradingStyles.scanBtnInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-              <Ionicons name="camera" size={22} color="#FFF" />
-              <Text style={gradingStyles.scanBtnText}>Scan Card</Text>
-            </LinearGradient>
-          </Pressable>
+        {bothScanned && (
           <Pressable
-            style={({ pressed }) => [gradingStyles.scanBtn, { opacity: pressed ? 0.85 : 1 }]}
-            onPress={handleGalleryGrade}
+            style={({ pressed }) => [gradingStyles.gradeBtn, { opacity: pressed || isAiGrading ? 0.85 : 1 }]}
+            onPress={handleAiGrade}
             disabled={isAiGrading}
           >
-            <View style={[gradingStyles.scanBtnInner, { backgroundColor: colors.surfaceElevated, borderWidth: 1, borderColor: colors.borderLight }]}>
-              <Ionicons name="images" size={22} color={colors.text} />
-              <Text style={[gradingStyles.scanBtnText, { color: colors.text }]}>Gallery</Text>
-            </View>
+            <LinearGradient colors={["#CC0000", "#8B0000"]} style={gradingStyles.gradeBtnInner} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+              {isAiGrading ? (
+                <>
+                  <ActivityIndicator color="#FFF" size="small" />
+                  <Text style={gradingStyles.gradeBtnText}>AI Analysing Both Sides…</Text>
+                </>
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="certificate-outline" size={20} color="#FFF" />
+                  <Text style={gradingStyles.gradeBtnText}>Grade This Card</Text>
+                </>
+              )}
+            </LinearGradient>
           </Pressable>
-        </View>
+        )}
       </View>
 
       {/* ── Grade result ── */}
@@ -973,14 +1134,15 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
           <LinearGradient colors={[gradeColor(result.grade) + "18", "transparent"]} style={gradingStyles.cardGrad} />
 
           {result.aiAssessed && (
-            <View style={[gradingStyles.aiBadgeRow]}>
+            <View style={gradingStyles.aiBadgeRow}>
               <View style={[gradingStyles.aiBadge, { backgroundColor: colors.pokemonRed + "20" }]}>
                 <MaterialCommunityIcons name="robot" size={13} color={colors.pokemonRed} />
-                <Text style={[gradingStyles.aiBadgeText, { color: colors.pokemonRed }]}>AI Assessed</Text>
+                <Text style={[gradingStyles.aiBadgeText, { color: colors.pokemonRed }]}>AI Assessed — Front &amp; Back</Text>
               </View>
             </View>
           )}
 
+          {/* Grade number + label */}
           <View style={gradingStyles.gradeDisplay}>
             <Text style={[gradingStyles.gradeNumber, { color: gradeColor(result.grade) }]}>
               {result.grade.toFixed(1)}
@@ -991,6 +1153,7 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
             </View>
           </View>
 
+          {/* Score breakdown */}
           <View style={[gradingStyles.breakdownRow, { borderTopColor: colors.borderLight }]}>
             {[
               { label: "Centering", score: result.breakdown.centering },
@@ -1005,6 +1168,69 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
             ))}
           </View>
 
+          {/* Centering overlay on front card */}
+          {frontImage && result.centeringRatios && (
+            <View style={gradingStyles.centeringSection}>
+              <Text style={[gradingStyles.findingTitle, { color: colors.text }]}>Centering Analysis</Text>
+              <View style={[gradingStyles.centeringLegendRow]}>
+                {["Top", "Bottom", "Left", "Right"].map((side, i) => {
+                  const pct = [
+                    result.centeringRatios!.topPct,
+                    result.centeringRatios!.bottomPct,
+                    result.centeringRatios!.leftPct,
+                    result.centeringRatios!.rightPct,
+                  ][i];
+                  return (
+                    <View key={side} style={gradingStyles.centeringLegendItem}>
+                      <Text style={[gradingStyles.centeringLegendPct, { color: centeringEdgeColor(pct) }]}>{pct}%</Text>
+                      <Text style={[gradingStyles.centeringLegendSide, { color: colors.textMuted }]}>{side}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <CenteringOverlay imageUri={frontImage.uri} ratios={result.centeringRatios} />
+              <Text style={[gradingStyles.centeringCaption, { color: colors.textMuted }]}>
+                Coloured bars show estimated border margins. Green = well-centred, red = off-centre.
+              </Text>
+            </View>
+          )}
+
+          {/* Detailed findings per category */}
+          {result.findings && (
+            <View style={[gradingStyles.findingsSection, { borderTopColor: colors.borderLight }]}>
+              <Text style={[gradingStyles.findingsSectionTitle, { color: colors.text }]}>Detailed Findings</Text>
+              {[
+                { key: "centering",    icon: "resize",         label: "Centering",      text: result.findings.centering },
+                { key: "corners",      icon: "triangle",       label: "Corners",         text: result.findings.corners },
+                { key: "edges",        icon: "remove",         label: "Edges",           text: result.findings.edges },
+                { key: "frontSurface", icon: "phone-portrait", label: "Front Surface",   text: result.findings.frontSurface },
+                { key: "backSurface",  icon: "phone-portrait", label: "Back Surface",    text: result.findings.backSurface },
+              ].filter((f) => f.text && f.text !== "N/A").map((f) => (
+                <View key={f.key} style={[gradingStyles.findingRow, { borderColor: colors.borderLight }]}>
+                  <View style={[gradingStyles.findingIconWrap, { backgroundColor: colors.surface }]}>
+                    <Ionicons name={f.icon as any} size={13} color={colors.pokemonRed} />
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={[gradingStyles.findingTitle, { color: colors.text }]}>{f.label}</Text>
+                    <Text style={[gradingStyles.findingText, { color: colors.textSecondary }]}>{f.text}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Professional grading comments */}
+          {result.gradingComments && (
+            <View style={[gradingStyles.commentsBox, { backgroundColor: colors.surface, borderColor: colors.pokemonRed + "30" }]}>
+              <View style={gradingStyles.commentsHeader}>
+                <MaterialCommunityIcons name="certificate-outline" size={14} color={colors.pokemonRed} />
+                <Text style={[gradingStyles.commentsTitle, { color: colors.pokemonRed }]}>Professional Assessment</Text>
+              </View>
+              <Text style={[gradingStyles.commentsText, { color: colors.textSecondary }]}>{result.gradingComments}</Text>
+            </View>
+          )}
+
+          {/* Summary note */}
           {result.aiNotes && (
             <View style={[gradingStyles.aiNotes, { backgroundColor: colors.surface }]}>
               <MaterialCommunityIcons name="robot" size={13} color={colors.textMuted} />
@@ -1015,7 +1241,7 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
           <View style={[gradingStyles.disclaimer, { backgroundColor: colors.surface }]}>
             <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
             <Text style={[gradingStyles.disclaimerText, { color: colors.textMuted }]}>
-              This is an estimated grade only. Professional grading (PSA, BGS) may differ.
+              Estimated grade only. Professional grading services (PSA, BGS, CGC) may differ.
             </Text>
           </View>
         </View>
@@ -1037,10 +1263,10 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
           <Text style={[gradingStyles.cardHint, { color: colors.textMuted }]}>
             Rate each condition from 0 (perfect) to 5 (severe damage)
           </Text>
-          <ConditionRow label="Centering" icon="resize" value={centering} onChange={setCentering} colors={colors} />
-          <ConditionRow label="Corners" icon="triangle" value={cornerDamage} onChange={setCornerDamage} colors={colors} />
-          <ConditionRow label="Edges" icon="remove" value={edgeDamage} onChange={setEdgeDamage} colors={colors} />
-          <ConditionRow label="Surface" icon="eye" value={surfaceDamage} onChange={setSurfaceDamage} colors={colors} />
+          <ConditionRow label="Centering" icon="resize"    value={centering}     onChange={setCentering}     colors={colors} />
+          <ConditionRow label="Corners"   icon="triangle"  value={cornerDamage}  onChange={setCornerDamage}  colors={colors} />
+          <ConditionRow label="Edges"     icon="remove"    value={edgeDamage}    onChange={setEdgeDamage}    colors={colors} />
+          <ConditionRow label="Surface"   icon="eye"       value={surfaceDamage} onChange={setSurfaceDamage} colors={colors} />
           <Pressable
             style={({ pressed }) => [gradingStyles.gradeBtn, { opacity: pressed ? 0.85 : 1 }]}
             onPress={handleManualGrade}
@@ -1064,59 +1290,91 @@ function GradingTool({ colors, isPremium }: { colors: ReturnType<typeof useTheme
 }
 
 const gradingStyles = StyleSheet.create({
-  scrollContent: { paddingHorizontal: 16, paddingBottom: 100, gap: 12 },
-  card: { borderRadius: 16, borderWidth: 1.5, padding: 16, gap: 14, overflow: "hidden" },
-  cardGrad: { position: "absolute", top: 0, left: 0, right: 0, height: 80 },
-  cardHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  headerBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  headerBadgeText: { fontSize: 13, fontFamily: "Outfit_700Bold" },
-  resetText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
-  cardHint: { fontSize: 12, fontFamily: "Outfit_400Regular" },
-  condRow: { gap: 8 },
-  condLabelRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  condLabel: { fontSize: 13, fontFamily: "Outfit_600SemiBold", flex: 1 },
-  condValue: { fontSize: 12, fontFamily: "Outfit_700Bold" },
-  condButtons: { flexDirection: "row", gap: 6 },
-  condBtn: { flex: 1, aspectRatio: 1, borderRadius: 8, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
-  condBtnText: { fontSize: 12, fontFamily: "Outfit_700Bold" },
-  gradeBtn: { marginTop: 4, borderRadius: 14, overflow: "hidden" },
-  gradeBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, gap: 8 },
-  gradeBtnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#FFF" },
-  resultCard: { borderRadius: 16, borderWidth: 1.5, padding: 16, gap: 0, overflow: "hidden" },
-  gradeDisplay: { flexDirection: "row", alignItems: "center", gap: 16, paddingBottom: 14 },
-  gradeNumber: { fontSize: 64, fontFamily: "Outfit_700Bold", lineHeight: 70 },
-  gradeInfo: { flex: 1, gap: 4 },
-  gradeLabel: { fontSize: 16, fontFamily: "Outfit_700Bold" },
-  gradeSubtext: { fontSize: 12, fontFamily: "Outfit_400Regular" },
-  breakdownRow: { flexDirection: "row", borderTopWidth: 1, paddingTop: 12, paddingBottom: 12, gap: 4 },
-  breakdownItem: { flex: 1, alignItems: "center", gap: 2 },
-  breakdownScore: { fontSize: 16, fontFamily: "Outfit_700Bold" },
-  breakdownLabel: { fontSize: 10, fontFamily: "Outfit_500Medium" },
-  disclaimer: { flexDirection: "row", alignItems: "flex-start", gap: 6, borderRadius: 8, padding: 10 },
-  disclaimerText: { flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", lineHeight: 16 },
-  lockWrap: { borderRadius: 16, borderWidth: 1.5, padding: 24, gap: 14, alignItems: "center", overflow: "hidden", marginHorizontal: 16 },
-  lockGradient: { position: "absolute", top: 0, left: 0, right: 0, height: 100 },
-  lockIconBg: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center" },
-  lockTitle: { fontSize: 20, fontFamily: "Outfit_700Bold" },
-  lockDesc: { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", lineHeight: 20 },
-  lockBtn: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
-  lockBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#1A1A2E" },
-  // Camera-grading styles
-  gradeImageWrap: { borderRadius: 12, overflow: "hidden", height: 220, backgroundColor: "#000" },
-  gradeImage: { width: "100%", height: "100%" },
-  gradeImageOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center", gap: 10 },
-  gradeImageOverlayText: { color: "#FFF", fontSize: 14, fontFamily: "Outfit_600SemiBold" },
-  scanBtns: { flexDirection: "row", gap: 12 },
-  scanBtn: { flex: 1 },
-  scanBtnInner: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 14, gap: 8 },
-  scanBtnText: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
-  aiBadgeRow: { flexDirection: "row" },
-  aiBadge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  aiBadgeText: { fontSize: 12, fontFamily: "Outfit_700Bold" },
-  aiNotes: { flexDirection: "row", alignItems: "flex-start", gap: 6, borderRadius: 8, padding: 10, marginTop: 8 },
-  aiNotesText: { flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", lineHeight: 16, fontStyle: "italic" },
-  manualToggle: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
-  manualToggleText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
+  scrollContent:         { paddingHorizontal: 16, paddingBottom: 100, gap: 12 },
+  card:                  { borderRadius: 16, borderWidth: 1.5, padding: 16, gap: 14, overflow: "hidden" },
+  cardGrad:              { position: "absolute", top: 0, left: 0, right: 0, height: 80 },
+  cardHeader:            { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  headerBadge:           { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  headerBadgeText:       { fontSize: 13, fontFamily: "Outfit_700Bold" },
+  resetText:             { fontSize: 13, fontFamily: "Outfit_500Medium" },
+  cardHint:              { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  // Two-panel capture
+  panelsRow:             { flexDirection: "row", gap: 12 },
+  panelWrap:             { flex: 1, gap: 6 },
+  panelLabel:            { fontSize: 12, fontFamily: "Outfit_700Bold", textAlign: "center" },
+  panelImageWrap:        { borderRadius: 10, overflow: "hidden", aspectRatio: 0.72, borderWidth: 2 },
+  panelImage:            { width: "100%", height: "100%" },
+  panelClearBtn:         { position: "absolute", top: 4, right: 4 },
+  panelTick:             { position: "absolute", bottom: 4, right: 4, width: 18, height: 18, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  panelPlaceholder:      { borderRadius: 10, aspectRatio: 0.72, borderWidth: 1.5, borderStyle: "dashed", alignItems: "center", justifyContent: "center", gap: 6 },
+  panelPlaceholderText:  { fontSize: 10, fontFamily: "Outfit_500Medium", textAlign: "center" },
+  panelBtns:             { flexDirection: "row", gap: 6 },
+  panelBtn:              { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  scanHintRow:           { flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 8, padding: 10 },
+  scanHintText:          { flex: 1, fontSize: 12, fontFamily: "Outfit_400Regular" },
+  // Grade button
+  gradeBtn:              { borderRadius: 14, overflow: "hidden" },
+  gradeBtnInner:         { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, gap: 8 },
+  gradeBtnText:          { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  // Result card
+  resultCard:            { borderRadius: 16, borderWidth: 1.5, padding: 16, gap: 12, overflow: "hidden" },
+  aiBadgeRow:            { flexDirection: "row" },
+  aiBadge:               { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  aiBadgeText:           { fontSize: 12, fontFamily: "Outfit_700Bold" },
+  gradeDisplay:          { flexDirection: "row", alignItems: "center", gap: 16 },
+  gradeNumber:           { fontSize: 64, fontFamily: "Outfit_700Bold", lineHeight: 70 },
+  gradeInfo:             { flex: 1, gap: 4 },
+  gradeLabel:            { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  gradeSubtext:          { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  breakdownRow:          { flexDirection: "row", borderTopWidth: 1, paddingTop: 12, gap: 4 },
+  breakdownItem:         { flex: 1, alignItems: "center", gap: 2 },
+  breakdownScore:        { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  breakdownLabel:        { fontSize: 10, fontFamily: "Outfit_500Medium" },
+  // Centering overlay
+  centeringSection:      { gap: 8 },
+  centeringLegendRow:    { flexDirection: "row", justifyContent: "space-around" },
+  centeringLegendItem:   { alignItems: "center", gap: 2 },
+  centeringLegendPct:    { fontSize: 15, fontFamily: "Outfit_700Bold" },
+  centeringLegendSide:   { fontSize: 10, fontFamily: "Outfit_500Medium" },
+  overlayContainer:      { width: "100%", aspectRatio: 0.72, borderRadius: 10, overflow: "hidden", backgroundColor: "#000" },
+  overlayStrip:          { position: "absolute", alignItems: "center", justifyContent: "center" },
+  overlayLabel:          { color: "#FFF", fontSize: 10, fontFamily: "Outfit_700Bold", textShadowColor: "#000", textShadowRadius: 3, textShadowOffset: { width: 0, height: 0 } },
+  centeringCaption:      { fontSize: 10, fontFamily: "Outfit_400Regular", textAlign: "center" },
+  // Findings
+  findingsSection:       { borderTopWidth: 1, paddingTop: 12, gap: 10 },
+  findingsSectionTitle:  { fontSize: 14, fontFamily: "Outfit_700Bold" },
+  findingRow:            { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  findingIconWrap:       { width: 28, height: 28, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  findingTitle:          { fontSize: 12, fontFamily: "Outfit_700Bold" },
+  findingText:           { fontSize: 12, fontFamily: "Outfit_400Regular", lineHeight: 17 },
+  // Professional comments
+  commentsBox:           { borderRadius: 10, borderWidth: 1, padding: 12, gap: 6 },
+  commentsHeader:        { flexDirection: "row", alignItems: "center", gap: 6 },
+  commentsTitle:         { fontSize: 12, fontFamily: "Outfit_700Bold" },
+  commentsText:          { fontSize: 12, fontFamily: "Outfit_400Regular", lineHeight: 18 },
+  // AI notes + disclaimer
+  aiNotes:               { flexDirection: "row", alignItems: "flex-start", gap: 6, borderRadius: 8, padding: 10 },
+  aiNotesText:           { flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", lineHeight: 16, fontStyle: "italic" },
+  disclaimer:            { flexDirection: "row", alignItems: "flex-start", gap: 6, borderRadius: 8, padding: 10 },
+  disclaimerText:        { flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", lineHeight: 16 },
+  // Manual grade
+  condRow:               { gap: 8 },
+  condLabelRow:          { flexDirection: "row", alignItems: "center", gap: 6 },
+  condLabel:             { fontSize: 13, fontFamily: "Outfit_600SemiBold", flex: 1 },
+  condValue:             { fontSize: 12, fontFamily: "Outfit_700Bold" },
+  condButtons:           { flexDirection: "row", gap: 6 },
+  condBtn:               { flex: 1, aspectRatio: 1, borderRadius: 8, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
+  condBtnText:           { fontSize: 12, fontFamily: "Outfit_700Bold" },
+  manualToggle:          { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
+  manualToggleText:      { fontSize: 13, fontFamily: "Outfit_500Medium" },
+  // Premium lock
+  lockWrap:              { borderRadius: 16, borderWidth: 1.5, padding: 24, gap: 14, alignItems: "center", overflow: "hidden", marginHorizontal: 16 },
+  lockGradient:          { position: "absolute", top: 0, left: 0, right: 0, height: 100 },
+  lockIconBg:            { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center" },
+  lockTitle:             { fontSize: 20, fontFamily: "Outfit_700Bold" },
+  lockDesc:              { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", lineHeight: 20 },
+  lockBtn:               { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  lockBtnText:           { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#1A1A2E" },
 });
 
 interface ScanQuota {

@@ -5,6 +5,21 @@ export interface GradingInput {
   surfaceDamage: number;
 }
 
+export interface CenteringRatios {
+  topPct: number;
+  bottomPct: number;
+  leftPct: number;
+  rightPct: number;
+}
+
+export interface GradingFindings {
+  centering: string;
+  corners: string;
+  edges: string;
+  frontSurface: string;
+  backSurface: string;
+}
+
 export interface GradingResult {
   grade: number;
   label: string;
@@ -14,6 +29,11 @@ export interface GradingResult {
     edges: number;
     surface: number;
   };
+  aiAssessed?: boolean;
+  aiNotes?: string | null;
+  centeringRatios?: CenteringRatios | null;
+  findings?: GradingFindings | null;
+  gradingComments?: string | null;
 }
 
 export function calculateGrade(input: GradingInput): GradingResult {
@@ -21,14 +41,14 @@ export function calculateGrade(input: GradingInput): GradingResult {
 
   const centerScore = Math.max(0, 10 - centering * 2);
   const cornerScore = Math.max(0, 10 - cornerDamage * 3);
-  const edgeScore = Math.max(0, 10 - edgeDamage * 3);
+  const edgeScore   = Math.max(0, 10 - edgeDamage   * 3);
   const surfaceScore = Math.max(0, 10 - surfaceDamage * 3);
 
-  const raw = centerScore * 0.2 + cornerScore * 0.3 + edgeScore * 0.25 + surfaceScore * 0.25;
+  const raw   = centerScore * 0.2 + cornerScore * 0.3 + edgeScore * 0.25 + surfaceScore * 0.25;
   const grade = Math.round(raw * 10) / 10;
 
   let label = "Poor (1)";
-  if (grade >= 9.5) label = "Gem Mint (10)";
+  if      (grade >= 9.5) label = "Gem Mint (10)";
   else if (grade >= 9.0) label = "Mint (9)";
   else if (grade >= 8.0) label = "Near Mint-Mint (8)";
   else if (grade >= 7.0) label = "Near Mint (7)";
@@ -42,10 +62,10 @@ export function calculateGrade(input: GradingInput): GradingResult {
     grade,
     label,
     breakdown: {
-      centering: centerScore,
-      corners: cornerScore,
-      edges: edgeScore,
-      surface: surfaceScore,
+      centering:  centerScore,
+      corners:    cornerScore,
+      edges:      edgeScore,
+      surface:    surfaceScore,
     },
   };
 }
