@@ -949,6 +949,141 @@ function CreateUserModal({
   );
 }
 
+function AdminDropdown<T extends string>({
+  value,
+  options,
+  onChange,
+  colors,
+  icon,
+  style,
+}: {
+  value: T;
+  options: { value: T; label: string; icon?: string; iconLib?: "ion" | "mcc" }[];
+  onChange: (v: T) => void;
+  colors: ReturnType<typeof useThemeColors>;
+  icon?: string;
+  style?: object;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        style={[
+          {
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.borderLight,
+            borderRadius: 12,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+          },
+          style,
+        ]}
+      >
+        {selected?.iconLib === "mcc" ? (
+          <MaterialCommunityIcons
+            name={selected.icon as any}
+            size={18}
+            color={colors.pokemonRed}
+          />
+        ) : selected?.icon ? (
+          <Ionicons name={selected.icon as any} size={18} color={colors.pokemonRed} />
+        ) : icon ? (
+          <Ionicons name={icon as any} size={18} color={colors.pokemonRed} />
+        ) : null}
+        <Text
+          style={{
+            flex: 1,
+            fontSize: 14,
+            fontFamily: "Outfit_600SemiBold",
+            color: colors.text,
+          }}
+        >
+          {selected?.label ?? value}
+        </Text>
+        <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
+      </Pressable>
+
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", paddingHorizontal: 32 }}
+          onPress={() => setOpen(false)}
+        >
+          <Pressable onPress={(e) => e.stopPropagation()}>
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderRadius: 18,
+                borderWidth: 1,
+                borderColor: colors.border,
+                overflow: "hidden",
+              }}
+            >
+              {options.map((opt, idx) => {
+                const isActive = opt.value === value;
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => { onChange(opt.value); setOpen(false); }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                      paddingHorizontal: 18,
+                      paddingVertical: 14,
+                      backgroundColor: isActive ? colors.pokemonRed + "22" : "transparent",
+                      borderTopWidth: idx > 0 ? 1 : 0,
+                      borderTopColor: colors.borderLight,
+                    }}
+                  >
+                    {opt.iconLib === "mcc" ? (
+                      <MaterialCommunityIcons
+                        name={opt.icon as any}
+                        size={20}
+                        color={isActive ? colors.pokemonRed : colors.textMuted}
+                      />
+                    ) : opt.icon ? (
+                      <Ionicons
+                        name={opt.icon as any}
+                        size={20}
+                        color={isActive ? colors.pokemonRed : colors.textMuted}
+                      />
+                    ) : null}
+                    <Text
+                      style={{
+                        flex: 1,
+                        fontSize: 15,
+                        fontFamily: isActive ? "Outfit_700Bold" : "Outfit_500Medium",
+                        color: isActive ? colors.pokemonRed : colors.text,
+                      }}
+                    >
+                      {opt.label}
+                    </Text>
+                    {isActive && (
+                      <Ionicons name="checkmark" size={18} color={colors.pokemonRed} />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 export default function AdminPanelScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
@@ -1610,103 +1745,34 @@ export default function AdminPanelScreen() {
         </Pressable>
       </View>
 
-      <View style={styles.tabBar}>
-        <Pressable
-          style={[styles.tab, activeTab === "listings" && styles.tabActive]}
-          onPress={() => setActiveTab("listings")}
-        >
-          <MaterialCommunityIcons
-            name="store-outline"
-            size={18}
-            color={activeTab === "listings" ? "#FFF" : colors.textMuted}
-          />
-          <Text
-            style={[
-              styles.tabText,
-              { color: activeTab === "listings" ? "#FFF" : colors.textMuted },
-            ]}
-          >
-            Listings{pendingListingCount > 0 ? ` (${pendingListingCount})` : ""}
-          </Text>
-        </Pressable>
-        {(isSuperadminUser || isAdminUser) && (
-          <Pressable
-            style={[styles.tab, activeTab === "users" && styles.tabActive]}
-            onPress={() => setActiveTab("users")}
-          >
-            <Ionicons
-              name="people-outline"
-              size={18}
-              color={activeTab === "users" ? "#FFF" : colors.textMuted}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                { color: activeTab === "users" ? "#FFF" : colors.textMuted },
-              ]}
-            >
-              Users ({allUsers.length})
-            </Text>
-          </Pressable>
-        )}
-        <Pressable
-          style={[styles.tab, activeTab === "reports" && styles.tabActive]}
-          onPress={() => setActiveTab("reports")}
-        >
-          <Ionicons
-            name="flag-outline"
-            size={18}
-            color={activeTab === "reports" ? "#FFF" : colors.textMuted}
-          />
-          <Text
-            style={[
-              styles.tabText,
-              { color: activeTab === "reports" ? "#FFF" : colors.textMuted },
-            ]}
-          >
-            Reports {reports.filter(r => r.status === "pending").length > 0 ? `(${reports.filter(r => r.status === "pending").length})` : ""}
-          </Text>
-        </Pressable>
-        {isSuperadminUser && (
-          <Pressable
-            style={[styles.tab, activeTab === "revenue" && styles.tabActive]}
-            onPress={() => setActiveTab("revenue")}
-          >
-            <Ionicons
-              name="cash-outline"
-              size={18}
-              color={activeTab === "revenue" ? "#FFF" : colors.textMuted}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                { color: activeTab === "revenue" ? "#FFF" : colors.textMuted },
-              ]}
-            >
-              Revenue
-            </Text>
-          </Pressable>
-        )}
-        {isSuperadminUser && (
-          <Pressable
-            style={[styles.tab, activeTab === "database" && styles.tabActive]}
-            onPress={() => setActiveTab("database")}
-          >
-            <Ionicons
-              name="server-outline"
-              size={18}
-              color={activeTab === "database" ? "#FFF" : colors.textMuted}
-            />
-            <Text
-              style={[
-                styles.tabText,
-                { color: activeTab === "database" ? "#FFF" : colors.textMuted },
-              ]}
-            >
-              Database
-            </Text>
-          </Pressable>
-        )}
+      <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+        <AdminDropdown
+          value={activeTab}
+          onChange={(v) => setActiveTab(v as Tab)}
+          colors={colors}
+          options={[
+            {
+              value: "listings" as Tab,
+              label: `Listings${pendingListingCount > 0 ? ` (${pendingListingCount})` : ""}`,
+              icon: "store-outline",
+              iconLib: "mcc",
+            },
+            ...((isSuperadminUser || isAdminUser)
+              ? [{ value: "users" as Tab, label: `Users (${allUsers.length})`, icon: "people-outline" }]
+              : []),
+            {
+              value: "reports" as Tab,
+              label: `Reports${reports.filter(r => r.status === "pending").length > 0 ? ` (${reports.filter(r => r.status === "pending").length})` : ""}`,
+              icon: "flag-outline",
+            },
+            ...(isSuperadminUser
+              ? [
+                  { value: "revenue" as Tab, label: "Revenue", icon: "cash-outline" },
+                  { value: "database" as Tab, label: "Database", icon: "server-outline" },
+                ]
+              : []),
+          ]}
+        />
       </View>
 
       {activeTab === "listings" && (
@@ -1730,38 +1796,18 @@ export default function AdminPanelScreen() {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View style={{ gap: 10 }}>
-              <View style={{ flexDirection: "row", gap: 6 }}>
-                {(["pending", "approved", "rejected", "all"] as const).map((f) => {
-                  const active = listingFilter === f;
-                  return (
-                    <Pressable
-                      key={f}
-                      onPress={() => setListingFilter(f)}
-                      style={{
-                        flex: 1,
-                        paddingVertical: 8,
-                        borderRadius: 8,
-                        alignItems: "center",
-                        backgroundColor: active ? colors.pokemonBlue : colors.surface,
-                        borderWidth: 1,
-                        borderColor: active ? colors.pokemonBlue : colors.borderLight,
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          fontFamily: "Outfit_700Bold",
-                          color: active ? "#FFF" : colors.textSecondary,
-                          textTransform: "uppercase",
-                          letterSpacing: 0.5,
-                        }}
-                      >
-                        {f}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <AdminDropdown
+                value={listingFilter}
+                onChange={(v) => setListingFilter(v as typeof listingFilter)}
+                colors={colors}
+                icon="filter-outline"
+                options={[
+                  { value: "pending" as typeof listingFilter, label: "Pending", icon: "time-outline" },
+                  { value: "approved" as typeof listingFilter, label: "Approved", icon: "checkmark-circle-outline" },
+                  { value: "rejected" as typeof listingFilter, label: "Rejected", icon: "close-circle-outline" },
+                  { value: "all" as typeof listingFilter, label: "All Listings", icon: "list-outline" },
+                ]}
+              />
               {adminListings.length > 0 && (
                 <View style={[styles.summaryBar, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
                   <View style={styles.summaryItem}>
@@ -2380,31 +2426,33 @@ export default function AdminPanelScreen() {
 
             {adminSets.length > 0 && (
               <>
-                <View style={{ flexDirection: "row", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-                  {(["all", "visible", "hidden"] as const).map(f => (
-                    <Pressable
-                      key={f}
-                      style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: setFilter === f ? "#8E24AA" : colors.background, borderWidth: 1, borderColor: setFilter === f ? "#8E24AA" : colors.border }}
-                      onPress={() => setSetFilter(f)}
-                    >
-                      <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: setFilter === f ? "#FFF" : colors.textMuted }}>
-                        {f === "all" ? `All (${adminSets.length})` : f === "hidden" ? `Hidden (${adminSets.filter(s => s.hidden).length})` : `Visible (${adminSets.filter(s => !s.hidden).length})`}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <View style={{ flexDirection: "row", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-                  {["all", "english", "japanese", "korean", "chinese"].map(lang => (
-                    <Pressable
-                      key={lang}
-                      style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: setLangFilter === lang ? "#1565C0" : colors.background, borderWidth: 1, borderColor: setLangFilter === lang ? "#1565C0" : colors.border }}
-                      onPress={() => setSetLangFilter(lang)}
-                    >
-                      <Text style={{ fontSize: 11, fontFamily: "Outfit_500Medium", color: setLangFilter === lang ? "#FFF" : colors.textMuted }}>
-                        {lang === "all" ? "All Langs" : lang.charAt(0).toUpperCase() + lang.slice(1)}
-                      </Text>
-                    </Pressable>
-                  ))}
+                <View style={{ flexDirection: "row", gap: 8, marginBottom: 10 }}>
+                  <AdminDropdown
+                    value={setFilter}
+                    onChange={(v) => setSetFilter(v as typeof setFilter)}
+                    colors={colors}
+                    icon="eye-outline"
+                    style={{ flex: 1 }}
+                    options={[
+                      { value: "all" as typeof setFilter, label: `All (${adminSets.length})`, icon: "list-outline" },
+                      { value: "visible" as typeof setFilter, label: `Visible (${adminSets.filter(s => !s.hidden).length})`, icon: "eye-outline" },
+                      { value: "hidden" as typeof setFilter, label: `Hidden (${adminSets.filter(s => s.hidden).length})`, icon: "eye-off-outline" },
+                    ]}
+                  />
+                  <AdminDropdown
+                    value={setLangFilter}
+                    onChange={(v) => setSetLangFilter(v)}
+                    colors={colors}
+                    icon="language-outline"
+                    style={{ flex: 1 }}
+                    options={[
+                      { value: "all", label: "All Langs", icon: "globe-outline" },
+                      { value: "english", label: "English", icon: "language-outline" },
+                      { value: "japanese", label: "Japanese", icon: "language-outline" },
+                      { value: "korean", label: "Korean", icon: "language-outline" },
+                      { value: "chinese", label: "Chinese", icon: "language-outline" },
+                    ]}
+                  />
                 </View>
 
                 {filteredAdminSets.length > 0 && (
@@ -2611,24 +2659,6 @@ const styles = StyleSheet.create({
   },
   staffBadgeText: { fontSize: 12, fontFamily: "Outfit_700Bold", color: "#FFF" },
   logoutBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
-  tabBar: {
-    flexDirection: "row",
-    marginHorizontal: 20,
-    marginBottom: 12,
-    gap: 8,
-  },
-  tab: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-  tabActive: { backgroundColor: "#E74C3C" },
-  tabText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
   listContent: { paddingHorizontal: 20 },
   summaryBar: {
     flexDirection: "row",
