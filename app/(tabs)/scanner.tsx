@@ -2380,7 +2380,7 @@ export default function ScannerScreen() {
                             Share.share({
                               message: parts.join(" · "),
                               title: item.cardName,
-                            });
+                            }).catch(() => {});
                           }}
                         >
                           <Ionicons name="share-outline" size={15} color={colors.textSecondary} />
