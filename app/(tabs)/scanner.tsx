@@ -58,33 +58,17 @@ function formatTimeAgo(isoString: string): string {
   return `${days}d ago`;
 }
 
-/**
- * Maps a screen-space frame rect to pixel coordinates in the captured photo,
- * accounting for the camera preview's cover-mode scaling/cropping.
- */
-function computeCropRect(
-  photoW: number, photoH: number,
-  screenW: number, screenH: number,
-  frameX: number, frameY: number,
-  frameW: number, frameH: number
-): { originX: number; originY: number; width: number; height: number } {
-  const photoAspect = photoW / photoH;
-  const screenAspect = screenW / screenH;
-  let visW: number, visH: number, offX: number, offY: number;
-  if (photoAspect > screenAspect) {
-    visH = photoH; visW = photoH * screenAspect;
-    offX = (photoW - visW) / 2; offY = 0;
-  } else {
-    visW = photoW; visH = photoW / screenAspect;
-    offX = 0; offY = (photoH - visH) / 2;
-  }
-  const sx = visW / screenW;
-  const sy = visH / screenH;
-  const x = Math.max(0, Math.round(offX + frameX * sx));
-  const y = Math.max(0, Math.round(offY + frameY * sy));
-  const w = Math.min(photoW - x, Math.round(frameW * sx));
-  const h = Math.min(photoH - y, Math.round(frameH * sy));
-  return { originX: x, originY: y, width: w, height: h };
+/** Resize a photo URI to at most maxDim on the longer side and return base64. */
+async function resizeForAI(uri: string, w: number, h: number, maxDim = 1500): Promise<{ uri: string; base64: string | undefined }> {
+  const scale = Math.min(maxDim / w, maxDim / h, 1);
+  const actions: ImageManipulator.Action[] = scale < 1
+    ? [{ resize: { width: Math.round(w * scale), height: Math.round(h * scale) } }]
+    : [];
+  const result = await ImageManipulator.manipulateAsync(
+    uri, actions,
+    { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+  );
+  return { uri: result.uri, base64: result.base64 ?? undefined };
 }
 
 function ScannerCameraModal({
@@ -111,15 +95,10 @@ function ScannerCameraModal({
     if (!cameraRef.current || isCapturing) return;
     setIsCapturing(true);
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: false });
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.92, base64: false });
       if (photo) {
-        const crop = computeCropRect(photo.width, photo.height, sw, sh, dimSideW, dimTopH, frameW, frameH);
-        const cropped = await ImageManipulator.manipulateAsync(
-          photo.uri,
-          [{ crop }],
-          { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-        );
-        onCapture(cropped.uri, cropped.base64 ?? undefined);
+        const resized = await resizeForAI(photo.uri, photo.width, photo.height);
+        onCapture(resized.uri, resized.base64);
         onClose();
       }
     } catch (e) {
@@ -199,7 +178,7 @@ function NumberStripCameraModal({
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [isCapturing, setIsCapturing] = useState(false);
-  const { width: sw, height: sh } = useWindowDimensions();
+  const { width: sw } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
   const frameW = sw * 0.92;
@@ -211,17 +190,8 @@ function NumberStripCameraModal({
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.92, base64: false });
       if (photo) {
-        const bottomRowH = 140 + insets.bottom;
-        const availH = sh - bottomRowH;
-        const frameLeft = (sw - frameW) / 2;
-        const frameTop = (availH - frameH) / 2;
-        const crop = computeCropRect(photo.width, photo.height, sw, sh, frameLeft, frameTop, frameW, frameH);
-        const cropped = await ImageManipulator.manipulateAsync(
-          photo.uri,
-          [{ crop }],
-          { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-        );
-        onCapture(cropped.uri, cropped.base64 ?? undefined);
+        const resized = await resizeForAI(photo.uri, photo.width, photo.height);
+        onCapture(resized.uri, resized.base64);
         onClose();
       }
     } catch (e) {
