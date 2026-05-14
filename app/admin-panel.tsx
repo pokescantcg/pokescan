@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   StyleSheet,
   StyleProp,
@@ -2083,6 +2084,28 @@ export default function AdminPanelScreen() {
   const [adminListingsLoading, setAdminListingsLoading] = useState(false);
   const [listingFilter, setListingFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
   const [reportFilter, setReportFilter] = useState<"pending" | "reviewed" | "dismissed" | "all">("pending");
+
+  useEffect(() => {
+    AsyncStorage.getItem("admin_listing_filter").then((val) => {
+      if (val === "pending" || val === "approved" || val === "rejected" || val === "all") {
+        setListingFilter(val);
+      }
+    }).catch(() => {});
+    AsyncStorage.getItem("admin_report_filter").then((val) => {
+      if (val === "pending" || val === "reviewed" || val === "dismissed" || val === "all") {
+        setReportFilter(val);
+      }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem("admin_listing_filter", listingFilter).catch(() => {});
+  }, [listingFilter]);
+
+  useEffect(() => {
+    AsyncStorage.setItem("admin_report_filter", reportFilter).catch(() => {});
+  }, [reportFilter]);
+
   const [selectedListing, setSelectedListing] = useState<MarketListing | null>(null);
   const [moderationAction, setModerationAction] = useState<{ listing: MarketListing; status: "approved" | "rejected" } | null>(null);
   const [moderationNote, setModerationNote] = useState("");
