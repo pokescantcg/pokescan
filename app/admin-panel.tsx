@@ -749,11 +749,71 @@ function UserRow({
   onUnban?: () => void;
   friendStatus?: "none" | "pending" | "friends";
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const bannedUntil = (profile as any).bannedUntil as string | Date | null | undefined;
   const isBanned = !!(bannedUntil && new Date(bannedUntil as any) > new Date());
   const banReason = (profile as any).banReason as string | null | undefined;
   const roleColor = profile.role === "admin" ? "#E74C3C" : profile.role === "moderator" ? "#E67E22" : colors.textMuted;
   const isSuperadminAccount = profile.username === "superadmin";
+  const canAct = (isSuperadmin || isStaff) && !isSuperadminAccount && !isCurrentUser;
+
+  type MenuItem = { label: string; icon: React.ComponentProps<typeof Ionicons>["name"]; color?: string; onPress: () => void };
+
+  const menuItems: MenuItem[] = [];
+
+  if (canAct) {
+    if (isBanned) {
+      menuItems.push({ label: "Unban User", icon: "lock-open-outline", color: colors.success, onPress: () => { setMenuOpen(false); onUnban?.(); } });
+    } else {
+      menuItems.push({ label: "Ban / Mute", icon: "hand-left-outline", color: colors.error, onPress: () => { setMenuOpen(false); onBan?.(); } });
+    }
+
+    if (isSuperadmin) {
+      menuItems.push({ label: "Edit Account", icon: "pencil-outline", color: colors.pokemonYellow, onPress: () => { setMenuOpen(false); onEdit(); } });
+
+      const roleOptions: { label: string; role: UserRole }[] = [
+        { label: "Regular User", role: "user" },
+        { label: "Moderator", role: "moderator" },
+        { label: "Full Admin", role: "admin" },
+      ];
+      menuItems.push({
+        label: "Change Role",
+        icon: "shield-outline",
+        color: colors.accent,
+        onPress: () => {
+          setMenuOpen(false);
+          const currentLabel = roleOptions.find((o) => o.role === profile.role)?.label || "User";
+          Alert.alert("Change Role", `Current: ${currentLabel}\n\nSet ${profile.displayName} as:`, [
+            ...roleOptions.filter((o) => o.role !== profile.role).map((o) => ({ text: o.label, onPress: () => onChangeRole(o.role) })),
+            { text: "Cancel", style: "cancel" as const },
+          ]);
+        },
+      });
+
+      if (profile.isPremium) {
+        menuItems.push({ label: "Revoke Premium", icon: "close-circle-outline", color: colors.error, onPress: () => { setMenuOpen(false); onTogglePremium(); } });
+      } else {
+        menuItems.push({ label: "Grant Premium", icon: "diamond-outline", color: colors.success, onPress: () => { setMenuOpen(false); onTogglePremium(); } });
+      }
+
+      if (onAddFriend && friendStatus === "none") {
+        menuItems.push({ label: "Add Friend", icon: "person-add-outline", color: colors.success, onPress: () => { setMenuOpen(false); onAddFriend(); } });
+      }
+
+      menuItems.push({
+        label: "Delete User",
+        icon: "trash-outline",
+        color: "#E74C3C",
+        onPress: () => {
+          setMenuOpen(false);
+          Alert.alert("Delete User", `Permanently delete ${profile.displayName} (@${profile.username})? This cannot be undone.`, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Delete", style: "destructive", onPress: onDelete },
+          ]);
+        },
+      });
+    }
+  }
 
   return (
     <View style={[styles.userRow, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
@@ -775,6 +835,16 @@ function UserRow({
           {isSuperadminAccount && (
             <View style={[styles.youBadge, { backgroundColor: "#E74C3C" }]}>
               <Text style={styles.youBadgeText}>OWNER</Text>
+            </View>
+          )}
+          {friendStatus === "friends" && (
+            <View style={[styles.youBadge, { backgroundColor: colors.success }]}>
+              <Text style={styles.youBadgeText}>FRIENDS</Text>
+            </View>
+          )}
+          {friendStatus === "pending" && (
+            <View style={[styles.youBadge, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.youBadgeText, { color: colors.textMuted }]}>PENDING</Text>
             </View>
           )}
         </View>
@@ -811,112 +881,55 @@ function UserRow({
           </Text>
         )}
       </View>
-      {(isSuperadmin || isStaff) && !isSuperadminAccount && (
-        <View style={styles.userActions}>
-          {!isCurrentUser && onAddFriend && friendStatus === "none" && isSuperadmin && (
-            <Pressable
-              style={[styles.actionBtn, { backgroundColor: "rgba(46,204,113,0.15)" }]}
-              onPress={onAddFriend}
-            >
-              <Ionicons name="person-add-outline" size={15} color={colors.success} />
-            </Pressable>
-          )}
-          {friendStatus === "pending" && isSuperadmin && (
-            <View style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.05)" }]}>
-              <Ionicons name="hourglass-outline" size={15} color={colors.textMuted} />
-            </View>
-          )}
-          {friendStatus === "friends" && isSuperadmin && (
-            <View style={[styles.actionBtn, { backgroundColor: "rgba(46,204,113,0.15)" }]}>
-              <Ionicons name="people" size={15} color={colors.success} />
-            </View>
-          )}
-          {!isCurrentUser && profile.role === "user" && (
-            isBanned ? (
-              <Pressable
-                style={[styles.actionBtn, { backgroundColor: "rgba(46,204,113,0.15)" }]}
-                onPress={onUnban}
-              >
-                <Ionicons name="lock-open-outline" size={15} color={colors.success} />
-              </Pressable>
-            ) : (
-              <Pressable
-                style={[styles.actionBtn, { backgroundColor: "rgba(231,76,60,0.15)" }]}
-                onPress={onBan}
-              >
-                <Ionicons name="hand-left-outline" size={15} color={colors.error} />
-              </Pressable>
-            )
-          )}
-          {isSuperadmin && (
-            <>
-              <Pressable
-                style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
-                onPress={onEdit}
-              >
-                <Ionicons name="pencil-outline" size={15} color={colors.pokemonYellow} />
-              </Pressable>
-              <Pressable
-                style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
-                onPress={() => {
-                  const options: { label: string; role: UserRole }[] = [
-                    { label: "Regular User", role: "user" },
-                    { label: "Moderator", role: "moderator" },
-                    { label: "Full App Admin", role: "admin" },
-                  ];
-                  const currentRoleLabel = options.find((o) => o.role === profile.role)?.label || "User";
-                  Alert.alert(
-                    "Set Role",
-                    `Current role: ${currentRoleLabel}\n\nChoose a new role for ${profile.displayName}:`,
-                    [
-                      ...options
-                        .filter((o) => o.role !== profile.role)
-                        .map((o) => ({
-                          text: o.label,
-                          onPress: () => onChangeRole(o.role),
-                        })),
-                      { text: "Cancel", style: "cancel" as const },
-                    ]
-                  );
-                }}
-              >
-                <Ionicons name="shield-outline" size={15} color={colors.accent} />
-              </Pressable>
-              {profile.role === "user" && (
+
+      {canAct && menuItems.length > 0 && (
+        <View>
+          <Pressable
+            onPress={() => setMenuOpen((o) => !o)}
+            style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border }}
+          >
+            <Ionicons name="ellipsis-vertical" size={18} color={colors.text} />
+          </Pressable>
+          {menuOpen && (
+            <View style={{
+              position: "absolute",
+              top: 40,
+              right: 0,
+              backgroundColor: colors.card,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              minWidth: 180,
+              zIndex: 999,
+              shadowColor: "#000",
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.25,
+              shadowRadius: 8,
+              elevation: 8,
+              overflow: "hidden",
+            }}>
+              {menuItems.map((item, idx) => (
                 <Pressable
-                  style={[
-                    styles.actionBtn,
-                    {
-                      backgroundColor: profile.isPremium
-                        ? "rgba(231, 76, 60, 0.15)"
-                        : "rgba(46, 204, 113, 0.15)",
-                    },
-                  ]}
-                  onPress={onTogglePremium}
+                  key={item.label}
+                  onPress={item.onPress}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    backgroundColor: pressed ? colors.surface : "transparent",
+                    borderTopWidth: idx > 0 ? 1 : 0,
+                    borderTopColor: colors.borderLight,
+                  })}
                 >
-                  <Ionicons
-                    name={profile.isPremium ? "close-circle" : "diamond"}
-                    size={15}
-                    color={profile.isPremium ? colors.error : colors.success}
-                  />
+                  <Ionicons name={item.icon} size={16} color={item.color || colors.text} />
+                  <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 14, color: item.color || colors.text }}>
+                    {item.label}
+                  </Text>
                 </Pressable>
-              )}
-              <Pressable
-                style={[styles.actionBtn, { backgroundColor: "rgba(231,76,60,0.15)" }]}
-                onPress={() =>
-                  Alert.alert(
-                    "Delete User",
-                    `Permanently delete ${profile.displayName} (@${profile.username})? This cannot be undone.`,
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      { text: "Delete", style: "destructive", onPress: onDelete },
-                    ]
-                  )
-                }
-              >
-                <Ionicons name="trash-outline" size={15} color="#E74C3C" />
-              </Pressable>
-            </>
+              ))}
+            </View>
           )}
         </View>
       )}

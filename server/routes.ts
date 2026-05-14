@@ -139,7 +139,12 @@ async function buildSetReferencePrompt(): Promise<string> {
     const lines: string[] = [
       "KNOWN SETS DATABASE (use this to identify the exact set from what you read on the card):",
       "Format: setCode|setName|printedTotal|year",
-      "TIP: The denominator in a collector number (e.g. the 198 in '025/198') matches printedTotal exactly.",
+      "",
+      "MATCHING PRIORITY — use this order:",
+      "1. SET CODE on card: Many cards print a short set code in the bottom-left corner right before or alongside the collector number (e.g. 'A5C', 'A3a', 'SV09', 'SWSH', 'XY'). Read it carefully — it matches the setCode column exactly. This is the most reliable identifier.",
+      "2. COLLECTOR NUMBER DENOMINATOR: The number after the slash (e.g. 217 in '276/217') usually matches printedTotal exactly. Find the set where printedTotal equals this number.",
+      "3. SET SYMBOL + VISUAL CUES: Use the set symbol icon and card design era as a secondary confirmation only.",
+      "IMPORTANT: Never guess based on card art alone. If you can read a set code like 'A5C', 'A3a', 'B3a', 'SV09' on the card, look it up in the database below and use that set. Do not override a clearly read set code with a guess based on aesthetics.",
       "",
       "[ENGLISH]",
       ...byLang.english.map(fmt),
@@ -153,7 +158,7 @@ async function buildSetReferencePrompt(): Promise<string> {
       "[CHINESE]",
       ...byLang.chinese.map(fmt),
       "",
-      "When reporting setName, use the human-readable name column (not the code). If the card number denominator matches a printedTotal exactly, use that set — do not guess.",
+      "When reporting setName, use the human-readable name column (not the code). Match by set code first, then by collector number denominator, then by visual cues.",
     ];
 
     _setRefCache = lines.join("\n");
@@ -370,10 +375,10 @@ async function seedSuperadmin(): Promise<void> {
       if (Object.keys(updates).length > 0) {
         await storage.updateUser(existing.id, updates);
       }
-      if (!existing.passwordHash && initialPassword) {
+      if (initialPassword) {
         const hash = await bcrypt.hash(initialPassword, 10);
         await storage.setPassword(existing.id, hash);
-        console.log("[seedSuperadmin] Set initial password for superadmin:", email);
+        console.log("[seedSuperadmin] Synced password for superadmin:", email);
       }
       if (Object.keys(updates).length > 0) {
         console.log("[seedSuperadmin] Updated superadmin user:", email, Object.keys(updates));
