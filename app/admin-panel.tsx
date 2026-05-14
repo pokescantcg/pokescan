@@ -1863,6 +1863,7 @@ export default function AdminPanelScreen() {
   const [adminListings, setAdminListings] = useState<MarketListing[]>([]);
   const [adminListingsLoading, setAdminListingsLoading] = useState(false);
   const [listingFilter, setListingFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
+  const [reportFilter, setReportFilter] = useState<"pending" | "reviewed" | "dismissed" | "all">("pending");
   const [selectedListing, setSelectedListing] = useState<MarketListing | null>(null);
   const [moderationAction, setModerationAction] = useState<{ listing: MarketListing; status: "approved" | "rejected" } | null>(null);
   const [moderationNote, setModerationNote] = useState("");
@@ -2786,37 +2787,51 @@ export default function AdminPanelScreen() {
 
       {activeTab === "reports" && (
         <FlatList
-          data={reports}
+          data={reportFilter === "all" ? reports : reports.filter(r => r.status === reportFilter)}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
           onRefresh={loadReports}
           refreshing={reportsLoading}
           ListHeaderComponent={
-            reports.length > 0 ? (
-              <View style={[styles.summaryBar, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryValue, { color: colors.pokemonRed }]}>
-                    {reports.filter(r => r.status === "pending").length}
-                  </Text>
-                  <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Pending</Text>
+            <View style={{ gap: 10 }}>
+              <AdminDropdown
+                value={reportFilter}
+                onChange={(v) => setReportFilter(v as typeof reportFilter)}
+                colors={colors}
+                icon="filter-outline"
+                options={[
+                  { value: "pending" as typeof reportFilter, label: "Pending", icon: "time-outline" },
+                  { value: "reviewed" as typeof reportFilter, label: "Reviewed", icon: "checkmark-circle-outline" },
+                  { value: "dismissed" as typeof reportFilter, label: "Dismissed", icon: "close-circle-outline" },
+                  { value: "all" as typeof reportFilter, label: "All Reports", icon: "list-outline" },
+                ]}
+              />
+              {reports.length > 0 && (
+                <View style={[styles.summaryBar, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
+                  <View style={styles.summaryItem}>
+                    <Text style={[styles.summaryValue, { color: colors.pokemonRed }]}>
+                      {reports.filter(r => r.status === "pending").length}
+                    </Text>
+                    <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Pending</Text>
+                  </View>
+                  <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.summaryItem}>
+                    <Text style={[styles.summaryValue, { color: colors.success }]}>
+                      {reports.filter(r => r.status === "reviewed").length}
+                    </Text>
+                    <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Reviewed</Text>
+                  </View>
+                  <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.summaryItem}>
+                    <Text style={[styles.summaryValue, { color: colors.textMuted }]}>
+                      {reports.filter(r => r.status === "dismissed").length}
+                    </Text>
+                    <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Dismissed</Text>
+                  </View>
                 </View>
-                <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryValue, { color: colors.success }]}>
-                    {reports.filter(r => r.status === "reviewed").length}
-                  </Text>
-                  <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Reviewed</Text>
-                </View>
-                <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
-                <View style={styles.summaryItem}>
-                  <Text style={[styles.summaryValue, { color: colors.textMuted }]}>
-                    {reports.filter(r => r.status === "dismissed").length}
-                  </Text>
-                  <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Dismissed</Text>
-                </View>
-              </View>
-            ) : null
+              )}
+            </View>
           }
           ListEmptyComponent={
             reportsLoading ? (
@@ -2827,8 +2842,12 @@ export default function AdminPanelScreen() {
             ) : (
               <View style={styles.emptyContainer}>
                 <Ionicons name="shield-checkmark-outline" size={56} color={colors.textMuted} />
-                <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No Reports</Text>
-                <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>No content reports to review</Text>
+                <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
+                  {reportFilter === "all" ? "No Reports" : `No ${reportFilter.charAt(0).toUpperCase() + reportFilter.slice(1)} Reports`}
+                </Text>
+                <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
+                  {reportFilter === "pending" ? "No content reports to review" : `No ${reportFilter} reports to display`}
+                </Text>
               </View>
             )
           }
