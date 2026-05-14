@@ -1704,7 +1704,7 @@ export default function ScannerScreen() {
           </View>
           <Pressable
             style={[styles.retakeBtn, { backgroundColor: colors.pokemonRed }]}
-            onPress={() => { clearAll(); }}
+            onPress={() => { clearAll(); handleCameraCapture(); }}
           >
             <Ionicons name="camera" size={15} color="#FFF" />
             <Text style={styles.retakeBtnText}>Retake Photo</Text>
@@ -1954,16 +1954,18 @@ export default function ScannerScreen() {
           </View>
 
           {!capturedImage && !identification && (
-            <View style={[styles.alignmentGuide, { borderColor: colors.pokemonRed + "50", backgroundColor: colors.surface }]}>
-              <View style={styles.alignmentFrame}>
-                <View style={[styles.alignCorner, styles.alignTL, { borderColor: colors.pokemonRed }]} />
-                <View style={[styles.alignCorner, styles.alignTR, { borderColor: colors.pokemonRed }]} />
-                <View style={[styles.alignCorner, styles.alignBL, { borderColor: colors.pokemonRed }]} />
-                <View style={[styles.alignCorner, styles.alignBR, { borderColor: colors.pokemonRed }]} />
-                <View style={styles.alignInner}>
-                  <MaterialCommunityIcons name="card-outline" size={28} color={colors.pokemonRed + "60"} />
-                  <Text style={[styles.alignLabel, { color: colors.textMuted }]}>Align card within the frame</Text>
-                  <Text style={[styles.alignSub, { color: colors.textMuted + "90" }]}>Fill the frame · Good lighting · Hold steady</Text>
+            <View style={[styles.alignmentGuide, { backgroundColor: colors.surface }]}>
+              <View style={styles.alignmentFrameOuter}>
+                <View style={[styles.alignmentFrame, { borderColor: colors.pokemonRed + "70" }]}>
+                  <View style={[styles.alignCorner, styles.alignTL, { borderColor: colors.pokemonRed }]} />
+                  <View style={[styles.alignCorner, styles.alignTR, { borderColor: colors.pokemonRed }]} />
+                  <View style={[styles.alignCorner, styles.alignBL, { borderColor: colors.pokemonRed }]} />
+                  <View style={[styles.alignCorner, styles.alignBR, { borderColor: colors.pokemonRed }]} />
+                  <View style={styles.alignInner}>
+                    <MaterialCommunityIcons name="card-outline" size={24} color={colors.pokemonRed + "60"} />
+                    <Text style={[styles.alignLabel, { color: colors.textMuted }]}>Align card within the frame</Text>
+                    <Text style={[styles.alignSub, { color: colors.textMuted }]}>Fill the frame · Good lighting · Hold steady</Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -2332,15 +2334,21 @@ const styles = StyleSheet.create({
   retakeBtnText: { fontSize: 13, fontFamily: "Outfit_700Bold", color: "#FFF" },
   alignmentGuide: {
     borderRadius: 14,
-    borderWidth: 1,
     padding: 12,
+    alignItems: "center",
+  },
+  alignmentFrameOuter: {
+    width: "70%",
+    aspectRatio: 3 / 4,
   },
   alignmentFrame: {
-    position: "relative",
-    height: 100,
-    borderRadius: 10,
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
     justifyContent: "center",
     alignItems: "center",
+    position: "relative",
   },
   alignCorner: {
     position: "absolute",
