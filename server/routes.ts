@@ -35,7 +35,7 @@ import {
   pokescanChatroomMessages,
   pokescanAdminActivityLog,
 } from "@shared/schema";
-import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt } from "drizzle-orm";
+import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt, inArray } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
 
 async function cleanupOldChatroomMessages() {
@@ -4223,6 +4223,36 @@ Return ONLY valid JSON in exactly this format:
     const [updated] = await db.update(pokemonSets).set(updates).where(eq(pokemonSets.id, id)).returning();
     if (!updated) { res.status(404).json({ error: "Set not found" }); return; }
     res.json({ set: updated });
+  });
+
+  app.delete("/api/admin/db/cards/:id", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const { id } = req.params;
+    const existing = await db.select({ id: pokemonCards.id }).from(pokemonCards).where(eq(pokemonCards.id, id)).limit(1);
+    if (existing.length === 0) { res.status(404).json({ error: "Card not found" }); return; }
+    await db.transaction(async (tx) => {
+      await tx.delete(cardPricing).where(eq(cardPricing.cardId, id));
+      await tx.delete(ebayPrices).where(eq(ebayPrices.cardId, id));
+      await tx.delete(pokemonCards).where(eq(pokemonCards.id, id));
+    });
+    res.json({ success: true });
+  });
+
+  app.delete("/api/admin/db/sets/:id", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const { id } = req.params;
+    const existing = await db.select({ id: pokemonSets.id }).from(pokemonSets).where(eq(pokemonSets.id, id)).limit(1);
+    if (existing.length === 0) { res.status(404).json({ error: "Set not found" }); return; }
+    await db.transaction(async (tx) => {
+      const cardIds = (await tx.select({ id: pokemonCards.id }).from(pokemonCards).where(eq(pokemonCards.setId, id))).map(r => r.id);
+      if (cardIds.length > 0) {
+        await tx.delete(cardPricing).where(inArray(cardPricing.cardId, cardIds));
+        await tx.delete(ebayPrices).where(inArray(ebayPrices.cardId, cardIds));
+        await tx.delete(pokemonCards).where(eq(pokemonCards.setId, id));
+      }
+      await tx.delete(pokemonSets).where(eq(pokemonSets.id, id));
+    });
+    res.json({ success: true });
   });
 
   const httpServer = createServer(app);

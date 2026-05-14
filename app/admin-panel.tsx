@@ -249,6 +249,18 @@ const editStyles = StyleSheet.create({
     gap: 6,
   },
   saveBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  deleteBtn: {
+    width: "100%",
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: "#B71C1C",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 10,
+  },
+  deleteBtnText: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
 });
 
 type Tab = "listings" | "users" | "reports" | "revenue" | "database" | "logs";
@@ -1154,12 +1166,14 @@ function EditCardModal({
   visible,
   onClose,
   onSaved,
+  onDeleted,
 }: {
   card: DbCard | null;
   colors: ReturnType<typeof useThemeColors>;
   visible: boolean;
   onClose: () => void;
   onSaved: (updated: DbCard) => void;
+  onDeleted: (id: string) => void;
 }) {
   const [setNameVal, setSetNameVal] = useState("");
   const [name, setName] = useState("");
@@ -1173,6 +1187,7 @@ function EditCardModal({
   const [artist, setArtist] = useState("");
   const [hp, setHp] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   React.useEffect(() => {
     if (card) {
@@ -1225,6 +1240,35 @@ function EditCardModal({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (!card) return;
+    Alert.alert(
+      "Delete Card",
+      `Are you sure you want to permanently delete "${card.name}"? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete", style: "destructive", onPress: async () => {
+            setDeleting(true);
+            try {
+              const headers = await requireAdminAuthHeader();
+              const url = new URL(`/api/admin/db/cards/${card.id}`, getApiUrl()).toString();
+              const res = await fetch(url, { method: "DELETE", headers });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || "Failed to delete card");
+              onDeleted(card.id);
+              onClose();
+            } catch (e: any) {
+              Alert.alert("Error", e.message || "Failed to delete card.");
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (!card) return null;
@@ -1309,6 +1353,15 @@ function EditCardModal({
                   autoCorrect={false}
                 />
 
+                <Pressable
+                  style={[editStyles.deleteBtn, (deleting || saving) && { opacity: 0.6 }]}
+                  onPress={handleDelete}
+                  disabled={deleting || saving}
+                >
+                  <Ionicons name="trash-outline" size={15} color="#FFF" />
+                  <Text style={editStyles.deleteBtnText}>{deleting ? "Deleting…" : "Delete Card"}</Text>
+                </Pressable>
+
                 <View style={[editStyles.btnRow, { marginTop: 6 }]}>
                   <Pressable style={[editStyles.cancelBtn, { borderColor: colors.border }]} onPress={onClose}>
                     <Text style={[editStyles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
@@ -1333,17 +1386,20 @@ function EditSetModal({
   visible,
   onClose,
   onSaved,
+  onDeleted,
 }: {
   set: DbSet | null;
   colors: ReturnType<typeof useThemeColors>;
   visible: boolean;
   onClose: () => void;
   onSaved: (updated: DbSet) => void;
+  onDeleted: (id: string) => void;
 }) {
   const [name, setName] = useState("");
   const [releaseDate, setReleaseDate] = useState("");
   const [hidden, setHidden] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [setCards, setSetCards] = useState<{ id: string; name: string; number: string; rarity: string | null }[]>([]);
   const [cardsLoading, setCardsLoading] = useState(false);
   const [showCards, setShowCards] = useState(false);
@@ -1405,6 +1461,35 @@ function EditSetModal({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (!set) return;
+    Alert.alert(
+      "Delete Set",
+      `Are you sure you want to permanently delete the set "${set.name}"? This will also delete all ${set.cardCount} card(s) in it. This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete", style: "destructive", onPress: async () => {
+            setDeleting(true);
+            try {
+              const headers = await requireAdminAuthHeader();
+              const url = new URL(`/api/admin/db/sets/${set.id}`, getApiUrl()).toString();
+              const res = await fetch(url, { method: "DELETE", headers });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || "Failed to delete set");
+              onDeleted(set.id);
+              onClose();
+            } catch (e: any) {
+              Alert.alert("Error", e.message || "Failed to delete set.");
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (!set) return null;
@@ -1496,6 +1581,15 @@ function EditSetModal({
                     </ScrollView>
                   </View>
                 )}
+
+                <Pressable
+                  style={[editStyles.deleteBtn, (deleting || saving) && { opacity: 0.6 }]}
+                  onPress={handleDelete}
+                  disabled={deleting || saving}
+                >
+                  <Ionicons name="trash-outline" size={15} color="#FFF" />
+                  <Text style={editStyles.deleteBtnText}>{deleting ? "Deleting…" : "Delete Set"}</Text>
+                </Pressable>
 
                 <View style={editStyles.btnRow}>
                   <Pressable style={[editStyles.cancelBtn, { borderColor: colors.border }]} onPress={onClose}>
@@ -1772,6 +1866,11 @@ function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<type
           setCards(prev => prev.map(c => c.id === updated.id ? updated : c));
           setEditingCard(null);
         }}
+        onDeleted={(id) => {
+          setCards(prev => prev.filter(c => c.id !== id));
+          setCardsTotal(prev => Math.max(0, prev - 1));
+          setEditingCard(null);
+        }}
       />
       <EditSetModal
         set={editingSet}
@@ -1780,6 +1879,11 @@ function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<type
         onClose={() => setEditingSet(null)}
         onSaved={(updated) => {
           setSets(prev => prev.map(s => s.id === updated.id ? updated : s));
+          setEditingSet(null);
+        }}
+        onDeleted={(id) => {
+          setSets(prev => prev.filter(s => s.id !== id));
+          setSetsTotal(prev => Math.max(0, prev - 1));
           setEditingSet(null);
         }}
       />
