@@ -38,7 +38,13 @@
     },
 
     "web": {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "PokeScan TCG",
+      "shortName": "PokeScan",
+      "description": "Scan, identify and track your Pokémon TCG collection with AI-powered card recognition. Browse thousands of cards, check live GBP prices, and trade on the built-in marketplace.",
+      "lang": "en",
+      "themeColor": "#CC0000",
+      "backgroundColor": "#0B1426"
     },
 
     "plugins": [
