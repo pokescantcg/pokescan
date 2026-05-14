@@ -204,7 +204,7 @@ function VerifyCardModal({
   const [front, setFront] = useState<VerifyCaptured | null>(null);
   const [back, setBack]   = useState<VerifyCaptured | null>(null);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ verified: boolean; reason: string } | null>(null);
+  const [result, setResult] = useState<{ verified: boolean; reason: string; badgeEarned?: boolean; verifiedPercent?: number } | null>(null);
 
   const capture = async (side: "front" | "back", source: "camera" | "gallery") => {
     try {
@@ -229,7 +229,12 @@ function VerifyCardModal({
         body: JSON.stringify({ frontImageBase64: front.base64, backImageBase64: back.base64 }),
       });
       const data = await res.json();
-      setResult({ verified: !!data.verified, reason: data.reason || "" });
+      setResult({
+        verified: !!data.verified,
+        reason: data.reason || "",
+        badgeEarned: !!data.badgeEarned,
+        verifiedPercent: data.verifiedPercent ?? undefined,
+      });
       if (data.verified) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         onVerified(item.id!);
@@ -321,20 +326,49 @@ function VerifyCardModal({
 
         {/* Result */}
         {result && (
-          <View style={[verifyStyles.resultBox, {
-            backgroundColor: result.verified ? "#2ECC7115" : "#E74C3C15",
-            borderColor: result.verified ? "#2ECC7160" : "#E74C3C60",
-          }]}>
-            <Ionicons name={result.verified ? "shield-checkmark" : "close-circle"} size={20} color={result.verified ? "#2ECC71" : "#E74C3C"} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, fontFamily: "Outfit_700Bold", color: result.verified ? "#2ECC71" : "#E74C3C" }}>
-                {result.verified ? "Card Verified" : "Could Not Verify"}
-              </Text>
-              <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textSecondary, marginTop: 2, lineHeight: 17 }}>
-                {result.reason}
-              </Text>
+          <>
+            <View style={[verifyStyles.resultBox, {
+              backgroundColor: result.verified ? "#2ECC7115" : "#E74C3C15",
+              borderColor: result.verified ? "#2ECC7160" : "#E74C3C60",
+            }]}>
+              <Ionicons name={result.verified ? "shield-checkmark" : "close-circle"} size={20} color={result.verified ? "#2ECC71" : "#E74C3C"} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontFamily: "Outfit_700Bold", color: result.verified ? "#2ECC71" : "#E74C3C" }}>
+                  {result.verified ? "Card Verified" : "Could Not Verify"}
+                </Text>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textSecondary, marginTop: 2, lineHeight: 17 }}>
+                  {result.reason}
+                </Text>
+              </View>
             </View>
-          </View>
+            {result.verified && result.verifiedPercent !== undefined && (
+              <View style={[verifyStyles.resultBox, { backgroundColor: "#3498DB15", borderColor: "#3498DB40" }]}>
+                <Ionicons name="analytics" size={18} color="#3498DB" />
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: "#3498DB" }}>
+                    Collection Progress: {result.verifiedPercent}% verified
+                  </Text>
+                  <View style={[verifyStyles.progressBar, { backgroundColor: "#3498DB20" }]}>
+                    <View style={[verifyStyles.progressFill, { width: `${Math.min(result.verifiedPercent, 100)}%` as any, backgroundColor: result.verifiedPercent >= 90 ? "#2ECC71" : "#3498DB" }]} />
+                  </View>
+                  <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>
+                    {result.verifiedPercent >= 90 ? "90% reached — Verified Collector badge earned!" : `Verify ${90 - result.verifiedPercent}% more to earn the Verified Collector badge`}
+                  </Text>
+                </View>
+              </View>
+            )}
+            {result.badgeEarned && (
+              <View style={[verifyStyles.resultBox, { backgroundColor: "#FFD70015", borderColor: "#FFD70060" }]}>
+                <Text style={{ fontSize: 20 }}>🏆</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontFamily: "Outfit_700Bold", color: "#FFD700" }}>Verified Collector Badge Earned!</Text>
+                  <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textSecondary, marginTop: 2 }}>
+                    You've verified 90%+ of your collection. The badge is now shown on your profile.
+                  </Text>
+                </View>
+              </View>
+            )}
+          </>
         )}
 
         {/* Verify button */}
@@ -1132,5 +1166,15 @@ const verifyStyles = StyleSheet.create({
     fontFamily: "Outfit_400Regular",
     textAlign: "center",
     lineHeight: 16,
+  },
+  progressBar: {
+    height: 6,
+    borderRadius: 3,
+    overflow: "hidden",
+    width: "100%",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 3,
   },
 });

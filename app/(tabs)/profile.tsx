@@ -492,7 +492,7 @@ export default function ProfileScreen() {
                 Get Verified Collector Badge
               </Text>
               <Text style={[styles.premiumBannerDesc, { color: colors.textMuted }]}>
-                Apply to display a verified badge on your profile
+                Verify 90%+ of your collection to earn the badge automatically
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
@@ -514,6 +514,34 @@ export default function ProfileScreen() {
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </Pressable>
+
+        {/* Community / Social */}
+        <View style={[styles.helpSection, { marginTop: 8 }]}>
+          <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>COMMUNITY</Text>
+          <View style={[styles.socialRow, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+            <Pressable
+              style={[styles.socialBtn, { borderColor: "#5865F240" }]}
+              onPress={() => Linking.openURL("https://discord.gg/pokescantcg")}
+            >
+              <View style={[styles.socialIconWrap, { backgroundColor: "#5865F220" }]}>
+                <MaterialCommunityIcons name="discord" size={22} color="#5865F2" />
+              </View>
+              <Text style={[styles.socialBtnText, { color: colors.text }]}>Discord</Text>
+              <Ionicons name="open-outline" size={14} color={colors.textMuted} />
+            </Pressable>
+            <View style={[styles.socialDivider, { backgroundColor: colors.borderLight }]} />
+            <Pressable
+              style={[styles.socialBtn, { borderColor: "#1877F240" }]}
+              onPress={() => Linking.openURL("https://facebook.com/pokescantcg")}
+            >
+              <View style={[styles.socialIconWrap, { backgroundColor: "#1877F220" }]}>
+                <MaterialCommunityIcons name="facebook" size={22} color="#1877F2" />
+              </View>
+              <Text style={[styles.socialBtnText, { color: colors.text }]}>Facebook</Text>
+              <Ionicons name="open-outline" size={14} color={colors.textMuted} />
+            </Pressable>
+          </View>
+        </View>
 
         <View style={styles.helpSection}>
           <Text style={[styles.sectionLabel, { color: colors.textMuted }]}>HELP & SUPPORT</Text>
@@ -922,6 +950,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cancelModalConfirmText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
+  socialRow: {
+    flexDirection: "row",
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  socialBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 14,
+  },
+  socialIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  socialBtnText: { flex: 1, fontSize: 14, fontFamily: "Outfit_600SemiBold" },
+  socialDivider: { width: 1 },
   helpSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
   legalSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
   sectionLabel: { fontSize: 11, fontFamily: "Outfit_600SemiBold", letterSpacing: 0.8, marginBottom: 4 },

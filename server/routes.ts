@@ -2802,20 +2802,78 @@ matches must be true or false.`;
       const parsed = JSON.parse(jsonMatch[0]);
 
       const verified = !!(parsed.matches && parsed.confidence !== "low");
+      let verifiedPercent = 0;
+      let badgeEarned = false;
       if (verified) {
         await db.execute(
           sql`UPDATE pokescan_collections SET is_verified = true, verified_at = NOW() WHERE id = ${id} AND user_id = ${user.id}`
         );
+        // Auto-grant Verified Collector badge if 90%+ of collection is now verified
+        const countRow = await db.execute(
+          sql`SELECT COUNT(*) FILTER (WHERE is_verified = true) AS verified_count, COUNT(*) AS total_count FROM pokescan_collections WHERE user_id = ${user.id}`
+        );
+        const counts = countRow.rows[0] as any;
+        const total = parseInt(counts.total_count) || 0;
+        const verifiedCount = parseInt(counts.verified_count) || 0;
+        verifiedPercent = total > 0 ? Math.round((verifiedCount / total) * 100) : 0;
+        if (total > 0 && verifiedCount / total >= 0.9) {
+          const alreadyBadged = await db.execute(sql`SELECT is_verified_collector FROM pokescan_users WHERE id = ${user.id}`);
+          if (!(alreadyBadged.rows[0] as any)?.is_verified_collector) {
+            await db.execute(sql`UPDATE pokescan_users SET is_verified_collector = true WHERE id = ${user.id}`);
+            badgeEarned = true;
+          }
+        }
       }
 
       res.json({
         verified,
         confidence: parsed.confidence || "low",
         reason: parsed.reason || "Unable to determine.",
+        verifiedPercent,
+        badgeEarned,
       });
     } catch (err: any) {
       console.error("Card verify error:", err);
       res.status(500).json({ error: "Verification failed" });
+    }
+  });
+
+  // ─── Top verified value collections ──────────────────────────────────────
+  app.get("/api/collections/top-verified", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const me = await storage.validateSession(token);
+      if (!me) { res.status(401).json({ error: "Invalid session" }); return; }
+
+      const result = await db.execute(
+        sql`SELECT u.id, u.username, u.display_name, u.avatar_url, u.is_verified_collector,
+                   COUNT(c.id) FILTER (WHERE c.is_verified = true)::int AS verified_count,
+                   COUNT(c.id)::int AS total_count,
+                   COALESCE(SUM(c.price_gbp * c.quantity) FILTER (WHERE c.is_verified = true), 0) AS verified_value
+            FROM pokescan_users u
+            JOIN pokescan_collections c ON c.user_id = u.id
+            WHERE u.collection_visible = true
+            GROUP BY u.id, u.username, u.display_name, u.avatar_url, u.is_verified_collector
+            HAVING COUNT(c.id) FILTER (WHERE c.is_verified = true) > 0
+            ORDER BY verified_value DESC
+            LIMIT 10`
+      );
+
+      const top = (result.rows as any[]).map((r) => ({
+        id: r.id,
+        username: r.username,
+        displayName: r.display_name,
+        avatarUrl: r.avatar_url || null,
+        isVerifiedCollector: r.is_verified_collector ?? false,
+        verifiedCount: r.verified_count,
+        totalCount: r.total_count,
+        verifiedValue: parseFloat(r.verified_value) || 0,
+        verifiedPercent: r.total_count > 0 ? Math.round((r.verified_count / r.total_count) * 100) : 0,
+      }));
+      res.json({ top });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || "Failed to fetch top verified" });
     }
   });
 

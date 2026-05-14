@@ -32,11 +32,39 @@ interface PublicCollector {
   totalValue: number;
 }
 
+interface TopVerified {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl?: string | null;
+  isVerifiedCollector: boolean;
+  verifiedCount: number;
+  totalCount: number;
+  verifiedValue: number;
+  verifiedPercent: number;
+}
+
+const MEDAL_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32"];
+
+function AvatarView({ item, size, colors }: { item: { avatarUrl?: string | null; displayName: string }; size: number; colors: any }) {
+  if (item.avatarUrl) {
+    return <Image source={{ uri: item.avatarUrl }} style={{ width: size, height: size, borderRadius: size / 2, overflow: "hidden" }} contentFit="cover" />;
+  }
+  return (
+    <LinearGradient colors={["#CC0000", "#8B0000"]} style={{ width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center" }}>
+      <Text style={{ fontSize: size * 0.38, fontFamily: "Outfit_700Bold", color: "#FFF" }}>{item.displayName.charAt(0).toUpperCase()}</Text>
+    </LinearGradient>
+  );
+}
+
 export default function PublicCollectionsScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+
+  const [topVerified, setTopVerified] = useState<TopVerified[]>([]);
+  const [topLoading, setTopLoading] = useState(true);
 
   const [collectors, setCollectors] = useState<PublicCollector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,15 +75,23 @@ export default function PublicCollectionsScreen() {
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const fetchTopVerified = useCallback(async () => {
+    try {
+      const token = await getSessionToken();
+      const url = new URL("/api/collections/top-verified", getApiUrl());
+      const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (res.ok) setTopVerified(data.top || []);
+    } catch {}
+  }, []);
+
   const fetchCollectors = useCallback(async (q: string, pg: number, append: boolean) => {
     try {
       const token = await getSessionToken();
       const url = new URL("/api/collections/public", getApiUrl());
       if (q) url.searchParams.set("search", q);
       url.searchParams.set("page", String(pg));
-      const res = await fetch(url.toString(), {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load");
       setCollectors((prev) => append ? [...prev, ...data.collectors] : data.collectors);
@@ -67,15 +103,20 @@ export default function PublicCollectionsScreen() {
   }, []);
 
   useEffect(() => {
+    setTopLoading(true);
+    fetchTopVerified().finally(() => setTopLoading(false));
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
     fetchCollectors(search, 1, false).finally(() => setLoading(false));
   }, [search]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchCollectors(search, 1, false);
+    await Promise.all([fetchTopVerified(), fetchCollectors(search, 1, false)]);
     setRefreshing(false);
-  }, [search, fetchCollectors]);
+  }, [search, fetchCollectors, fetchTopVerified]);
 
   const handleLoadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
@@ -87,6 +128,95 @@ export default function PublicCollectionsScreen() {
   const handleSearch = useCallback(() => {
     setSearch(searchInput.trim());
   }, [searchInput]);
+
+  const navigateToCollection = (item: { id: string; displayName: string }) => {
+    router.push({ pathname: "/friend-collection", params: { userId: item.id, displayName: item.displayName, isPublic: "true" } });
+  };
+
+  // ─── Header: top verified leaderboard ──────────────────────────────────────
+  const ListHeader = (
+    <>
+      {/* Top Verified Collections */}
+      <View style={styles.sectionHeader}>
+        <Ionicons name="trophy" size={18} color="#FFD700" />
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Top Verified Collections</Text>
+      </View>
+      <Text style={[styles.sectionSub, { color: colors.textMuted }]}>
+        Ranked by verified card value · 90%+ verified earns the Verified Collector badge
+      </Text>
+
+      {topLoading ? (
+        <ActivityIndicator color={colors.pokemonRed} style={{ marginVertical: 16 }} />
+      ) : topVerified.length === 0 ? (
+        <View style={[styles.emptyTop, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          <Ionicons name="shield-outline" size={32} color={colors.textMuted} />
+          <Text style={[styles.emptyTopText, { color: colors.textMuted }]}>No verified collections yet</Text>
+        </View>
+      ) : (
+        topVerified.map((item, index) => {
+          const medalColor = index < 3 ? MEDAL_COLORS[index] : colors.textMuted;
+          const isTop3 = index < 3;
+          return (
+            <Pressable
+              key={item.id}
+              style={({ pressed }) => [
+                styles.topRow,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: isTop3 ? medalColor + "50" : colors.borderLight,
+                  opacity: pressed ? 0.85 : 1,
+                },
+              ]}
+              onPress={() => navigateToCollection(item)}
+            >
+              {/* Rank */}
+              <View style={[styles.rankBadge, { backgroundColor: isTop3 ? medalColor + "20" : colors.surfaceElevated }]}>
+                <Text style={[styles.rankText, { color: isTop3 ? medalColor : colors.textMuted }]}>
+                  {isTop3 ? ["🥇", "🥈", "🥉"][index] : `#${index + 1}`}
+                </Text>
+              </View>
+
+              <AvatarView item={item} size={42} colors={colors} />
+
+              <View style={styles.topInfo}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                  <Text style={[styles.topName, { color: colors.text }]} numberOfLines={1}>{item.displayName}</Text>
+                  {item.isVerifiedCollector && (
+                    <Ionicons name="shield-checkmark" size={13} color="#2ECC71" />
+                  )}
+                </View>
+                <Text style={[styles.topUsername, { color: colors.textMuted }]}>@{item.username}</Text>
+                <View style={styles.topStats}>
+                  <View style={[styles.verifiedPct, { backgroundColor: "#2ECC7115" }]}>
+                    <Ionicons name="shield-checkmark" size={10} color="#2ECC71" />
+                    <Text style={[styles.verifiedPctText, { color: "#2ECC71" }]}>{item.verifiedPercent}% verified</Text>
+                  </View>
+                  <Text style={[styles.topCardCount, { color: colors.textMuted }]}>
+                    {item.verifiedCount}/{item.totalCount} cards
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.topValueCol}>
+                <Text style={[styles.topValue, { color: colors.success }]}>{formatGBP(item.verifiedValue)}</Text>
+                <Text style={[styles.topValueLabel, { color: colors.textMuted }]}>verified</Text>
+              </View>
+            </Pressable>
+          );
+        })
+      )}
+
+      {/* Divider */}
+      <View style={[styles.divider, { borderColor: colors.borderLight }]}>
+        <View style={[styles.dividerLine, { backgroundColor: colors.borderLight }]} />
+        <View style={[styles.dividerChip, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          <MaterialCommunityIcons name="account-group" size={13} color={colors.textSecondary} />
+          <Text style={[styles.dividerText, { color: colors.textSecondary }]}>All Public Collections</Text>
+        </View>
+        <View style={[styles.dividerLine, { backgroundColor: colors.borderLight }]} />
+      </View>
+    </>
+  );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -122,7 +252,7 @@ export default function PublicCollectionsScreen() {
         </View>
       </LinearGradient>
 
-      {loading ? (
+      {loading && collectors.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.pokemonRed} />
         </View>
@@ -137,6 +267,7 @@ export default function PublicCollectionsScreen() {
           }
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.3}
+          ListHeaderComponent={ListHeader}
           ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.pokemonRed} style={{ marginVertical: 12 }} /> : null}
           ListEmptyComponent={
             <View style={styles.center}>
@@ -150,24 +281,18 @@ export default function PublicCollectionsScreen() {
                 styles.collectorRow,
                 { backgroundColor: colors.card, borderColor: colors.borderLight, opacity: pressed ? 0.85 : 1 },
               ]}
-              onPress={() => router.push({ pathname: "/friend-collection", params: { userId: item.id, displayName: item.displayName, isPublic: "true" } })}
+              onPress={() => navigateToCollection(item)}
             >
-              {item.avatarUrl ? (
-                <Image source={{ uri: item.avatarUrl }} style={styles.avatar} contentFit="cover" />
-              ) : (
-                <LinearGradient colors={["#CC0000", "#8B0000"]} style={styles.avatar}>
-                  <Text style={styles.avatarText}>{item.displayName.charAt(0).toUpperCase()}</Text>
-                </LinearGradient>
-              )}
+              <AvatarView item={item} size={48} colors={colors} />
               <View style={styles.collectorInfo}>
                 <View style={styles.nameRow}>
                   <Text style={[styles.displayName, { color: colors.text }]} numberOfLines={1}>
                     {item.displayName}
                   </Text>
                   {item.isVerifiedCollector && (
-                    <View style={[styles.verifiedBadge, { backgroundColor: colors.pokemonBlue + "20" }]}>
-                      <Ionicons name="checkmark-circle" size={14} color={colors.pokemonBlue} />
-                      <Text style={[styles.verifiedText, { color: colors.pokemonBlue }]}>Verified</Text>
+                    <View style={[styles.verifiedBadge, { backgroundColor: "#2ECC7115" }]}>
+                      <Ionicons name="shield-checkmark" size={12} color="#2ECC71" />
+                      <Text style={[styles.verifiedText, { color: "#2ECC71" }]}>Verified</Text>
                     </View>
                   )}
                 </View>
@@ -213,6 +338,76 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 16, paddingTop: 12 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 80, gap: 12 },
   emptyText: { fontSize: 15, fontFamily: "Outfit_400Regular" },
+
+  // Top Verified
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  sectionTitle: { fontSize: 17, fontFamily: "Outfit_700Bold" },
+  sectionSub: { fontSize: 12, fontFamily: "Outfit_400Regular", marginBottom: 12, lineHeight: 17 },
+  emptyTop: {
+    alignItems: "center",
+    gap: 8,
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  emptyTopText: { fontSize: 13, fontFamily: "Outfit_400Regular" },
+  topRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1.5,
+    gap: 10,
+  },
+  rankBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rankText: { fontSize: 15, fontFamily: "Outfit_700Bold" },
+  topInfo: { flex: 1, gap: 2 },
+  topName: { fontSize: 14, fontFamily: "Outfit_700Bold", flexShrink: 1 },
+  topUsername: { fontSize: 11, fontFamily: "Outfit_400Regular" },
+  topStats: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 },
+  verifiedPct: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  verifiedPctText: { fontSize: 10, fontFamily: "Outfit_700Bold" },
+  topCardCount: { fontSize: 10, fontFamily: "Outfit_400Regular" },
+  topValueCol: { alignItems: "flex-end", gap: 2 },
+  topValue: { fontSize: 14, fontFamily: "Outfit_700Bold" },
+  topValueLabel: { fontSize: 10, fontFamily: "Outfit_400Regular" },
+
+  // Divider
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  dividerLine: { flex: 1, height: 1 },
+  dividerChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  dividerText: { fontSize: 11, fontFamily: "Outfit_600SemiBold" },
+
+  // Regular collectors
   collectorRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -222,15 +417,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 12,
   },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  avatarText: { fontSize: 18, fontFamily: "Outfit_700Bold", color: "#FFF" },
   collectorInfo: { flex: 1, gap: 2 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
   displayName: { fontSize: 15, fontFamily: "Outfit_700Bold" },
