@@ -215,9 +215,13 @@ function dbCardToApiFormat(
 }
 
 // ---------- Superadmin auth helpers ----------
-const DEFAULT_SUPERADMIN_EMAIL = "richiett17@hotmail.com";
 function getSuperadminEmail(): string {
-  return (process.env.SUPERADMIN_EMAIL || DEFAULT_SUPERADMIN_EMAIL).toLowerCase().trim();
+  const email = process.env.SUPERADMIN_EMAIL;
+  if (!email) {
+    console.warn("[superadmin] SUPERADMIN_EMAIL env var is not set. Superadmin features will be unavailable.");
+    return "";
+  }
+  return email.toLowerCase().trim();
 }
 
 const SUPERADMIN_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -230,16 +234,17 @@ function issueSuperadminToken(): string {
 }
 
 // Strict superadmin-only check: requires a valid session token AND
-// the authenticated user must be the designated superadmin account.
-// The database has no separate "superadmin" role; the superadmin user
-// has role === "admin" and username === "superadmin".
+// the authenticated user must match the designated superadmin email
+// (set via the SUPERADMIN_EMAIL env var).
 async function isSuperadminSessionOnly(req: Request): Promise<boolean> {
   const auth = req.headers.authorization || "";
   if (!auth.startsWith("Bearer ")) return false;
   const token = auth.slice(7).trim();
   try {
     const user = await storage.validateSession(token);
-    return !!(user && user.role === "admin" && user.username === "superadmin");
+    const superadminEmail = getSuperadminEmail();
+    if (!superadminEmail) return false;
+    return !!(user && user.role === "admin" && user.email?.toLowerCase() === superadminEmail);
   } catch {
     return false;
   }

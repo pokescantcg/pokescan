@@ -83,3 +83,4 @@ timeoutMs = 120000
 [userenv.shared]
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = "587"
+SUPERADMIN_EMAIL = "richiett17@hotmail.com"

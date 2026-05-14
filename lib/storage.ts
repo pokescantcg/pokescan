@@ -83,7 +83,6 @@ const KEYS = {
 };
 
 const SESSION_KEY = "pokescan_session_token";
-const SUPERADMIN_EMAIL = "richiett17@hotmail.com";
 
 /**
  * Returns the auth token used for admin API requests. The superadmin now logs
