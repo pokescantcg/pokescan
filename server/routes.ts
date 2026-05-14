@@ -35,6 +35,7 @@ import {
   pokescanChatroomMessages,
   pokescanAdminActivityLog,
   pokescanScanHistory,
+  pokescanBlockedCredentials,
 } from "@shared/schema";
 import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt, inArray, isNull, isNotNull } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
@@ -428,10 +429,106 @@ async function runSchemaMigrations(): Promise<void> {
         pcv_results TEXT NOT NULL DEFAULT '[]',
         scanned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE pokescan_users ADD COLUMN IF NOT EXISTS banned_until TIMESTAMPTZ;
+      ALTER TABLE pokescan_users ADD COLUMN IF NOT EXISTS ban_reason TEXT;
+      ALTER TABLE pokescan_users ADD COLUMN IF NOT EXISTS banned_at TIMESTAMPTZ;
+      ALTER TABLE pokescan_users ADD COLUMN IF NOT EXISTS banned_by VARCHAR(36);
+      ALTER TABLE pokescan_users ADD COLUMN IF NOT EXISTS is_trial_used BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE pokescan_admin_activity_log ADD COLUMN IF NOT EXISTS target_user_id VARCHAR(36);
+      ALTER TABLE pokescan_admin_activity_log ADD COLUMN IF NOT EXISTS target_username TEXT;
+      CREATE TABLE IF NOT EXISTS pokescan_blocked_credentials (
+        id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::varchar,
+        email TEXT,
+        mobile_number TEXT,
+        reason TEXT NOT NULL DEFAULT 'deleted',
+        blocked_by VARCHAR(36),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_blocked_creds_email ON pokescan_blocked_credentials(LOWER(email));
+      CREATE INDEX IF NOT EXISTS idx_blocked_creds_mobile ON pokescan_blocked_credentials(mobile_number);
     `);
     console.log("[Migration] Schema migrations applied");
   } catch (err) {
     console.error("[Migration] Failed:", err);
+  }
+}
+
+// ─── Moderation helpers ───────────────────────────────────────────────────────
+async function logModAction(opts: {
+  action: string;
+  performedBy: string;
+  targetUserId?: string | null;
+  targetUsername?: string | null;
+  listingId?: string | null;
+  listingName?: string | null;
+  note?: string | null;
+}): Promise<void> {
+  try {
+    await db.insert(pokescanAdminActivityLog).values({
+      action: opts.action,
+      performedBy: opts.performedBy,
+      targetUserId: opts.targetUserId ?? null,
+      targetUsername: opts.targetUsername ?? null,
+      listingId: opts.listingId ?? null,
+      listingName: opts.listingName ?? null,
+      note: opts.note ?? null,
+    });
+  } catch (e) {
+    console.warn("[ActivityLog] write failed:", (e as any)?.message);
+  }
+}
+
+async function cancelStripeForUser(userId: string, immediate: boolean = true): Promise<void> {
+  try {
+    const u = await storage.getUserById(userId);
+    if (!u) return;
+    const subId = (u as any).stripeSubscriptionId as string | undefined;
+    if (subId) {
+      try {
+        const { getUncachableStripeClient } = await import("./stripe-client");
+        const stripe = await getUncachableStripeClient();
+        if (immediate) {
+          await stripe.subscriptions.cancel(subId);
+        } else {
+          await stripe.subscriptions.update(subId, { cancel_at_period_end: true });
+        }
+        console.log(`[Mod] Cancelled Stripe sub ${subId} for user ${userId} (immediate=${immediate})`);
+      } catch (e: any) {
+        console.error(`[Mod] Stripe cancel failed for ${userId}:`, e?.message);
+      }
+    }
+    await storage.updateUser(userId, {
+      isPremium: false,
+      subscriptionStatus: "canceled",
+      stripeSubscriptionId: null,
+    } as any);
+  } catch (e) {
+    console.warn("[Mod] cancelStripeForUser error:", (e as any)?.message);
+  }
+}
+
+async function isCredentialBlocked(email?: string | null, mobile?: string | null): Promise<boolean> {
+  if (!email && !mobile) return false;
+  const conds: string[] = [];
+  const params: any[] = [];
+  if (email) { params.push(email.toLowerCase().trim()); conds.push(`LOWER(email) = $${params.length}`); }
+  if (mobile) { params.push(mobile.trim()); conds.push(`mobile_number = $${params.length}`); }
+  const r = await pool.query(
+    `SELECT 1 FROM pokescan_blocked_credentials WHERE ${conds.join(" OR ")} LIMIT 1`,
+    params
+  );
+  return r.rows.length > 0;
+}
+
+async function addBlockedCredential(email: string | null, mobile: string | null, reason: string, blockedBy: string | null): Promise<void> {
+  if (!email && !mobile) return;
+  try {
+    await pool.query(
+      `INSERT INTO pokescan_blocked_credentials (email, mobile_number, reason, blocked_by) VALUES ($1, $2, $3, $4)`,
+      [email ? email.toLowerCase().trim() : null, mobile ? mobile.trim() : null, reason, blockedBy]
+    );
+  } catch (e) {
+    console.warn("[Mod] addBlockedCredential failed:", (e as any)?.message);
   }
 }
 
@@ -1510,6 +1607,7 @@ ${setReference}`
         res.status(409).json({ error: "Username is already taken" });
         return;
       }
+      const blocked = await isCredentialBlocked(email, mobileNumber);
       const passwordHash = await bcrypt.hash(password, 10);
       const user = await storage.createUser({
         username: username.toLowerCase().trim(),
@@ -1521,6 +1619,7 @@ ${setReference}`
         isPremium: false,
         role: "user",
         avatarUrl: null,
+        ...(blocked ? { isTrialUsed: true } as any : {}),
       });
       const token = await storage.createSession(user.id);
       const { passwordHash: _ph, ...safeUser } = user as any;
@@ -1689,6 +1788,22 @@ ${setReference}`
         res.status(401).json({ error: "Invalid email/username or password" });
         return;
       }
+      const bu = (user as any).bannedUntil as Date | null;
+      if (bu && new Date(bu) > new Date()) {
+        const reason = (user as any).banReason || "Violation of community guidelines";
+        const permanent = new Date(bu).getFullYear() > 2999;
+        res.status(403).json({
+          error: "Account banned",
+          banned: true,
+          bannedUntil: bu,
+          banReason: reason,
+          permanent,
+          message: permanent
+            ? `Your account has been permanently banned. Reason: ${reason}`
+            : `Your account is banned until ${new Date(bu).toLocaleString()}. Reason: ${reason}`,
+        });
+        return;
+      }
       const token = await storage.createSession(user.id);
       const { passwordHash: _ph, ...safeUser } = user as any;
       res.json({ token, user: safeUser });
@@ -1821,6 +1936,23 @@ ${setReference}`
 
       if (!user) {
         res.status(404).json({ error: "User not found" });
+        return;
+      }
+
+      const bu = (user as any).bannedUntil as Date | null;
+      if (bu && new Date(bu) > new Date()) {
+        const reason = (user as any).banReason || "Violation of community guidelines";
+        const permanent = new Date(bu).getFullYear() > 2999;
+        res.status(403).json({
+          error: "Account banned",
+          banned: true,
+          bannedUntil: bu,
+          banReason: reason,
+          permanent,
+          message: permanent
+            ? `Your account has been permanently banned. Reason: ${reason}`
+            : `Your account is banned until ${new Date(bu).toLocaleString()}. Reason: ${reason}`,
+        });
         return;
       }
 
@@ -2541,6 +2673,8 @@ ${setReference}`
           id: r.id,
           listingId: r.listing_id,
           listingName: r.listing_name,
+          targetUserId: r.target_user_id,
+          targetUsername: r.target_username,
           action: r.action,
           performedBy: r.performed_by,
           moderatorUsername: r.moderator_username,
@@ -3685,6 +3819,13 @@ matches must be true or false.`;
         res.status(400).json({ error: "userId required" });
         return;
       }
+      const callerToken = req.headers.authorization?.replace("Bearer ", "");
+      const caller = callerToken ? await storage.validateSession(callerToken) : null;
+      const callerId = caller?.id || "system";
+
+      const before = await storage.getUserById(userId);
+      if (!before) { res.status(404).json({ error: "User not found" }); return; }
+
       const profileUpdates: Record<string, any> = {};
       if (displayName !== undefined && displayName.trim()) profileUpdates.displayName = displayName.trim();
       if (email !== undefined && email.trim()) profileUpdates.email = email.trim().toLowerCase();
@@ -3697,6 +3838,11 @@ matches must be true or false.`;
         return;
       }
 
+      // If admin revokes premium manually, also cancel Stripe sub
+      if (isPremium === false && before.isPremium) {
+        await cancelStripeForUser(userId, true);
+      }
+
       let updated = Object.keys(profileUpdates).length > 0 ? await storage.updateUser(userId, profileUpdates) : await storage.getUserById(userId);
       if (!updated) {
         res.status(404).json({ error: "User not found" });
@@ -3706,6 +3852,40 @@ matches must be true or false.`;
       if (password !== undefined && password.trim().length >= 6) {
         const passwordHash = await bcrypt.hash(password.trim(), 10);
         await storage.setPassword(userId, passwordHash);
+      }
+
+      // Audit log
+      const changes: string[] = [];
+      if (displayName !== undefined && displayName !== before.displayName) changes.push(`name: "${before.displayName}" → "${displayName}"`);
+      if (email !== undefined && email.toLowerCase() !== before.email) changes.push(`email: "${before.email}" → "${email.toLowerCase()}"`);
+      if (mobileNumber !== undefined && mobileNumber !== before.mobileNumber) changes.push(`mobile changed`);
+      if (password) changes.push("password reset");
+      if (isPremium !== undefined && isPremium !== before.isPremium) {
+        await logModAction({
+          action: isPremium ? "premium_granted" : "premium_revoked",
+          performedBy: callerId,
+          targetUserId: userId,
+          targetUsername: before.username,
+          note: isPremium ? "Premium granted by admin" : "Premium revoked by admin (Stripe cancelled)",
+        });
+      }
+      if (role !== undefined && role !== before.role) {
+        await logModAction({
+          action: "role_changed",
+          performedBy: callerId,
+          targetUserId: userId,
+          targetUsername: before.username,
+          note: `${before.role} → ${role}`,
+        });
+      }
+      if (changes.length > 0) {
+        await logModAction({
+          action: "user_edited",
+          performedBy: callerId,
+          targetUserId: userId,
+          targetUsername: before.username,
+          note: changes.join("; "),
+        });
       }
 
       const { passwordHash: _ph, ...safeUser } = updated as any;
@@ -3811,6 +3991,19 @@ matches must be true or false.`;
         res.status(400).json({ error: "userId required" });
         return;
       }
+      const callerToken = req.headers.authorization?.replace("Bearer ", "");
+      const caller = callerToken ? await storage.validateSession(callerToken) : null;
+      const callerId = caller?.id || "system";
+
+      const before = await storage.getUserById(userId);
+      if (!before) { res.status(404).json({ error: "User not found" }); return; }
+
+      // Cancel any active Stripe subscription immediately
+      await cancelStripeForUser(userId, true);
+
+      // Add email + mobile to blocklist so they can't claim a new trial
+      await addBlockedCredential(before.email || null, before.mobileNumber || null, "deleted", callerId);
+
       // Delete user's sessions first, then the user
       await db.delete(pokescanSessions).where(eq(pokescanSessions.userId, userId));
       const deleted = await db.delete(pokescanUsers).where(eq(pokescanUsers.id, userId)).returning();
@@ -3818,10 +4011,320 @@ matches must be true or false.`;
         res.status(404).json({ error: "User not found" });
         return;
       }
+      await logModAction({
+        action: "user_deleted",
+        performedBy: callerId,
+        targetUserId: userId,
+        targetUsername: before.username,
+        note: `Deleted @${before.username} (${before.email}); Stripe sub cancelled; email+mobile added to trial blocklist`,
+      });
       res.json({ success: true, userId });
     } catch (error: any) {
       console.error("Admin delete-user error:", error);
       res.status(500).json({ error: error.message || "Delete failed" });
+    }
+  });
+
+  // ─── Ban / unban / mute (account-level) ─────────────────────────────────────
+  app.post("/api/admin/users/:id/ban", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (caller.role !== "admin" && caller.role !== "moderator") {
+        res.status(403).json({ error: "Staff only" }); return;
+      }
+      const { id } = req.params;
+      const { reason, durationHours, banChat } = req.body || {};
+      const target = await storage.getUserById(id);
+      if (!target) { res.status(404).json({ error: "User not found" }); return; }
+      if (target.role === "admin" || target.role === "moderator") {
+        res.status(403).json({ error: "Cannot ban staff members" }); return;
+      }
+      const permanent = durationHours == null || durationHours <= 0;
+      const bannedUntil = permanent
+        ? new Date("9999-12-31T23:59:59Z")
+        : new Date(Date.now() + Number(durationHours) * 3600 * 1000);
+      const banReason = (reason && String(reason).trim()) || "Violation of community guidelines";
+
+      await pool.query(
+        `UPDATE pokescan_users SET banned_until = $1, ban_reason = $2, banned_at = NOW(), banned_by = $3 ${banChat ? `, chat_banned_until = $1` : ""} WHERE id = $4`,
+        [bannedUntil, banReason, caller.id, id]
+      );
+
+      // Auto-cancel any active Stripe subscription on ban
+      if (target.isPremium) await cancelStripeForUser(id, true);
+
+      // Revoke all sessions so they can't continue using the app
+      await db.delete(pokescanSessions).where(eq(pokescanSessions.userId, id));
+
+      await logModAction({
+        action: "user_banned",
+        performedBy: caller.id,
+        targetUserId: id,
+        targetUsername: target.username,
+        note: `${permanent ? "Permanent" : `${durationHours}h`} ban — Reason: ${banReason}${target.isPremium ? "; Stripe sub cancelled" : ""}`,
+      });
+
+      res.json({ success: true, bannedUntil: bannedUntil.toISOString(), permanent, banReason });
+    } catch (error: any) {
+      console.error("Ban error:", error);
+      res.status(500).json({ error: error.message || "Ban failed" });
+    }
+  });
+
+  app.post("/api/admin/users/:id/unban", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (caller.role !== "admin" && caller.role !== "moderator") {
+        res.status(403).json({ error: "Staff only" }); return;
+      }
+      const { id } = req.params;
+      const target = await storage.getUserById(id);
+      if (!target) { res.status(404).json({ error: "User not found" }); return; }
+      await pool.query(
+        `UPDATE pokescan_users SET banned_until = NULL, ban_reason = NULL, banned_at = NULL, banned_by = NULL, chat_banned_until = NULL WHERE id = $1`,
+        [id]
+      );
+      await logModAction({
+        action: "user_unbanned",
+        performedBy: caller.id,
+        targetUserId: id,
+        targetUsername: target.username,
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Unban error:", error);
+      res.status(500).json({ error: error.message || "Unban failed" });
+    }
+  });
+
+  app.post("/api/admin/users/:id/mute", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (caller.role !== "admin" && caller.role !== "moderator") {
+        res.status(403).json({ error: "Staff only" }); return;
+      }
+      const { id } = req.params;
+      const { minutes } = req.body || {};
+      const target = await storage.getUserById(id);
+      if (!target) { res.status(404).json({ error: "User not found" }); return; }
+      if (target.role === "admin" || target.role === "moderator") {
+        res.status(403).json({ error: "Cannot mute staff" }); return;
+      }
+      const mins = Number(minutes);
+      if (!mins || mins < 1) { res.status(400).json({ error: "minutes (positive) required" }); return; }
+      const mutedUntil = new Date(Date.now() + mins * 60 * 1000);
+      await pool.query(`UPDATE pokescan_users SET chat_muted_until = $1 WHERE id = $2`, [mutedUntil, id]);
+      await logModAction({
+        action: "user_muted",
+        performedBy: caller.id,
+        targetUserId: id,
+        targetUsername: target.username,
+        note: `Muted for ${mins} minutes (until ${mutedUntil.toISOString()})`,
+      });
+      res.json({ success: true, mutedUntil: mutedUntil.toISOString() });
+    } catch (error: any) {
+      console.error("Mute error:", error);
+      res.status(500).json({ error: error.message || "Mute failed" });
+    }
+  });
+
+  app.post("/api/admin/users/:id/unmute", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (caller.role !== "admin" && caller.role !== "moderator") {
+        res.status(403).json({ error: "Staff only" }); return;
+      }
+      const { id } = req.params;
+      const target = await storage.getUserById(id);
+      if (!target) { res.status(404).json({ error: "User not found" }); return; }
+      await pool.query(`UPDATE pokescan_users SET chat_muted_until = NULL WHERE id = $1`, [id]);
+      await logModAction({
+        action: "user_unmuted",
+        performedBy: caller.id,
+        targetUserId: id,
+        targetUsername: target.username,
+      });
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Unmute error:", error);
+      res.status(500).json({ error: error.message || "Unmute failed" });
+    }
+  });
+
+  // ─── Bulk listing moderation ────────────────────────────────────────────────
+  app.post("/api/admin/listings/bulk", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (caller.role !== "admin" && caller.role !== "moderator") {
+        res.status(403).json({ error: "Staff only" }); return;
+      }
+      const { ids, action, reviewNote } = req.body || {};
+      if (!Array.isArray(ids) || ids.length === 0) {
+        res.status(400).json({ error: "ids array required" }); return;
+      }
+      if (action !== "approve" && action !== "reject" && action !== "delete") {
+        res.status(400).json({ error: "action must be approve|reject|delete" }); return;
+      }
+      let updated = 0;
+      if (action === "delete") {
+        const r = await pool.query(
+          `DELETE FROM pokescan_market_listings WHERE id = ANY($1::text[]) RETURNING id, card_name`,
+          [ids]
+        );
+        updated = r.rowCount || 0;
+        for (const row of r.rows) {
+          await logModAction({
+            action: "listing_deleted_bulk",
+            performedBy: caller.id,
+            listingId: row.id,
+            listingName: row.card_name,
+            note: reviewNote || null,
+          });
+        }
+      } else {
+        const status = action === "approve" ? "approved" : "rejected";
+        const r = await pool.query(
+          `UPDATE pokescan_market_listings
+              SET status = $1, reviewed_by = $2, reviewed_at = NOW(), review_note = COALESCE($3, review_note)
+            WHERE id = ANY($4::text[])
+          RETURNING id, card_name`,
+          [status, caller.id, reviewNote ?? null, ids]
+        );
+        updated = r.rowCount || 0;
+        for (const row of r.rows) {
+          await logModAction({
+            action: `bulk_${status}`,
+            performedBy: caller.id,
+            listingId: row.id,
+            listingName: row.card_name,
+            note: reviewNote || null,
+          });
+        }
+      }
+      res.json({ success: true, updated, requested: ids.length });
+    } catch (error: any) {
+      console.error("Bulk listings error:", error);
+      res.status(500).json({ error: error.message || "Bulk action failed" });
+    }
+  });
+
+  // ─── Staff: view chatroom and private DMs ───────────────────────────────────
+  app.get("/api/admin/chatroom", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (caller.role !== "admin" && caller.role !== "moderator") {
+        res.status(403).json({ error: "Staff only" }); return;
+      }
+      const limit = Math.min(500, Math.max(1, parseInt((req.query.limit as string) || "200", 10)));
+      const msgs = await db.select().from(pokescanChatroomMessages)
+        .orderBy(desc(pokescanChatroomMessages.createdAt))
+        .limit(limit);
+      res.json({ messages: msgs.reverse() });
+    } catch (error: any) {
+      console.error("Admin chatroom view error:", error);
+      res.status(500).json({ error: error.message || "Failed to load chatroom" });
+    }
+  });
+
+  app.get("/api/admin/messages", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const caller = await storage.validateSession(token);
+      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (caller.role !== "admin" && caller.role !== "moderator") {
+        res.status(403).json({ error: "Staff only" }); return;
+      }
+      const userA = (req.query.userA as string || "").trim();
+      const userB = (req.query.userB as string || "").trim();
+      if (!userA) {
+        // List recent DM threads involving any user
+        const r = await pool.query(
+          `SELECT m.*, su.username AS sender_username, su.display_name AS sender_display_name,
+                  ru.username AS recipient_username, ru.display_name AS recipient_display_name
+             FROM pokescan_messages m
+             LEFT JOIN pokescan_users su ON su.id = m.sender_id
+             LEFT JOIN pokescan_users ru ON ru.id = m.recipient_id
+            ORDER BY m.created_at DESC
+            LIMIT 200`
+        );
+        res.json({ messages: r.rows });
+        return;
+      }
+      let q;
+      if (userB) {
+        q = await pool.query(
+          `SELECT m.*, su.username AS sender_username, su.display_name AS sender_display_name,
+                  ru.username AS recipient_username, ru.display_name AS recipient_display_name
+             FROM pokescan_messages m
+             LEFT JOIN pokescan_users su ON su.id = m.sender_id
+             LEFT JOIN pokescan_users ru ON ru.id = m.recipient_id
+            WHERE (m.sender_id = $1 AND m.recipient_id = $2)
+               OR (m.sender_id = $2 AND m.recipient_id = $1)
+            ORDER BY m.created_at ASC
+            LIMIT 500`,
+          [userA, userB]
+        );
+      } else {
+        q = await pool.query(
+          `SELECT m.*, su.username AS sender_username, su.display_name AS sender_display_name,
+                  ru.username AS recipient_username, ru.display_name AS recipient_display_name
+             FROM pokescan_messages m
+             LEFT JOIN pokescan_users su ON su.id = m.sender_id
+             LEFT JOIN pokescan_users ru ON ru.id = m.recipient_id
+            WHERE m.sender_id = $1 OR m.recipient_id = $1
+            ORDER BY m.created_at DESC
+            LIMIT 500`,
+          [userA]
+        );
+      }
+      res.json({ messages: q.rows });
+    } catch (error: any) {
+      console.error("Admin messages view error:", error);
+      res.status(500).json({ error: error.message || "Failed to load messages" });
+    }
+  });
+
+  // ─── Blocked credentials list (superadmin) ──────────────────────────────────
+  app.get("/api/admin/blocked-credentials", async (req: Request, res: Response) => {
+    try {
+      if (!await isSuperadminAuthorized(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+      const r = await pool.query(
+        `SELECT * FROM pokescan_blocked_credentials ORDER BY created_at DESC LIMIT 500`
+      );
+      res.json({ blocked: r.rows });
+    } catch (error: any) {
+      console.error("Blocked creds list error:", error);
+      res.status(500).json({ error: error.message || "Failed to load" });
+    }
+  });
+
+  app.delete("/api/admin/blocked-credentials/:id", async (req: Request, res: Response) => {
+    try {
+      if (!await isSuperadminAuthorized(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+      await pool.query(`DELETE FROM pokescan_blocked_credentials WHERE id = $1`, [req.params.id]);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Blocked creds delete error:", error);
+      res.status(500).json({ error: error.message || "Failed to remove" });
     }
   });
 

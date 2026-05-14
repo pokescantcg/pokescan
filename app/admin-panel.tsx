@@ -18,6 +18,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   Linking,
+  ActivityIndicator,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -264,12 +265,98 @@ const editStyles = StyleSheet.create({
   deleteBtnText: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
 });
 
-type Tab = "listings" | "users" | "reports" | "revenue" | "database" | "logs";
+type Tab = "listings" | "users" | "reports" | "revenue" | "database" | "logs" | "chat" | "blocklist";
+
+interface BannedInfo { id: string; email: string | null; mobile_number: string | null; reason: string; blocked_by: string | null; created_at: string; }
+
+function BanUserModal({
+  profile,
+  visible,
+  colors,
+  onClose,
+  onConfirm,
+}: {
+  profile: UserProfile | null;
+  visible: boolean;
+  colors: ReturnType<typeof useThemeColors>;
+  onClose: () => void;
+  onConfirm: (reason: string, durationHours: number | null) => Promise<void>;
+}) {
+  const [reason, setReason] = useState("");
+  const [duration, setDuration] = useState<"1h" | "24h" | "7d" | "30d" | "perm">("24h");
+  const [submitting, setSubmitting] = useState(false);
+  React.useEffect(() => { if (visible) { setReason(""); setDuration("24h"); } }, [visible, profile?.id]);
+
+  if (!profile) return null;
+  const durOptions: { value: typeof duration; label: string; hours: number | null }[] = [
+    { value: "1h", label: "1 hour", hours: 1 },
+    { value: "24h", label: "24 hours", hours: 24 },
+    { value: "7d", label: "7 days", hours: 24 * 7 },
+    { value: "30d", label: "30 days", hours: 24 * 30 },
+    { value: "perm", label: "Permanent", hours: null },
+  ];
+  const selected = durOptions.find((o) => o.value === duration)!;
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={{ backgroundColor: colors.card, padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, gap: 14, paddingBottom: 30 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 18, color: colors.text }}>Ban User</Text>
+              <Pressable onPress={onClose}><Ionicons name="close" size={24} color={colors.textMuted} /></Pressable>
+            </View>
+            <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 13, color: colors.textSecondary }}>
+              Banning {profile.displayName} (@{profile.username}). They'll be signed out and shown the reason on login. Any active Stripe subscription will be cancelled.
+            </Text>
+            <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.textMuted }}>REASON</Text>
+            <TextInput
+              value={reason}
+              onChangeText={setReason}
+              placeholder="e.g. Repeated harassment in chatroom"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              style={{ minHeight: 60, padding: 10, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, color: colors.text, fontFamily: "Outfit_400Regular" }}
+            />
+            <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.textMuted }}>DURATION</Text>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {durOptions.map((o) => (
+                <Pressable
+                  key={o.value}
+                  onPress={() => setDuration(o.value)}
+                  style={{
+                    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 18, borderWidth: 1,
+                    backgroundColor: duration === o.value ? colors.error + "30" : colors.surface,
+                    borderColor: duration === o.value ? colors.error : colors.border,
+                  }}>
+                  <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: duration === o.value ? colors.error : colors.text }}>{o.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable
+              disabled={submitting}
+              onPress={async () => {
+                if (!reason.trim()) { Alert.alert("Reason required", "Please enter a reason."); return; }
+                setSubmitting(true);
+                try { await onConfirm(reason.trim(), selected.hours); onClose(); }
+                catch (e: any) { Alert.alert("Ban failed", e?.message || "Try again"); }
+                finally { setSubmitting(false); }
+              }}
+              style={{ marginTop: 6, padding: 14, borderRadius: 12, backgroundColor: colors.error, alignItems: "center", opacity: submitting ? 0.6 : 1 }}>
+              <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 15, color: "#FFF" }}>{submitting ? "Banning..." : "Confirm Ban"}</Text>
+            </Pressable>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
 
 interface ActivityLogEntry {
   id: string;
   listingId: string | null;
   listingName: string | null;
+  targetUserId?: string | null;
+  targetUsername?: string | null;
   action: string;
   performedBy: string | null;
   moderatorUsername: string | null;
@@ -638,24 +725,33 @@ function UserRow({
   colors,
   isCurrentUser,
   isSuperadmin,
+  isStaff,
   onTogglePremium,
   onChangeRole,
   onEdit,
   onDelete,
   onAddFriend,
+  onBan,
+  onUnban,
   friendStatus,
 }: {
   profile: UserProfile;
   colors: ReturnType<typeof useThemeColors>;
   isCurrentUser: boolean;
   isSuperadmin: boolean;
+  isStaff?: boolean;
   onTogglePremium: () => void;
   onChangeRole: (role: UserRole) => void;
   onEdit: () => void;
   onDelete: () => void;
   onAddFriend?: () => void;
+  onBan?: () => void;
+  onUnban?: () => void;
   friendStatus?: "none" | "pending" | "friends";
 }) {
+  const bannedUntil = (profile as any).bannedUntil as string | Date | null | undefined;
+  const isBanned = !!(bannedUntil && new Date(bannedUntil as any) > new Date());
+  const banReason = (profile as any).banReason as string | null | undefined;
   const roleColor = profile.role === "admin" ? "#E74C3C" : profile.role === "moderator" ? "#E67E22" : colors.textMuted;
   const isSuperadminAccount = profile.username === "superadmin";
 
@@ -698,16 +794,26 @@ function UserRow({
               <Text style={styles.roleBadgeText}>{getSubscriptionLabel(profile.stripePriceId)}</Text>
             </View>
           )}
+          {isBanned && (
+            <View style={[styles.roleBadge, { backgroundColor: "#E74C3C" }]}>
+              <Text style={styles.roleBadgeText}>BANNED</Text>
+            </View>
+          )}
         </View>
+        {isBanned && (
+          <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: "#E74C3C", marginTop: 2 }} numberOfLines={2}>
+            {banReason || "Banned"} · until {bannedUntil ? (new Date(bannedUntil as any).getFullYear() > 2999 ? "permanent" : new Date(bannedUntil as any).toLocaleString()) : ""}
+          </Text>
+        )}
         {profile.isPremium && profile.subscriptionPeriodEnd && (
           <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted, marginTop: 2 }}>
             {profile.subscriptionStatus === "canceling" ? "Expires" : "Renews"}: {formatRenewalDate(profile.subscriptionPeriodEnd)}
           </Text>
         )}
       </View>
-      {isSuperadmin && !isSuperadminAccount && (
+      {(isSuperadmin || isStaff) && !isSuperadminAccount && (
         <View style={styles.userActions}>
-          {!isCurrentUser && onAddFriend && friendStatus === "none" && (
+          {!isCurrentUser && onAddFriend && friendStatus === "none" && isSuperadmin && (
             <Pressable
               style={[styles.actionBtn, { backgroundColor: "rgba(46,204,113,0.15)" }]}
               onPress={onAddFriend}
@@ -715,82 +821,103 @@ function UserRow({
               <Ionicons name="person-add-outline" size={15} color={colors.success} />
             </Pressable>
           )}
-          {friendStatus === "pending" && (
+          {friendStatus === "pending" && isSuperadmin && (
             <View style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.05)" }]}>
               <Ionicons name="hourglass-outline" size={15} color={colors.textMuted} />
             </View>
           )}
-          {friendStatus === "friends" && (
+          {friendStatus === "friends" && isSuperadmin && (
             <View style={[styles.actionBtn, { backgroundColor: "rgba(46,204,113,0.15)" }]}>
               <Ionicons name="people" size={15} color={colors.success} />
             </View>
           )}
-          <Pressable
-            style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
-            onPress={onEdit}
-          >
-            <Ionicons name="pencil-outline" size={15} color={colors.pokemonYellow} />
-          </Pressable>
-          <Pressable
-            style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
-            onPress={() => {
-              const options: { label: string; role: UserRole }[] = [
-                { label: "Regular User", role: "user" },
-                { label: "Moderator", role: "moderator" },
-                { label: "Full App Admin", role: "admin" },
-              ];
-              const currentRoleLabel = options.find((o) => o.role === profile.role)?.label || "User";
-              Alert.alert(
-                "Set Role",
-                `Current role: ${currentRoleLabel}\n\nChoose a new role for ${profile.displayName}:`,
-                [
-                  ...options
-                    .filter((o) => o.role !== profile.role)
-                    .map((o) => ({
-                      text: o.label,
-                      onPress: () => onChangeRole(o.role),
-                    })),
-                  { text: "Cancel", style: "cancel" as const },
-                ]
-              );
-            }}
-          >
-            <Ionicons name="shield-outline" size={15} color={colors.accent} />
-          </Pressable>
-          {profile.role === "user" && (
-            <Pressable
-              style={[
-                styles.actionBtn,
-                {
-                  backgroundColor: profile.isPremium
-                    ? "rgba(231, 76, 60, 0.15)"
-                    : "rgba(46, 204, 113, 0.15)",
-                },
-              ]}
-              onPress={onTogglePremium}
-            >
-              <Ionicons
-                name={profile.isPremium ? "close-circle" : "diamond"}
-                size={15}
-                color={profile.isPremium ? colors.error : colors.success}
-              />
-            </Pressable>
+          {!isCurrentUser && profile.role === "user" && (
+            isBanned ? (
+              <Pressable
+                style={[styles.actionBtn, { backgroundColor: "rgba(46,204,113,0.15)" }]}
+                onPress={onUnban}
+              >
+                <Ionicons name="lock-open-outline" size={15} color={colors.success} />
+              </Pressable>
+            ) : (
+              <Pressable
+                style={[styles.actionBtn, { backgroundColor: "rgba(231,76,60,0.15)" }]}
+                onPress={onBan}
+              >
+                <Ionicons name="hand-left-outline" size={15} color={colors.error} />
+              </Pressable>
+            )
           )}
-          <Pressable
-            style={[styles.actionBtn, { backgroundColor: "rgba(231,76,60,0.15)" }]}
-            onPress={() =>
-              Alert.alert(
-                "Delete User",
-                `Permanently delete ${profile.displayName} (@${profile.username})? This cannot be undone.`,
-                [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Delete", style: "destructive", onPress: onDelete },
-                ]
-              )
-            }
-          >
-            <Ionicons name="trash-outline" size={15} color="#E74C3C" />
-          </Pressable>
+          {isSuperadmin && (
+            <>
+              <Pressable
+                style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
+                onPress={onEdit}
+              >
+                <Ionicons name="pencil-outline" size={15} color={colors.pokemonYellow} />
+              </Pressable>
+              <Pressable
+                style={[styles.actionBtn, { backgroundColor: "rgba(255,255,255,0.08)" }]}
+                onPress={() => {
+                  const options: { label: string; role: UserRole }[] = [
+                    { label: "Regular User", role: "user" },
+                    { label: "Moderator", role: "moderator" },
+                    { label: "Full App Admin", role: "admin" },
+                  ];
+                  const currentRoleLabel = options.find((o) => o.role === profile.role)?.label || "User";
+                  Alert.alert(
+                    "Set Role",
+                    `Current role: ${currentRoleLabel}\n\nChoose a new role for ${profile.displayName}:`,
+                    [
+                      ...options
+                        .filter((o) => o.role !== profile.role)
+                        .map((o) => ({
+                          text: o.label,
+                          onPress: () => onChangeRole(o.role),
+                        })),
+                      { text: "Cancel", style: "cancel" as const },
+                    ]
+                  );
+                }}
+              >
+                <Ionicons name="shield-outline" size={15} color={colors.accent} />
+              </Pressable>
+              {profile.role === "user" && (
+                <Pressable
+                  style={[
+                    styles.actionBtn,
+                    {
+                      backgroundColor: profile.isPremium
+                        ? "rgba(231, 76, 60, 0.15)"
+                        : "rgba(46, 204, 113, 0.15)",
+                    },
+                  ]}
+                  onPress={onTogglePremium}
+                >
+                  <Ionicons
+                    name={profile.isPremium ? "close-circle" : "diamond"}
+                    size={15}
+                    color={profile.isPremium ? colors.error : colors.success}
+                  />
+                </Pressable>
+              )}
+              <Pressable
+                style={[styles.actionBtn, { backgroundColor: "rgba(231,76,60,0.15)" }]}
+                onPress={() =>
+                  Alert.alert(
+                    "Delete User",
+                    `Permanently delete ${profile.displayName} (@${profile.username})? This cannot be undone.`,
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Delete", style: "destructive", onPress: onDelete },
+                    ]
+                  )
+                }
+              >
+                <Ionicons name="trash-outline" size={15} color="#E74C3C" />
+              </Pressable>
+            </>
+          )}
         </View>
       )}
     </View>
@@ -2110,6 +2237,149 @@ export default function AdminPanelScreen() {
   const [moderationAction, setModerationAction] = useState<{ listing: MarketListing; status: "approved" | "rejected" } | null>(null);
   const [moderationNote, setModerationNote] = useState("");
 
+  // Bulk listing moderation
+  const [bulkSelectMode, setBulkSelectMode] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+  const toggleBulkSelected = useCallback((id: string) => {
+    setBulkSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  // Ban/unban
+  const [banTarget, setBanTarget] = useState<UserProfile | null>(null);
+
+  const handleBanUser = useCallback(async (target: UserProfile, reason: string, durationHours: number | null) => {
+    const headers = await requireAdminAuthHeader();
+    const res = await fetch(new URL(`/api/admin/users/${target.id}/ban`, getApiUrl()).href, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify({ reason, durationHours, banChat: true }),
+    });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Ban failed"); }
+    await refreshUsers();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+  }, [refreshUsers]);
+
+  const handleUnbanUser = useCallback(async (target: UserProfile) => {
+    Alert.alert("Unban User", `Lift the ban on ${target.displayName}?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Unban", onPress: async () => {
+        try {
+          const headers = await requireAdminAuthHeader();
+          const res = await fetch(new URL(`/api/admin/users/${target.id}/unban`, getApiUrl()).href, {
+            method: "POST", headers,
+          });
+          if (!res.ok) throw new Error("Unban failed");
+          await refreshUsers();
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (e: any) { Alert.alert("Failed", e?.message || "Try again"); }
+      } },
+    ]);
+  }, [refreshUsers]);
+
+  const handleBulkListingAction = useCallback(async (action: "approve" | "reject" | "delete") => {
+    const ids = Array.from(bulkSelected);
+    if (ids.length === 0) return;
+    const verb = action === "approve" ? "Approve" : action === "reject" ? "Reject" : "Delete";
+    Alert.alert(`${verb} ${ids.length} listing${ids.length === 1 ? "" : "s"}?`, "This bulk action cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: verb,
+        style: action === "delete" ? "destructive" : "default",
+        onPress: async () => {
+          try {
+            const headers = await requireAdminAuthHeader();
+            const res = await fetch(new URL("/api/admin/listings/bulk", getApiUrl()).href, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", ...headers },
+              body: JSON.stringify({ ids, action }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Bulk action failed");
+            setBulkSelected(new Set());
+            setBulkSelectMode(false);
+            await loadAdminListings();
+            await refreshPendingListingCount();
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Alert.alert("Done", `${data.updated || 0} of ${ids.length} listings ${action}d.`);
+          } catch (e: any) { Alert.alert("Failed", e?.message || "Try again"); }
+        },
+      },
+    ]);
+  }, [bulkSelected]);
+
+  // Chat logs state
+  interface ChatLogMsg { id: string; senderId: string; senderUsername?: string; senderDisplayName?: string; recipientId?: string; recipientUsername?: string; recipientDisplayName?: string; content: string; createdAt: string; }
+  const [chatTab, setChatTab] = useState<"chatroom" | "dms">("chatroom");
+  const [chatroomMessages, setChatroomMessages] = useState<any[]>([]);
+  const [dmMessages, setDmMessages] = useState<ChatLogMsg[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [dmFilter, setDmFilter] = useState("");
+
+  const loadChatroom = useCallback(async () => {
+    setChatLoading(true);
+    try {
+      const headers = await requireAdminAuthHeader();
+      const res = await fetch(new URL("/api/admin/chatroom?limit=200", getApiUrl()).href, { headers });
+      const data = await res.json();
+      setChatroomMessages(data.messages || []);
+    } catch (e: any) { Alert.alert("Failed", e?.message || "Failed to load chatroom"); }
+    finally { setChatLoading(false); }
+  }, []);
+
+  const loadDms = useCallback(async (userId?: string) => {
+    setChatLoading(true);
+    try {
+      const headers = await requireAdminAuthHeader();
+      const url = new URL("/api/admin/messages", getApiUrl());
+      if (userId && userId.trim()) url.searchParams.set("userA", userId.trim());
+      const res = await fetch(url.href, { headers });
+      const data = await res.json();
+      setDmMessages(((data.messages || []) as any[]).map((m) => ({
+        id: m.id,
+        senderId: m.sender_id,
+        senderUsername: m.sender_username,
+        senderDisplayName: m.sender_display_name,
+        recipientId: m.recipient_id,
+        recipientUsername: m.recipient_username,
+        recipientDisplayName: m.recipient_display_name,
+        content: m.content,
+        createdAt: m.created_at,
+      })));
+    } catch (e: any) { Alert.alert("Failed", e?.message || "Failed to load DMs"); }
+    finally { setChatLoading(false); }
+  }, []);
+
+  // Trial blocklist
+  const [blocklist, setBlocklist] = useState<BannedInfo[]>([]);
+  const [blocklistLoading, setBlocklistLoading] = useState(false);
+  const loadBlocklist = useCallback(async () => {
+    setBlocklistLoading(true);
+    try {
+      const headers = await requireAdminAuthHeader();
+      const res = await fetch(new URL("/api/admin/blocked-credentials", getApiUrl()).href, { headers });
+      const data = await res.json();
+      setBlocklist(data.blocked || []);
+    } catch (e: any) { Alert.alert("Failed", e?.message || "Failed to load blocklist"); }
+    finally { setBlocklistLoading(false); }
+  }, []);
+  const removeBlocklistEntry = useCallback((id: string) => {
+    Alert.alert("Remove Block", "This email/mobile will be allowed to register and claim a trial again.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Remove", style: "destructive", onPress: async () => {
+        try {
+          const headers = await requireAdminAuthHeader();
+          const res = await fetch(new URL(`/api/admin/blocked-credentials/${id}`, getApiUrl()).href, { method: "DELETE", headers });
+          if (!res.ok) throw new Error("Failed to remove");
+          await loadBlocklist();
+        } catch (e: any) { Alert.alert("Failed", e?.message || "Try again"); }
+      } },
+    ]);
+  }, [loadBlocklist]);
+
   const loadAdminListings = useCallback(async () => {
     setAdminListingsLoading(true);
     try {
@@ -2335,6 +2605,8 @@ export default function AdminPanelScreen() {
     if (activeTab === "reports") loadReports();
     if (activeTab === "revenue") loadRevenue();
     if (activeTab === "users") { handleRefreshUsers(); loadVerifications(); }
+    if (activeTab === "chat") { if (chatTab === "chatroom") loadChatroom(); else loadDms(dmFilter); }
+    if (activeTab === "blocklist") loadBlocklist();
     if (activeTab === "logs") {
       if (logsSubTab === "activity") loadActivityLogs(1);
       else loadAllReports(1);
@@ -2850,11 +3122,15 @@ export default function AdminPanelScreen() {
               icon: "flag-outline",
             },
             ...((isSuperadminUser || isAdminUser)
-              ? [{ value: "logs" as Tab, label: "Logs", icon: "document-text-outline" }]
+              ? [
+                  { value: "logs" as Tab, label: "Logs", icon: "document-text-outline" },
+                  { value: "chat" as Tab, label: "Chat Logs", icon: "chatbubbles-outline" },
+                ]
               : []),
             ...(isSuperadminUser
               ? [
                   { value: "revenue" as Tab, label: "Revenue", icon: "cash-outline" },
+                  { value: "blocklist" as Tab, label: "Trial Blocklist", icon: "ban-outline" },
                   { value: "database" as Tab, label: "Database", icon: "server-outline" },
                 ]
               : []),
@@ -2867,17 +3143,36 @@ export default function AdminPanelScreen() {
           data={adminListings}
           refreshing={adminListingsLoading}
           onRefresh={loadAdminListings}
-          renderItem={({ item }) => (
-            <ListingRow
-              listing={item}
-              colors={colors}
-              onView={() => setSelectedListing(item)}
-              onRemove={() => handleRemoveListing(item)}
-              onApprove={() => promptAndModerate(item, "approved")}
-              onReject={() => promptAndModerate(item, "rejected")}
-              onMessage={() => handleMessageSeller(item)}
-            />
-          )}
+          renderItem={({ item }) => {
+            const selected = bulkSelected.has(item.id);
+            return (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                {bulkSelectMode && (
+                  <Pressable
+                    onPress={() => toggleBulkSelected(item.id)}
+                    style={{ paddingHorizontal: 4 }}
+                  >
+                    <Ionicons
+                      name={selected ? "checkbox" : "square-outline"}
+                      size={24}
+                      color={selected ? colors.accent : colors.textMuted}
+                    />
+                  </Pressable>
+                )}
+                <View style={{ flex: 1 }}>
+                  <ListingRow
+                    listing={item}
+                    colors={colors}
+                    onView={() => bulkSelectMode ? toggleBulkSelected(item.id) : setSelectedListing(item)}
+                    onRemove={() => handleRemoveListing(item)}
+                    onApprove={() => promptAndModerate(item, "approved")}
+                    onReject={() => promptAndModerate(item, "rejected")}
+                    onMessage={() => handleMessageSeller(item)}
+                  />
+                </View>
+              </View>
+            );
+          }}
           keyExtractor={(item) => item.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
@@ -2895,6 +3190,47 @@ export default function AdminPanelScreen() {
                   { value: "all" as typeof listingFilter, label: "All Listings", icon: "list-outline" },
                 ]}
               />
+              <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+                <Pressable
+                  onPress={() => { setBulkSelectMode((m) => !m); setBulkSelected(new Set()); }}
+                  style={{ flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: bulkSelectMode ? colors.accent : colors.surface, borderWidth: 1, borderColor: bulkSelectMode ? colors.accent : colors.border, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 6 }}
+                >
+                  <Ionicons name={bulkSelectMode ? "close-circle-outline" : "checkbox-outline"} size={16} color={bulkSelectMode ? "#FFF" : colors.text} />
+                  <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: bulkSelectMode ? "#FFF" : colors.text }}>
+                    {bulkSelectMode ? `Cancel${bulkSelected.size > 0 ? ` (${bulkSelected.size})` : ""}` : "Bulk Select"}
+                  </Text>
+                </Pressable>
+                {bulkSelectMode && adminListings.length > 0 && (
+                  <Pressable
+                    onPress={() => setBulkSelected(new Set(adminListings.map(l => l.id)))}
+                    style={{ paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}
+                  >
+                    <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.text }}>All</Text>
+                  </Pressable>
+                )}
+              </View>
+              {bulkSelectMode && bulkSelected.size > 0 && (
+                <View style={{ flexDirection: "row", gap: 6 }}>
+                  <Pressable
+                    onPress={() => handleBulkListingAction("approve")}
+                    style={{ flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.success, alignItems: "center" }}
+                  >
+                    <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 13, color: "#FFF" }}>Approve {bulkSelected.size}</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleBulkListingAction("reject")}
+                    style={{ flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: "#E67E22", alignItems: "center" }}
+                  >
+                    <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 13, color: "#FFF" }}>Reject {bulkSelected.size}</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handleBulkListingAction("delete")}
+                    style={{ flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.error, alignItems: "center" }}
+                  >
+                    <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 13, color: "#FFF" }}>Delete {bulkSelected.size}</Text>
+                  </Pressable>
+                </View>
+              )}
               {adminListings.length > 0 && (
                 <View style={[styles.summaryBar, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
                   <View style={styles.summaryItem}>
@@ -3289,10 +3625,34 @@ export default function AdminPanelScreen() {
                 ) : null
               }
               renderItem={({ item: log }) => {
-                const actionColor = log.action === "approved" ? colors.success : log.action === "rejected" ? colors.error : colors.accent;
-                const actionLabel = log.action === "approved" ? "Approved" : log.action === "rejected" ? "Rejected" : "Note Edited";
-                const actionIcon: "checkmark-circle-outline" | "close-circle-outline" | "create-outline" =
-                  log.action === "approved" ? "checkmark-circle-outline" : log.action === "rejected" ? "close-circle-outline" : "create-outline";
+                const a = log.action;
+                const banLike = a === "user_banned" || a === "user_deleted" || a === "listing_deleted_bulk" || a === "bulk_rejected" || a === "premium_revoked";
+                const goodLike = a === "approved" || a === "bulk_approved" || a === "user_unbanned" || a === "premium_granted" || a === "user_unmuted";
+                const actionColor = a === "approved" || goodLike ? colors.success
+                  : a === "rejected" || banLike ? colors.error
+                  : a === "user_muted" || a === "role_changed" || a === "user_edited" ? "#E67E22"
+                  : colors.accent;
+                const labelMap: Record<string, string> = {
+                  approved: "Approved",
+                  rejected: "Rejected",
+                  bulk_approved: "Bulk Approved",
+                  bulk_rejected: "Bulk Rejected",
+                  listing_deleted_bulk: "Listing Deleted",
+                  user_banned: "User Banned",
+                  user_unbanned: "User Unbanned",
+                  user_muted: "User Muted",
+                  user_unmuted: "User Unmuted",
+                  user_deleted: "User Deleted",
+                  user_edited: "User Edited",
+                  role_changed: "Role Changed",
+                  premium_granted: "Premium Granted",
+                  premium_revoked: "Premium Revoked",
+                };
+                const actionLabel = labelMap[a] || "Note Edited";
+                const actionIcon: any =
+                  a === "approved" || goodLike ? "checkmark-circle-outline"
+                  : a === "rejected" || banLike ? "close-circle-outline"
+                  : "create-outline";
                 const handleLogPress = async () => {
                   if (!log.listingId) return;
                   try {
@@ -3317,7 +3677,11 @@ export default function AdminPanelScreen() {
                       <Text style={{ flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted, textAlign: "right" }}>{getTimeAgo(log.createdAt)}</Text>
                       {log.listingId && <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />}
                     </View>
-                    <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.text, marginBottom: 2 }}>{log.listingName || "Unknown Listing"}</Text>
+                    <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.text, marginBottom: 2 }}>
+                      {log.targetUsername
+                        ? `User: ${log.targetUsername}`
+                        : log.listingName || (log.targetUserId ? `User: ${log.targetUserId.slice(0, 8)}` : "Unknown")}
+                    </Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                       <Ionicons name="person-outline" size={12} color={colors.textMuted} />
                       <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>
@@ -3926,6 +4290,134 @@ export default function AdminPanelScreen() {
         </ScrollView>
       )}
 
+      {activeTab === "chat" && (
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", gap: 8, padding: 12 }}>
+            {(["chatroom", "dms"] as const).map((t) => (
+              <Pressable
+                key={t}
+                onPress={() => { setChatTab(t); if (t === "chatroom") loadChatroom(); else loadDms(dmFilter); }}
+                style={{ flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: chatTab === t ? colors.accent : colors.surface, borderWidth: 1, borderColor: chatTab === t ? colors.accent : colors.border, alignItems: "center" }}
+              >
+                <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: chatTab === t ? "#FFF" : colors.text }}>
+                  {t === "chatroom" ? "Premium Chat Room" : "Direct Messages"}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          {chatTab === "dms" && (
+            <View style={{ flexDirection: "row", paddingHorizontal: 12, paddingBottom: 8, gap: 8 }}>
+              <TextInput
+                value={dmFilter}
+                onChangeText={setDmFilter}
+                placeholder="Filter by user ID (optional)"
+                placeholderTextColor={colors.textMuted}
+                style={{ flex: 1, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: colors.text, fontFamily: "Outfit_400Regular" }}
+              />
+              <Pressable
+                onPress={() => loadDms(dmFilter)}
+                style={{ paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" }}
+              >
+                <Ionicons name="search" size={18} color="#FFF" />
+              </Pressable>
+            </View>
+          )}
+          {chatLoading ? (
+            <View style={{ padding: 24, alignItems: "center" }}>
+              <ActivityIndicator color={colors.accent} />
+            </View>
+          ) : (
+            <FlatList
+              data={chatTab === "chatroom" ? chatroomMessages : dmMessages}
+              keyExtractor={(m) => m.id}
+              contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 120 }}
+              renderItem={({ item }) => {
+                const sender = item.senderDisplayName || item.senderUsername || item.senderId?.slice(0, 8) || "Unknown";
+                const recipient = chatTab === "dms" ? (item.recipientDisplayName || item.recipientUsername || item.recipientId?.slice(0, 8)) : null;
+                const ts = item.createdAt ? new Date(item.createdAt).toLocaleString() : "";
+                return (
+                  <View style={{ backgroundColor: colors.surface, borderColor: colors.borderLight, borderWidth: 1, borderRadius: 10, padding: 10 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.text }}>
+                        {sender}{recipient ? `  →  ${recipient}` : ""}
+                      </Text>
+                      <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 11, color: colors.textMuted }}>{ts}</Text>
+                    </View>
+                    <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 14, color: colors.textSecondary }}>{item.content}</Text>
+                  </View>
+                );
+              }}
+              ListEmptyComponent={
+                <View style={{ padding: 24, alignItems: "center" }}>
+                  <Ionicons name="chatbubbles-outline" size={40} color={colors.textMuted} />
+                  <Text style={{ marginTop: 8, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>No messages found</Text>
+                </View>
+              }
+            />
+          )}
+        </View>
+      )}
+
+      {activeTab === "blocklist" && isSuperadminUser && (
+        <View style={{ flex: 1 }}>
+          <View style={{ padding: 12 }}>
+            <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 12, color: colors.textMuted }}>
+              Emails and mobile numbers blocked from re-registering or claiming a new free trial. Remove an entry to allow that person to register again.
+            </Text>
+          </View>
+          {blocklistLoading ? (
+            <View style={{ padding: 24, alignItems: "center" }}>
+              <ActivityIndicator color={colors.accent} />
+            </View>
+          ) : (
+            <FlatList
+              data={blocklist}
+              keyExtractor={(b) => b.id}
+              refreshing={blocklistLoading}
+              onRefresh={loadBlocklist}
+              contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 120 }}
+              renderItem={({ item }) => (
+                <View style={{ backgroundColor: colors.surface, borderColor: colors.borderLight, borderWidth: 1, borderRadius: 10, padding: 12, flexDirection: "row", gap: 10, alignItems: "center" }}>
+                  <View style={{ flex: 1 }}>
+                    {item.email && (
+                      <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 14, color: colors.text }}>{item.email}</Text>
+                    )}
+                    {item.mobile_number && (
+                      <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 13, color: colors.textSecondary }}>{item.mobile_number}</Text>
+                    )}
+                    <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 12, color: colors.textMuted, marginTop: 4 }}>
+                      {item.reason} · {item.created_at ? new Date(item.created_at).toLocaleDateString() : ""}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPress={() => removeBlocklistEntry(item.id)}
+                    style={{ paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, backgroundColor: colors.error + "20", borderWidth: 1, borderColor: colors.error }}
+                  >
+                    <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 12, color: colors.error }}>Remove</Text>
+                  </Pressable>
+                </View>
+              )}
+              ListEmptyComponent={
+                <View style={{ padding: 24, alignItems: "center" }}>
+                  <Ionicons name="shield-checkmark-outline" size={40} color={colors.textMuted} />
+                  <Text style={{ marginTop: 8, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>No blocked credentials</Text>
+                </View>
+              }
+            />
+          )}
+        </View>
+      )}
+
+      <BanUserModal
+        profile={banTarget}
+        colors={colors}
+        visible={!!banTarget}
+        onClose={() => setBanTarget(null)}
+        onConfirm={async (reason, durationHours) => {
+          if (banTarget) await handleBanUser(banTarget, reason, durationHours);
+        }}
+      />
+
       {editingUser && (
         <EditUserModal
           profile={editingUser}
@@ -4068,11 +4560,14 @@ export default function AdminPanelScreen() {
                   colors={colors}
                   isCurrentUser={u.id === user.id}
                   isSuperadmin={isSuperadminUser}
+                  isStaff={isStaff}
                   onTogglePremium={() => handleTogglePremium(u)}
                   onChangeRole={(role) => handleChangeRole(u, role)}
                   onEdit={() => setEditingUser(u)}
                   onDelete={() => handleDeleteUser(u)}
                   onAddFriend={() => handleAddFriend(u.id)}
+                  onBan={() => setBanTarget(u)}
+                  onUnban={() => handleUnbanUser(u)}
                   friendStatus={friendIds[u.id] || "none"}
                 />
               ))}
@@ -4090,11 +4585,14 @@ export default function AdminPanelScreen() {
                 colors={colors}
                 isCurrentUser={u.id === user.id}
                 isSuperadmin={isSuperadminUser}
+                isStaff={isStaff}
                 onTogglePremium={() => handleTogglePremium(u)}
                 onChangeRole={(role) => handleChangeRole(u, role)}
                 onEdit={() => setEditingUser(u)}
                 onDelete={() => handleDeleteUser(u)}
                 onAddFriend={() => handleAddFriend(u.id)}
+                onBan={() => setBanTarget(u)}
+                onUnban={() => handleUnbanUser(u)}
                 friendStatus={friendIds[u.id] || "none"}
               />
             ))

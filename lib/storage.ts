@@ -24,6 +24,10 @@ export interface UserProfile {
   stripePriceId?: string | null;
   chatMutedUntil?: string | null;
   chatBannedUntil?: string | null;
+  bannedUntil?: string | null;
+  banReason?: string | null;
+  bannedAt?: string | null;
+  bannedBy?: string | null;
   collectionVisible?: boolean;
   isVerifiedCollector?: boolean;
   emailVerified?: boolean;
@@ -457,7 +461,12 @@ export async function loginWithPassword(
   });
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error || "Login failed");
+    const err = new Error(data.message || data.error || "Login failed");
+    (err as any).banned = !!data.banned;
+    (err as any).bannedUntil = data.bannedUntil;
+    (err as any).banReason = data.banReason;
+    (err as any).permanent = !!data.permanent;
+    throw err;
   }
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
@@ -544,7 +553,12 @@ export async function verifyOtpAndLogin(
   });
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error || "Verification failed");
+    const err = new Error(data.message || data.error || "Verification failed");
+    (err as any).banned = !!data.banned;
+    (err as any).bannedUntil = data.bannedUntil;
+    (err as any).banReason = data.banReason;
+    (err as any).permanent = !!data.permanent;
+    throw err;
   }
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
@@ -584,6 +598,10 @@ function dbUserToProfile(dbUser: any): UserProfile {
     stripePriceId: dbUser.stripePriceId ?? dbUser.stripe_price_id ?? null,
     chatMutedUntil: dbUser.chatMutedUntil ?? dbUser.chat_muted_until ?? null,
     chatBannedUntil: dbUser.chatBannedUntil ?? dbUser.chat_banned_until ?? null,
+    bannedUntil: dbUser.bannedUntil ?? dbUser.banned_until ?? null,
+    banReason: dbUser.banReason ?? dbUser.ban_reason ?? null,
+    bannedAt: dbUser.bannedAt ?? dbUser.banned_at ?? null,
+    bannedBy: dbUser.bannedBy ?? dbUser.banned_by ?? null,
     collectionVisible: dbUser.collectionVisible ?? dbUser.collection_visible ?? false,
     isVerifiedCollector: dbUser.isVerifiedCollector ?? dbUser.is_verified_collector ?? false,
     emailVerified: dbUser.emailVerified ?? dbUser.email_verified ?? false,

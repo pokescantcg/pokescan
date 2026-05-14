@@ -31,6 +31,11 @@ export interface DbUser {
   bonusScanPools?: string | null;
   chatMutedUntil?: Date | string | null;
   chatBannedUntil?: Date | string | null;
+  bannedUntil?: Date | string | null;
+  banReason?: string | null;
+  bannedAt?: Date | string | null;
+  bannedBy?: string | null;
+  isTrialUsed?: boolean;
   collectionVisible?: boolean;
   emailVerified?: boolean;
   isVerifiedCollector?: boolean;
@@ -264,6 +269,11 @@ function mapRow(row: any): DbUser {
     bonusScanPools: row.bonus_scan_pools ?? null,
     chatMutedUntil: row.chat_muted_until ?? null,
     chatBannedUntil: row.chat_banned_until ?? null,
+    bannedUntil: row.banned_until ?? null,
+    banReason: row.ban_reason ?? null,
+    bannedAt: row.banned_at ?? null,
+    bannedBy: row.banned_by ?? null,
+    isTrialUsed: row.is_trial_used ?? false,
     collectionVisible: row.collection_visible ?? false,
     emailVerified: row.email_verified ?? false,
     isVerifiedCollector: row.is_verified_collector ?? false,

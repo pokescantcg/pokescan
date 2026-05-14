@@ -176,14 +176,33 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loginWithPassword = useCallback(async (credential: string, password: string) => {
-    const { user: newUser } = await loginWithPasswordStorage(credential, password);
-    setUser(newUser);
-    await upsertUserInRegistry(newUser);
-    const [users, saFlag] = await Promise.all([getAllUsers(), isSuperadmin()]);
-    setAllUsers(users);
-    setSuperadminFlag(saFlag);
-    migrateLocalCollectionToServer().catch(() => {});
-    migrateLocalScanHistoryToServer(newUser.id).catch(() => {});
+    try {
+      const { user: newUser } = await loginWithPasswordStorage(credential, password);
+      setUser(newUser);
+      await upsertUserInRegistry(newUser);
+      const [users, saFlag] = await Promise.all([getAllUsers(), isSuperadmin()]);
+      setAllUsers(users);
+      setSuperadminFlag(saFlag);
+      migrateLocalCollectionToServer().catch(() => {});
+      migrateLocalScanHistoryToServer(newUser.id).catch(() => {});
+    } catch (e: any) {
+      if (e && e.banned) {
+        const reasonLine = e.banReason ? `\n\nReason: ${e.banReason}` : "";
+        const untilLine = e.permanent
+          ? "\n\nThis ban is permanent."
+          : e.bannedUntil
+            ? `\n\nBan expires: ${new Date(e.bannedUntil).toLocaleString()}`
+            : "";
+        const msg = `${e.message || "Your account is banned."}${reasonLine}${untilLine}`;
+        const err: any = new Error(msg);
+        err.banned = true;
+        err.banReason = e.banReason;
+        err.bannedUntil = e.bannedUntil;
+        err.permanent = e.permanent;
+        throw err;
+      }
+      throw e;
+    }
   }, []);
 
   const handleSendRegistrationOtp = useCallback(async (userId: string, channel: "email" | "sms") => {
@@ -195,13 +214,32 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleVerifyOtp = useCallback(async (credential: string, code: string) => {
-    const { user: newUser } = await verifyOtpAndLogin(credential, code);
-    setUser(newUser);
-    migrateLocalCollectionToServer().then(() => getCollection().then(setCollection)).catch(() => {});
-    migrateLocalScanHistoryToServer(newUser.id).catch(() => {});
-    const [users, saFlag] = await Promise.all([getAllUsers(), isSuperadmin()]);
-    setAllUsers(users);
-    setSuperadminFlag(saFlag);
+    try {
+      const { user: newUser } = await verifyOtpAndLogin(credential, code);
+      setUser(newUser);
+      migrateLocalCollectionToServer().then(() => getCollection().then(setCollection)).catch(() => {});
+      migrateLocalScanHistoryToServer(newUser.id).catch(() => {});
+      const [users, saFlag] = await Promise.all([getAllUsers(), isSuperadmin()]);
+      setAllUsers(users);
+      setSuperadminFlag(saFlag);
+    } catch (e: any) {
+      if (e && e.banned) {
+        const reasonLine = e.banReason ? `\n\nReason: ${e.banReason}` : "";
+        const untilLine = e.permanent
+          ? "\n\nThis ban is permanent."
+          : e.bannedUntil
+            ? `\n\nBan expires: ${new Date(e.bannedUntil).toLocaleString()}`
+            : "";
+        const msg = `${e.message || "Your account is banned."}${reasonLine}${untilLine}`;
+        const err: any = new Error(msg);
+        err.banned = true;
+        err.banReason = e.banReason;
+        err.bannedUntil = e.bannedUntil;
+        err.permanent = e.permanent;
+        throw err;
+      }
+      throw e;
+    }
   }, []);
 
   const handleSocialRegister = useCallback(async (provider: AuthProvider, displayName: string, email?: string, avatarUrl?: string) => {

@@ -30,11 +30,26 @@ export const pokescanUsers = pgTable("pokescan_users", {
   bonusScanPools: text("bonus_scan_pools"),           // JSON: [{amount, expiresAt}]
   chatMutedUntil: timestamp("chat_muted_until", { withTimezone: true }),
   chatBannedUntil: timestamp("chat_banned_until", { withTimezone: true }),
+  bannedUntil: timestamp("banned_until", { withTimezone: true }),
+  banReason: text("ban_reason"),
+  bannedAt: timestamp("banned_at", { withTimezone: true }),
+  bannedBy: varchar("banned_by", { length: 36 }),
+  isTrialUsed: boolean("is_trial_used").notNull().default(false),
   collectionVisible: boolean("collection_visible").notNull().default(false),
   isVerifiedCollector: boolean("is_verified_collector").notNull().default(false),
   emailVerified: boolean("email_verified").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
 });
+
+export const pokescanBlockedCredentials = pgTable("pokescan_blocked_credentials", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  email: text("email"),
+  mobileNumber: text("mobile_number"),
+  reason: text("reason").notNull().default("deleted"),
+  blockedBy: varchar("blocked_by", { length: 36 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+export type PokescanBlockedCredential = typeof pokescanBlockedCredentials.$inferSelect;
 
 export const pokescanSessions = pgTable("pokescan_sessions", {
   token: varchar("token", { length: 64 }).primaryKey(),
@@ -233,6 +248,8 @@ export const pokescanAdminActivityLog = pgTable("pokescan_admin_activity_log", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
   listingId: varchar("listing_id", { length: 36 }),
   listingName: text("listing_name"),
+  targetUserId: varchar("target_user_id", { length: 36 }),
+  targetUsername: text("target_username"),
   action: text("action").notNull(),
   performedBy: varchar("performed_by", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
   note: text("note"),
