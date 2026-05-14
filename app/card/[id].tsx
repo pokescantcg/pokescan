@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -33,7 +33,7 @@ import {
   generateEbaySoldUrl,
 } from "@/lib/pokemon-api";
 import { useUser } from "@/lib/user-context";
-import { CardVariant } from "@/lib/storage";
+import { CardVariant, updateCollectionItemPrice } from "@/lib/storage";
 import { getApiUrl } from "@/lib/query-client";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
@@ -216,6 +216,15 @@ export default function CardDetailScreen() {
       .finally(() => setEbayPriceLoading(false));
   }, [card?.id]);
 
+  useEffect(() => {
+    if (!card || !ebayFetchedPrice?.price || !user) return;
+    const nullPriceItems = collection.filter((c) => c.cardId === card.id && !c.priceGBP && c.id);
+    if (nullPriceItems.length === 0) return;
+    nullPriceItems.forEach((item) => {
+      updateCollectionItemPrice(item.id!, ebayFetchedPrice.price!);
+    });
+  }, [ebayFetchedPrice?.price, card?.id]);
+
   const handleAddToCollection = () => {
     if (!user) {
       Alert.alert("Sign In Required", "Create an account to add cards to your collection.", [
@@ -229,7 +238,8 @@ export default function CardDetailScreen() {
       return;
     }
     if (!card) return;
-    const priceData = getUKPrice(card);
+    const builtIn = getUKPrice(card);
+    const effectivePrice = builtIn.price ?? ebayFetchedPrice?.price ?? null;
     addCard({
       cardId: card.id,
       cardName: card.name,
@@ -240,7 +250,7 @@ export default function CardDetailScreen() {
       quantity: 1,
       condition: selectedCondition,
       variant: selectedVariant,
-      priceGBP: priceData.price,
+      priceGBP: effectivePrice,
       gradingCompany: gradingCompany.trim() || null,
       grade: grade.trim() || null,
     });

@@ -101,20 +101,35 @@ const CARD_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - GAP * (NUM_COLS - 1)) / NUM_COLS;
 const CARD_IMG_HEIGHT = CARD_WIDTH * 1.4;
 
 const POKEBALL_GOLD = "#FFD700";
-const MAX_BALLS = 5;
 
-function CollectionBadge({ count }: { count: number }) {
-  const balls = Math.min(count, MAX_BALLS);
-  const extra = count - MAX_BALLS;
+type CardCollectionData = { total: number; variants: Record<string, number> };
+
+const VARIANT_COLORS: Record<string, string> = {
+  "Holo": "#FFD700",
+  "Reverse Holo": "#00BFFF",
+  "Non-Holo": "#C0C0C0",
+};
+const VARIANT_LABELS: Record<string, string> = {
+  "Holo": "H",
+  "Reverse Holo": "R",
+  "Non-Holo": "N",
+};
+
+function CollectionBadge({ data }: { data: CardCollectionData }) {
+  const entries = Object.entries(data.variants).filter(([, qty]) => qty > 0);
   return (
     <View style={styles.collectionBadge}>
       <View style={styles.collectionBadgeInner}>
-        {Array.from({ length: balls }).map((_, i) => (
-          <MaterialCommunityIcons key={i} name="pokeball" size={11} color={POKEBALL_GOLD} />
-        ))}
-        {extra > 0 && (
-          <Text style={styles.collectionBadgeExtra}>+{extra}</Text>
-        )}
+        {entries.map(([variant, qty]) => {
+          const label = VARIANT_LABELS[variant] ?? variant[0];
+          const color = VARIANT_COLORS[variant] ?? POKEBALL_GOLD;
+          return (
+            <View key={variant} style={{ flexDirection: "row", alignItems: "center", gap: 1 }}>
+              <Text style={{ fontSize: 9, fontFamily: "Outfit_700Bold", color }}>{label}</Text>
+              {qty > 1 && <Text style={{ fontSize: 8, fontFamily: "Outfit_600SemiBold", color }}>×{qty}</Text>}
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -123,11 +138,11 @@ function CollectionBadge({ count }: { count: number }) {
 function CardGridItem({
   card,
   colors,
-  collectionCount,
+  collectionData,
 }: {
   card: PokemonCard;
   colors: ReturnType<typeof useThemeColors>;
-  collectionCount: number;
+  collectionData: CardCollectionData | null;
 }) {
   const priceData = getUKPrice(card);
 
@@ -137,8 +152,8 @@ function CardGridItem({
         styles.gridItem,
         {
           backgroundColor: colors.card,
-          borderColor: collectionCount > 0 ? POKEBALL_GOLD + "80" : colors.borderLight,
-          borderWidth: collectionCount > 0 ? 1.5 : 1,
+          borderColor: (collectionData?.total ?? 0) > 0 ? POKEBALL_GOLD + "80" : colors.borderLight,
+          borderWidth: (collectionData?.total ?? 0) > 0 ? 1.5 : 1,
           width: CARD_WIDTH,
           opacity: pressed ? 0.8 : 1,
         },
@@ -153,7 +168,7 @@ function CardGridItem({
           placeholder={{ color: colors.surface }}
           transition={200}
         />
-        {collectionCount > 0 && <CollectionBadge count={collectionCount} />}
+        {(collectionData?.total ?? 0) > 0 && <CollectionBadge data={collectionData!} />}
       </View>
       <View style={styles.gridInfo}>
         <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={2}>
@@ -194,9 +209,13 @@ export default function SetDetailScreen() {
   const { collection } = useUser();
 
   const collectionMap = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, CardCollectionData>();
     for (const item of collection) {
-      map.set(item.cardId, (map.get(item.cardId) ?? 0) + item.quantity);
+      const existing = map.get(item.cardId) ?? { total: 0, variants: {} };
+      const v = item.variant || "Non-Holo";
+      existing.total += item.quantity;
+      existing.variants[v] = (existing.variants[v] ?? 0) + item.quantity;
+      map.set(item.cardId, existing);
     }
     return map;
   }, [collection]);
@@ -305,7 +324,7 @@ export default function SetDetailScreen() {
       <CardGridItem
         card={item}
         colors={colors}
-        collectionCount={collectionMap.get(item.id) ?? 0}
+        collectionData={collectionMap.get(item.id) ?? null}
       />
     ),
     [colors, collectionMap]

@@ -3244,16 +3244,23 @@ ${setReference}`
       if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
 
       const { id } = req.params;
-      const { quantity, gradingCompany, grade } = req.body;
+      const { quantity, gradingCompany, grade, priceGBP } = req.body;
 
-      if (quantity <= 0) {
+      if (quantity !== undefined && quantity <= 0) {
         await db.execute(sql`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`);
       } else if (gradingCompany !== undefined) {
         const gc = gradingCompany || null;
         const gr = grade || null;
         await db.execute(sql`UPDATE pokescan_collections SET quantity = ${quantity}, grading_company = ${gc}, grade = ${gr} WHERE id = ${id} AND user_id = ${user.id}`);
+      } else if (priceGBP !== undefined && quantity === undefined) {
+        await db.execute(sql`UPDATE pokescan_collections SET price_gbp = ${priceGBP} WHERE id = ${id} AND user_id = ${user.id}`);
       } else {
-        await db.execute(sql`UPDATE pokescan_collections SET quantity = ${quantity} WHERE id = ${id} AND user_id = ${user.id}`);
+        const p = priceGBP !== undefined ? priceGBP : null;
+        if (p !== null) {
+          await db.execute(sql`UPDATE pokescan_collections SET quantity = ${quantity}, price_gbp = ${p} WHERE id = ${id} AND user_id = ${user.id}`);
+        } else {
+          await db.execute(sql`UPDATE pokescan_collections SET quantity = ${quantity} WHERE id = ${id} AND user_id = ${user.id}`);
+        }
       }
 
       const rows = await db.execute(

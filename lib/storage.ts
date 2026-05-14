@@ -955,6 +955,21 @@ export async function updateCollectionGrading(itemId: string, gradingCompany: st
   return items;
 }
 
+export async function updateCollectionItemPrice(itemId: string, priceGBP: number): Promise<void> {
+  try {
+    const token = await getSessionToken();
+    if (!token) return;
+    const url = new URL(`/api/collection/${itemId}`, getApiUrl()).href;
+    await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ priceGBP }),
+    });
+  } catch {
+    // silent — price update is best-effort
+  }
+}
+
 async function getCollectionLocal(): Promise<CollectionItem[]> {
   const data = await AsyncStorage.getItem(KEYS.COLLECTION);
   return data ? JSON.parse(data) : [];
