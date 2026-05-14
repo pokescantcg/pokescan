@@ -1,3 +1,4 @@
+import * as cheerio from "cheerio";
 import { calculateGrade } from "./services/grading";
 import { getUserQuota, dailyCheckin, consumeScan } from "./scan-quota";
 import type { Express, Request, Response } from "express";
@@ -1120,13 +1121,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
           "Accept-Language": "en-GB,en;q=0.9",
         },
       }).then((r) => r.text());
-      const priceMatches = [...html.matchAll(/s-card__price">\s*£([\d,]+\.?\d*)/g)];
+
       const prices: number[] = [];
-      for (const match of priceMatches) {
-        const price = parseFloat(match[1].replace(/,/g, ""));
-        if (price >= 0.5 && price <= 5000) prices.push(price);
+
+      // Primary: cheerio with the correct eBay price selector
+      try {
+        const $ = cheerio.load(html);
+        $(".s-item__price").each((_, el) => {
+          const text = $(el).text().trim();
+          // Handle ranges like "£3.50 to £5.00" — take the lower value
+          const match = text.match(/£([\d,]+\.?\d*)/);
+          if (match) {
+            const price = parseFloat(match[1].replace(/,/g, ""));
+            if (price >= 0.5 && price <= 5000) prices.push(price);
+          }
+        });
+      } catch (_) {}
+
+      // Fallback regex patterns if cheerio found nothing
+      if (prices.length === 0) {
+        const patterns = [
+          /s-item__price[^>]*>\s*£([\d,]+\.?\d*)/g,
+          /class="BOLD[^"]*">\s*£([\d,]+\.?\d*)/g,
+          /itemprop="price"[^>]*content="([\d.]+)"/g,
+        ];
+        for (const pattern of patterns) {
+          for (const m of html.matchAll(pattern)) {
+            const price = parseFloat(m[1].replace(/,/g, ""));
+            if (price >= 0.5 && price <= 5000) prices.push(price);
+          }
+          if (prices.length >= 3) break;
+        }
       }
-      return prices.slice(0, 20);
+
+      // Deduplicate and cap
+      return [...new Set(prices)].slice(0, 20);
     }
 
     function computeStats(prices: number[]): { lowest: number | null; median: number | null; highest: number | null } {
