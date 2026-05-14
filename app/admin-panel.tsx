@@ -387,6 +387,12 @@ function ListingDetailModal({
   const [noteText, setNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
 
+  React.useEffect(() => {
+    setEditingNote(false);
+    setNoteText("");
+    setSavingNote(false);
+  }, [listing?.id]);
+
   if (!listing) return null;
   const status = listing.status ?? "approved";
   const statusColor =
