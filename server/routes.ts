@@ -1871,6 +1871,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       reviewedBy: row.reviewed_by ?? null,
       reviewedAt: row.reviewed_at ?? null,
       reviewNote: row.review_note ?? null,
+      reviewNoteUpdatedBy: row.review_note_updated_by_username ?? row.review_note_updated_by ?? null,
+      reviewNoteUpdatedAt: row.review_note_updated_at ?? null,
       externalUrl: row.external_url ?? null,
       createdAt: row.created_at,
     };
@@ -2065,11 +2067,18 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       const allowed = ["pending", "approved", "rejected"];
       const result = allowed.includes(status)
         ? await pool.query(
-            `SELECT * FROM pokescan_market_listings WHERE status = $1 ORDER BY created_at DESC LIMIT 500`,
+            `SELECT ml.*, u.username AS review_note_updated_by_username
+               FROM pokescan_market_listings ml
+               LEFT JOIN pokescan_users u ON u.id = ml.review_note_updated_by
+              WHERE ml.status = $1
+              ORDER BY ml.created_at DESC LIMIT 500`,
             [status]
           )
         : await pool.query(
-            `SELECT * FROM pokescan_market_listings ORDER BY created_at DESC LIMIT 500`
+            `SELECT ml.*, u.username AS review_note_updated_by_username
+               FROM pokescan_market_listings ml
+               LEFT JOIN pokescan_users u ON u.id = ml.review_note_updated_by
+              ORDER BY ml.created_at DESC LIMIT 500`
           );
       res.json({ listings: result.rows.map(rowToListing) });
     } catch (err: any) {
@@ -2107,11 +2116,18 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         );
       } else {
         result = await pool.query(
-          `UPDATE pokescan_market_listings
-              SET review_note = $1
-            WHERE id = $2
-            RETURNING *`,
-          [reviewNote ?? null, id]
+          `WITH upd AS (
+              UPDATE pokescan_market_listings
+                 SET review_note = $1,
+                     review_note_updated_by = $2,
+                     review_note_updated_at = NOW()
+               WHERE id = $3
+             RETURNING *
+           )
+           SELECT upd.*, u.username AS review_note_updated_by_username
+             FROM upd
+             LEFT JOIN pokescan_users u ON u.id = upd.review_note_updated_by`,
+          [reviewNote ?? null, user.id, id]
         );
       }
       if (result.rows.length === 0) { res.status(404).json({ error: "Listing not found" }); return; }

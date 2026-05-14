@@ -63,6 +63,8 @@ export interface MarketListing {
   reviewedBy: string | null;
   reviewedAt: string | null;
   reviewNote: string | null;
+  reviewNoteUpdatedBy: string | null;
+  reviewNoteUpdatedAt: string | null;
   externalUrl: string | null;
   createdAt: string;
 }

@@ -545,9 +545,16 @@ function ListingDetailModal({
                   </View>
                 </>
               ) : (
-                <Text style={{ fontSize: 14, fontFamily: "Outfit_400Regular", color: listing.reviewNote ? colors.text : colors.textMuted, fontStyle: listing.reviewNote ? "normal" : "italic" }}>
-                  {listing.reviewNote ?? "No note — tap Edit to add one"}
-                </Text>
+                <>
+                  <Text style={{ fontSize: 14, fontFamily: "Outfit_400Regular", color: listing.reviewNote ? colors.text : colors.textMuted, fontStyle: listing.reviewNote ? "normal" : "italic" }}>
+                    {listing.reviewNote ?? "No note — tap Edit to add one"}
+                  </Text>
+                  {listing.reviewNoteUpdatedBy && listing.reviewNoteUpdatedAt && (
+                    <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted, marginTop: 4 }}>
+                      {`Last edited by @${listing.reviewNoteUpdatedBy} on ${new Date(listing.reviewNoteUpdatedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`}
+                    </Text>
+                  )}
+                </>
               )}
             </View>
           )}
@@ -1045,11 +1052,12 @@ export default function AdminPanelScreen() {
           throw new Error(err.error || `Server error ${res.status}`);
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const updatedListing: MarketListing = (await res.json()).listing ?? { ...listing, reviewNote: note };
         setAdminListings((prev) =>
-          prev.map((l) => (l.id === listing.id ? { ...l, reviewNote: note } : l))
+          prev.map((l) => (l.id === listing.id ? updatedListing : l))
         );
         setSelectedListing((prev) =>
-          prev && prev.id === listing.id ? { ...prev, reviewNote: note } : prev
+          prev && prev.id === listing.id ? updatedListing : prev
         );
       } catch (e: any) {
         Alert.alert("Error", e.message || "Could not update note");
