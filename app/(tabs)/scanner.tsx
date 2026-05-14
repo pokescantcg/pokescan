@@ -19,6 +19,7 @@ import {
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as FileSystem from "expo-file-system/legacy";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -57,6 +58,35 @@ function formatTimeAgo(isoString: string): string {
   return `${days}d ago`;
 }
 
+/**
+ * Maps a screen-space frame rect to pixel coordinates in the captured photo,
+ * accounting for the camera preview's cover-mode scaling/cropping.
+ */
+function computeCropRect(
+  photoW: number, photoH: number,
+  screenW: number, screenH: number,
+  frameX: number, frameY: number,
+  frameW: number, frameH: number
+): { originX: number; originY: number; width: number; height: number } {
+  const photoAspect = photoW / photoH;
+  const screenAspect = screenW / screenH;
+  let visW: number, visH: number, offX: number, offY: number;
+  if (photoAspect > screenAspect) {
+    visH = photoH; visW = photoH * screenAspect;
+    offX = (photoW - visW) / 2; offY = 0;
+  } else {
+    visW = photoW; visH = photoW / screenAspect;
+    offX = 0; offY = (photoH - visH) / 2;
+  }
+  const sx = visW / screenW;
+  const sy = visH / screenH;
+  const x = Math.max(0, Math.round(offX + frameX * sx));
+  const y = Math.max(0, Math.round(offY + frameY * sy));
+  const w = Math.min(photoW - x, Math.round(frameW * sx));
+  const h = Math.min(photoH - y, Math.round(frameH * sy));
+  return { originX: x, originY: y, width: w, height: h };
+}
+
 function ScannerCameraModal({
   visible,
   onClose,
@@ -72,18 +102,24 @@ function ScannerCameraModal({
   const { width: sw, height: sh } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
-  const frameW = sw * 0.7;
+  const frameW = sw * 0.88;
   const frameH = frameW * (4 / 3);
-  const dimTopH = Math.max((sh - frameH) * 0.38, 60);
+  const dimTopH = Math.max((sh - frameH) * 0.30, insets.top + 12);
   const dimSideW = (sw - frameW) / 2;
 
   const handleCapture = async () => {
     if (!cameraRef.current || isCapturing) return;
     setIsCapturing(true);
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: true });
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: false });
       if (photo) {
-        onCapture(photo.uri, photo.base64);
+        const crop = computeCropRect(photo.width, photo.height, sw, sh, dimSideW, dimTopH, frameW, frameH);
+        const cropped = await ImageManipulator.manipulateAsync(
+          photo.uri,
+          [{ crop }],
+          { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+        onCapture(cropped.uri, cropped.base64 ?? undefined);
         onClose();
       }
     } catch (e) {
@@ -163,19 +199,29 @@ function NumberStripCameraModal({
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [isCapturing, setIsCapturing] = useState(false);
-  const { width: sw } = useWindowDimensions();
+  const { width: sw, height: sh } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
-  const frameW = sw * 0.88;
-  const frameH = frameW * 0.28;
+  const frameW = sw * 0.92;
+  const frameH = frameW * 0.42;
 
   const handleCapture = async () => {
     if (!cameraRef.current || isCapturing) return;
     setIsCapturing(true);
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.92, base64: true });
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.92, base64: false });
       if (photo) {
-        onCapture(photo.uri, photo.base64);
+        const bottomRowH = 140 + insets.bottom;
+        const availH = sh - bottomRowH;
+        const frameLeft = (sw - frameW) / 2;
+        const frameTop = (availH - frameH) / 2;
+        const crop = computeCropRect(photo.width, photo.height, sw, sh, frameLeft, frameTop, frameW, frameH);
+        const cropped = await ImageManipulator.manipulateAsync(
+          photo.uri,
+          [{ crop }],
+          { compress: 0.92, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+        onCapture(cropped.uri, cropped.base64 ?? undefined);
         onClose();
       }
     } catch (e) {
