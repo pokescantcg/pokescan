@@ -29,7 +29,7 @@ import PokeBackground from "@/components/PokeBackground";
 import { useUser } from "@/lib/user-context";
 import { useAppConfig } from "@/lib/app-config-context";
 import { getApiUrl } from "@/lib/query-client";
-import { getSessionToken } from "@/lib/storage";
+import { getSessionToken, getScanHistory, addScanToHistory, clearScanHistory, ScanHistoryEntry } from "@/lib/storage";
 import {
   searchCards,
   PokemonCard,
@@ -43,6 +43,17 @@ import {
   fetchPCVSearch,
   findCard,
 } from "@/lib/pokemon-api";
+
+function formatTimeAgo(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
 
 function ScannerCameraModal({
   visible,
@@ -1595,6 +1606,13 @@ export default function ScannerScreen() {
   const [pcvResults, setPcvResults] = useState<PCVCard[]>([]);
   const [tcgApiResults, setTcgApiResults] = useState<PokemonCard[]>([]);
   const [identifyError, setIdentifyError] = useState<string | null>(null);
+  const [scanHistory, setScanHistory] = useState<ScanHistoryEntry[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    getScanHistory(user.id).then(setScanHistory);
+  }, [user?.id]);
 
   const handleSearch = useCallback(async () => {
     if (!searchText.trim()) return;
@@ -1671,6 +1689,21 @@ export default function ScannerScreen() {
       setSearchText(result.identification.englishName);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       refreshQuota();
+      if (user && result.identification.englishName) {
+        const firstTcg = (result.tcgApiResults || [])[0] ?? null;
+        const firstPcv = (result.pcvResults || [])[0] ?? null;
+        const thumbnail = firstTcg?.images?.small ?? firstPcv?.imageUrl ?? null;
+        addScanToHistory(user.id, {
+          cardName: result.identification.englishName,
+          setName: result.identification.setName || "",
+          cardNumber: result.identification.cardNumber || "",
+          language: result.identification.language || "",
+          thumbnail,
+          identification: result.identification,
+          tcgApiResults: result.tcgApiResults || [],
+          pcvResults: result.pcvResults || [],
+        }).then(() => getScanHistory(user.id).then(setScanHistory));
+      }
     } catch (e: any) {
       console.error("Identification failed:", e);
       if (e.isQuotaExceeded) {
@@ -1961,6 +1994,96 @@ export default function ScannerScreen() {
         onCapture={handleCameraModalCapture}
       />
 
+      {/* ── Scan History Modal ── */}
+      <Modal
+        visible={showHistory}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowHistory(false)}
+      >
+        <View style={[histStyles.modalContainer, { backgroundColor: colors.background }]}>
+          <View style={[histStyles.modalHeader, { borderBottomColor: colors.borderLight }]}>
+            <Text style={[histStyles.modalTitle, { color: colors.text }]}>Recent Scans</Text>
+            <View style={histStyles.modalHeaderActions}>
+              {scanHistory.length > 0 && (
+                <Pressable
+                  onPress={() => {
+                    if (!user) return;
+                    clearScanHistory(user.id).then(() => {
+                      setScanHistory([]);
+                    });
+                  }}
+                  style={histStyles.clearBtn}
+                >
+                  <Text style={[histStyles.clearBtnText, { color: colors.error }]}>Clear</Text>
+                </Pressable>
+              )}
+              <Pressable onPress={() => setShowHistory(false)} style={histStyles.closeBtn}>
+                <Ionicons name="close" size={22} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          </View>
+          {scanHistory.length === 0 ? (
+            <View style={histStyles.emptyHistory}>
+              <Ionicons name="time-outline" size={48} color={colors.textMuted} />
+              <Text style={[histStyles.emptyHistoryText, { color: colors.textSecondary }]}>No recent scans</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={scanHistory}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={histStyles.historyList}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => {
+                const ago = formatTimeAgo(item.timestamp);
+                return (
+                  <Pressable
+                    style={[histStyles.historyItem, { backgroundColor: colors.card, borderColor: colors.borderLight }]}
+                    onPress={() => {
+                      setShowHistory(false);
+                      setCapturedImage(null);
+                      setIdentification(item.identification);
+                      setPcvResults(item.pcvResults || []);
+                      setTcgApiResults(item.tcgApiResults || []);
+                      setSearchText(item.identification.englishName);
+                      setIdentifyError(null);
+                      setIsQuotaExceeded(false);
+                      setHasSearched(false);
+                      setResults([]);
+                    }}
+                  >
+                    <View style={[histStyles.historyThumb, { backgroundColor: colors.surface }]}>
+                      {item.thumbnail ? (
+                        <Image source={{ uri: item.thumbnail }} style={histStyles.historyThumbImg} contentFit="contain" />
+                      ) : (
+                        <MaterialCommunityIcons name="card-outline" size={28} color={colors.textMuted} />
+                      )}
+                    </View>
+                    <View style={histStyles.historyInfo}>
+                      <Text style={[histStyles.historyName, { color: colors.text }]} numberOfLines={1}>
+                        {item.cardName}
+                      </Text>
+                      <Text style={[histStyles.historySet, { color: colors.textSecondary }]} numberOfLines={1}>
+                        {[item.setName, item.cardNumber ? `#${item.cardNumber}` : null].filter(Boolean).join(" · ")}
+                      </Text>
+                      <View style={histStyles.historyMeta}>
+                        {item.language && item.language !== "English" && (
+                          <View style={[histStyles.langTag, { backgroundColor: colors.pokemonRed + "18" }]}>
+                            <Text style={[histStyles.langTagText, { color: colors.pokemonRed }]}>{item.language}</Text>
+                          </View>
+                        )}
+                        <Text style={[histStyles.historyTime, { color: colors.textMuted }]}>{ago}</Text>
+                      </View>
+                    </View>
+                    <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                  </Pressable>
+                );
+              }}
+            />
+          )}
+        </View>
+      </Modal>
+
       {/* ── Streak notification modal ── */}
       <Modal
         visible={!!streakModal}
@@ -2097,6 +2220,18 @@ export default function ScannerScreen() {
               </View>
             </Pressable>
           </View>
+          {scanHistory.length > 0 && (
+            <Pressable
+              style={[histStyles.recentBtn, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}
+              onPress={() => setShowHistory(true)}
+            >
+              <Ionicons name="time-outline" size={16} color={colors.textMuted} />
+              <Text style={[histStyles.recentBtnText, { color: colors.textSecondary }]}>
+                Recent ({scanHistory.length})
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+            </Pressable>
+          )}
 
           {!capturedImage && !identification && (
             <View style={[styles.alignmentGuide, { backgroundColor: colors.surface }]}>
@@ -2542,4 +2677,59 @@ const authGateStyles = StyleSheet.create({
     alignItems: "center", borderWidth: 1.5,
   },
   secondaryBtnText: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
+});
+
+const histStyles = StyleSheet.create({
+  recentBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  recentBtnText: { fontSize: 13, fontFamily: "Outfit_500Medium", flex: 1 },
+  modalContainer: { flex: 1 },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  modalTitle: { fontSize: 20, fontFamily: "Outfit_700Bold" },
+  modalHeaderActions: { flexDirection: "row", alignItems: "center", gap: 4 },
+  clearBtn: { paddingHorizontal: 12, paddingVertical: 6 },
+  clearBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
+  closeBtn: { padding: 6 },
+  emptyHistory: { flex: 1, justifyContent: "center", alignItems: "center", gap: 10 },
+  emptyHistoryText: { fontSize: 16, fontFamily: "Outfit_500Medium" },
+  historyList: { padding: 16, gap: 10 },
+  historyItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+  },
+  historyThumb: {
+    width: 56,
+    height: 76,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    flexShrink: 0,
+  },
+  historyThumbImg: { width: 56, height: 76 },
+  historyInfo: { flex: 1, gap: 3 },
+  historyName: { fontSize: 15, fontFamily: "Outfit_700Bold" },
+  historySet: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  historyMeta: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  langTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  langTagText: { fontSize: 11, fontFamily: "Outfit_600SemiBold" },
+  historyTime: { fontSize: 11, fontFamily: "Outfit_400Regular" },
 });

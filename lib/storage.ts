@@ -84,6 +84,68 @@ const KEYS = {
   LOCAL_USER: "pokescan_local_user",
 };
 
+const SCAN_HISTORY_MAX = 20;
+
+export interface ScanHistoryEntry {
+  id: string;
+  timestamp: string;
+  cardName: string;
+  setName: string;
+  cardNumber: string;
+  language: string;
+  thumbnail: string | null;
+  identification: {
+    englishName: string;
+    cardNumber: string;
+    setName: string;
+    language: string;
+    holoType: string;
+    rarity: string;
+    confidence: string;
+    originalName: string;
+    notes: string;
+  };
+  tcgApiResults: any[];
+  pcvResults: any[];
+}
+
+function scanHistoryKey(userId: string): string {
+  return `pokescan_scan_history_${userId}`;
+}
+
+export async function getScanHistory(userId: string): Promise<ScanHistoryEntry[]> {
+  try {
+    const data = await AsyncStorage.getItem(scanHistoryKey(userId));
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function addScanToHistory(
+  userId: string,
+  entry: Omit<ScanHistoryEntry, "id" | "timestamp">
+): Promise<void> {
+  try {
+    const history = await getScanHistory(userId);
+    const newEntry: ScanHistoryEntry = {
+      ...entry,
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+      timestamp: new Date().toISOString(),
+    };
+    const updated = [newEntry, ...history].slice(0, SCAN_HISTORY_MAX);
+    await safeSetItem(scanHistoryKey(userId), JSON.stringify(updated));
+  } catch {
+    // Non-critical
+  }
+}
+
+export async function clearScanHistory(userId: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(scanHistoryKey(userId));
+  } catch {}
+}
+
 const SESSION_KEY = "pokescan_session_token";
 
 /**
