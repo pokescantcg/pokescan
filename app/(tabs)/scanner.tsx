@@ -30,7 +30,7 @@ import PokeBackground from "@/components/PokeBackground";
 import { useUser } from "@/lib/user-context";
 import { useAppConfig } from "@/lib/app-config-context";
 import { getApiUrl } from "@/lib/query-client";
-import { getSessionToken, getScanHistory, addScanToHistory, clearScanHistory, ScanHistoryEntry } from "@/lib/storage";
+import { getSessionToken, getScanHistory, addScanToHistory, clearScanHistory, removeScanHistoryEntry, ScanHistoryEntry } from "@/lib/storage";
 import {
   searchCards,
   PokemonCard,
@@ -1660,6 +1660,7 @@ export default function ScannerScreen() {
   const gradeDisclaimerShown = useRef(false);
   const [scanQuota, setScanQuota] = useState<ScanQuota | null>(null);
   const [isQuotaExceeded, setIsQuotaExceeded] = useState(false);
+  const [isCardBack, setIsCardBack] = useState(false);
   const [streakModal, setStreakModal] = useState<{ day: number; bonus: number; reset: boolean } | null>(null);
 
   useEffect(() => {
@@ -1788,6 +1789,7 @@ export default function ScannerScreen() {
     setTcgApiResults([]);
     setResults([]);
     setHasSearched(false);
+    setIsCardBack(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
@@ -1814,6 +1816,13 @@ export default function ScannerScreen() {
       }
 
       const result = await identifyCard(base64);
+
+      if (result.isCardBack) {
+        setIsCardBack(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        return;
+      }
+
       setIdentification(result.identification);
       setPcvResults(result.pcvResults || []);
       setTcgApiResults(result.tcgApiResults || []);
@@ -1984,6 +1993,7 @@ export default function ScannerScreen() {
     setTcgApiResults([]);
     setIdentifyError(null);
     setIsQuotaExceeded(false);
+    setIsCardBack(false);
     setResults([]);
     setHasSearched(false);
     setSearchText("");
@@ -2020,7 +2030,20 @@ export default function ScannerScreen() {
         </View>
       )}
 
-      {capturedImage && !isQuotaExceeded && (
+      {isCardBack && !isIdentifying && (
+        <View style={[styles.errorCard, { backgroundColor: colors.card, borderColor: colors.pokemonYellow + "80" }]}>
+          <Ionicons name="sync" size={22} color={colors.pokemonYellow} />
+          <Text style={[styles.errorText, { color: colors.text }]}>That's the back of the card</Text>
+          <Text style={[styles.retryText, { color: colors.textSecondary, fontSize: 12, marginTop: 2 }]}>
+            Flip it over and scan the front — this doesn't count as a scan.
+          </Text>
+          <Pressable onPress={clearAll} style={{ marginTop: 6 }}>
+            <Text style={[styles.retryText, { color: colors.pokemonRed }]}>Try again</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {capturedImage && !isQuotaExceeded && !isCardBack && (
         <View style={[styles.capturedPreview, { borderColor: colors.pokemonRed + "60" }]}>
           <Image source={{ uri: capturedImage }} style={styles.capturedImage} contentFit="contain" />
           <Pressable
@@ -2385,6 +2408,25 @@ export default function ScannerScreen() {
                         >
                           <Ionicons name="share-outline" size={15} color={colors.textSecondary} />
                           <Text style={[histStyles.actionBtnText, { color: colors.textSecondary }]}>Share</Text>
+                        </Pressable>
+                        <Pressable
+                          style={({ pressed }) => [
+                            histStyles.actionBtn,
+                            { backgroundColor: colors.surface, opacity: pressed ? 0.8 : 1 },
+                          ]}
+                          onPress={async () => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                            if (user) {
+                              const updated = await removeScanHistoryEntry(user.id, item.id);
+                              if (updated.length > 0 || scanHistory.length === 1) {
+                                setScanHistory(updated);
+                              }
+                            }
+                            if (expandedHistoryId === item.id) setExpandedHistoryId(null);
+                          }}
+                        >
+                          <Ionicons name="trash-outline" size={15} color={colors.error} />
+                          <Text style={[histStyles.actionBtnText, { color: colors.error }]}>Delete</Text>
                         </Pressable>
                       </View>
                     )}

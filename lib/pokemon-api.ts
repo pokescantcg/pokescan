@@ -320,6 +320,7 @@ export interface CardIdentification {
 }
 
 export interface IdentifyCardResult {
+  isCardBack?: boolean;
   identification: CardIdentification;
   pcvResults: PCVCard[];
   tcgApiResults: PokemonCard[];

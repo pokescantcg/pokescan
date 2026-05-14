@@ -1162,23 +1162,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const isNumberStripMode = mode === "number-strip";
 
-      // ── Scan quota enforcement (free users only) ──────────────────────────
+      // ── Auth token resolved here; quota enforcement moves to after AI detection ──
       const authToken = req.headers.authorization?.replace("Bearer ", "");
-      if (authToken) {
-        const scanUser = await storage.validateSession(authToken);
-        if (scanUser && !scanUser.isPremium) {
-          const result = await consumeScan(scanUser.id);
-          if (!result.allowed) {
-            res.status(429).json({
-              error: "Daily scan limit reached",
-              freeRemaining: 0,
-              bonusRemaining: 0,
-              message: "You've used all your scans for today. Come back tomorrow or upgrade to Premium for unlimited scans.",
-            });
-            return;
-          }
-        }
-      }
 
       // ── Number-strip mode: focused prompt just for reading the collector number ──
       if (isNumberStripMode) {
@@ -1277,8 +1262,12 @@ CONFIDENCE RULES:
 - Set confidence to "medium" if you can read the name but the number is partially obscured or ambiguous.
 - Set confidence to "low" if the card is blurry, angled, cut off, or you cannot read the key identifiers. Do not guess a number — leave cardNumber empty if unsure.
 
+CARD BACK DETECTION — check this FIRST before anything else:
+If the image shows the BACK of a Pokémon card (the classic design with a blue/dark background, a Poké Ball in the centre, and "Pokémon" branding), set "isCardBack" to true and return immediately with all other fields as empty strings. Do NOT attempt identification.
+
 Always respond with valid JSON in this exact format:
 {
+  "isCardBack": false,
   "englishName": "Pikachu",
   "cardNumber": "025/198",
   "setName": "Scarlet & Violet",
@@ -1289,6 +1278,8 @@ Always respond with valid JSON in this exact format:
   "originalName": "ピカチュウ",
   "notes": "Any additional identification notes"
 }
+
+Set "isCardBack" to true ONLY when the image clearly shows the standard Pokémon card back. For all other images (front of card, blurry, unclear), set "isCardBack" to false and attempt identification normally.
 
 The "originalName" field should contain the name exactly as printed on the card. If the card is English, originalName equals englishName. For non-English cards, translate the name to English for the "englishName" field.
 
@@ -1333,6 +1324,29 @@ ${setReference}`
       }
 
       const identification = JSON.parse(content);
+
+      // ── Card back detected — return early, no quota consumed ──────────────
+      if (identification.isCardBack === true) {
+        res.json({ isCardBack: true });
+        return;
+      }
+
+      // ── Scan quota enforcement (free users only, fronts only) ─────────────
+      if (authToken) {
+        const scanUser = await storage.validateSession(authToken);
+        if (scanUser && !scanUser.isPremium) {
+          const result = await consumeScan(scanUser.id);
+          if (!result.allowed) {
+            res.status(429).json({
+              error: "Daily scan limit reached",
+              freeRemaining: 0,
+              bonusRemaining: 0,
+              message: "You've used all your scans for today. Come back tomorrow or upgrade to Premium for unlimited scans.",
+            });
+            return;
+          }
+        }
+      }
 
       let pcvResults: any[] = [];
       try {

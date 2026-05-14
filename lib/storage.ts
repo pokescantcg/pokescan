@@ -147,6 +147,17 @@ export async function clearScanHistory(userId: string): Promise<void> {
   } catch {}
 }
 
+export async function removeScanHistoryEntry(userId: string, entryId: string): Promise<ScanHistoryEntry[]> {
+  const history = await getScanHistory(userId);
+  const updated = history.filter((e) => e.id !== entryId);
+  try {
+    await safeSetItem(scanHistoryKey(userId), JSON.stringify(updated));
+  } catch {
+    return history;
+  }
+  return updated;
+}
+
 const SESSION_KEY = "pokescan_session_token";
 
 /**
