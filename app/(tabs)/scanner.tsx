@@ -1686,9 +1686,31 @@ export default function ScannerScreen() {
     }
   }, [refreshQuota]);
 
-  const handleCameraCapture = useCallback(() => {
-    setShowCameraModal(true);
-  }, []);
+  const handleCameraCapture = useCallback(async () => {
+    if (Platform.OS === "web") {
+      // Web: CameraView has limited support — fall back to ImagePicker
+      try {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== "granted") {
+          Alert.alert("Permission Required", "Camera access is needed to scan cards.");
+          return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+          quality: 0.85,
+          allowsEditing: true,
+          aspect: [3, 4],
+          base64: true,
+        });
+        if (!result.canceled && result.assets[0]) {
+          processImageFromBase64(result.assets[0].uri, result.assets[0].base64);
+        }
+      } catch (e) {
+        console.error("Camera error:", e);
+      }
+    } else {
+      setShowCameraModal(true);
+    }
+  }, [processImageFromBase64]);
 
   const handleCameraModalCapture = useCallback((uri: string, base64: string | undefined) => {
     processImageFromBase64(uri, base64);
