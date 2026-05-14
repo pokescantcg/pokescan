@@ -1089,7 +1089,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/identify-card", express.json({ limit: "10mb" }), async (req: Request, res: Response) => {
+  app.post("/api/identify-card", express.json({ limit: "15mb" }), async (req: Request, res: Response) => {
     try {
       const { imageBase64 } = req.body;
       if (!imageBase64) {
@@ -1122,15 +1122,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           messages: [
             {
               role: "system",
-              content: `You are a Pokemon Trading Card Game expert. You can identify any Pokemon card from any language including English, Japanese, Korean, and Chinese.
+              content: `You are a Pokémon Trading Card Game expert with encyclopedic knowledge of every card ever printed in English, Japanese, Korean, and Chinese. Your task is to precisely identify a Pokémon card from a photo.
 
-When shown a Pokemon card image, identify:
-1. The Pokemon's ENGLISH name (translate if card is in Japanese/Korean/Chinese)
-2. The card number within its set (e.g. "025/198", "SV049", "TG15/TG30")
-3. The set name in ENGLISH (translate if needed)
-4. The language of the card (English, Japanese, Korean, Chinese)
-5. Whether it's a holo, reverse holo, full art, etc.
-6. The rarity (Common, Uncommon, Rare, Ultra Rare, Secret Rare, etc.)
+IDENTIFICATION STEPS — examine the card image carefully in this order:
+1. COLLECTOR NUMBER: Look at the very bottom of the card (below the card art and text box). You will see a number like "025/198", "SV049", "TG15/TG30", or "001/071". This is the single most important identifier — read it exactly.
+2. SET SYMBOL: Look at the bottom-right corner of the artwork box (just above the card text). This small icon identifies the expansion set.
+3. CARD NAME: Read the name printed at the top of the card. For non-English cards, also note the original-language name.
+4. COPYRIGHT YEAR: The fine print at the bottom usually contains a year (e.g. "©2023") — use this to narrow down the era and set.
+5. HP and type: Note the HP number and energy type shown on the card.
+6. HOLO FINISH: Determine if the card is Full Art, Secret Rare, Holo, Reverse Holo, or Non-Holo based on the card's visual finish.
+
+CONFIDENCE RULES:
+- Set confidence to "high" only if you can clearly read the collector number AND the card name.
+- Set confidence to "medium" if you can read the name but the number is partially obscured or ambiguous.
+- Set confidence to "low" if the card is blurry, angled, cut off, or you cannot read the key identifiers. Do not guess a number — leave cardNumber empty if unsure.
 
 Always respond with valid JSON in this exact format:
 {
@@ -1145,27 +1150,27 @@ Always respond with valid JSON in this exact format:
   "notes": "Any additional identification notes"
 }
 
-If you cannot identify the card, set confidence to "low" and provide your best guess. The "originalName" field should contain the name as printed on the card (in its original language). If the card is English, originalName equals englishName.`
+The "originalName" field should contain the name exactly as printed on the card. If the card is English, originalName equals englishName. For non-English cards, translate the name to English for the "englishName" field.`
             },
             {
               role: "user",
               content: [
                 {
                   type: "text",
-                  text: "Identify this Pokemon card. Provide the English name, card number, set name, language, holo type, and rarity."
+                  text: "Identify this Pokémon card. Focus on reading the collector number at the bottom, the set symbol, and the card name. Return the JSON response."
                 },
                 {
                   type: "image_url",
                   image_url: {
                     url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
-                    detail: "low"
+                    detail: "high"
                   }
                 }
               ]
             }
           ],
           response_format: { type: "json_object" },
-          max_completion_tokens: 500,
+          max_completion_tokens: 600,
         });
         const timeoutPromise = new Promise<never>((_, reject) =>
           setTimeout(() => reject(Object.assign(new Error("AI identification timed out. Please try again."), { isTimeout: true })), 30000)

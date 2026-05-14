@@ -914,7 +914,7 @@ async function pickImage(source: "camera" | "gallery"): Promise<CapturedImage | 
       Alert.alert("Permission Required", "Camera access is needed to grade cards.");
       return null;
     }
-    const res = await ImagePicker.launchCameraAsync({ quality: 0.7, allowsEditing: true, aspect: [3, 4], base64: true });
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.85, allowsEditing: true, aspect: [3, 4], base64: true });
     if (res.canceled || !res.assets[0]) return null;
     const asset = res.assets[0];
     const b64 = asset.base64
@@ -925,7 +925,7 @@ async function pickImage(source: "camera" | "gallery"): Promise<CapturedImage | 
         })();
     return { uri: asset.uri, base64: b64 };
   } else {
-    const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.7, allowsEditing: true, aspect: [3, 4], base64: true });
+    const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.85, allowsEditing: true, aspect: [3, 4], base64: true });
     if (res.canceled || !res.assets[0]) return null;
     const asset = res.assets[0];
     const b64 = asset.base64
@@ -1565,7 +1565,7 @@ export default function ScannerScreen() {
         return;
       }
       const result = await ImagePicker.launchCameraAsync({
-        quality: 0.5,
+        quality: 0.85,
         allowsEditing: true,
         aspect: [3, 4],
         base64: true,
@@ -1581,7 +1581,7 @@ export default function ScannerScreen() {
   const handleGallery = useCallback(async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        quality: 0.5,
+        quality: 0.85,
         allowsEditing: true,
         aspect: [3, 4],
         base64: true,
@@ -1676,6 +1676,38 @@ export default function ScannerScreen() {
           <Text style={[styles.errorText, { color: colors.error }]}>{identifyError}</Text>
           <Pressable onPress={clearAll}>
             <Text style={[styles.retryText, { color: colors.pokemonRed }]}>Try again</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {identification && !isIdentifying && (identification.confidence === "low" || identification.confidence === "medium") && (
+        <View style={[styles.retakeBanner, { backgroundColor: colors.card, borderColor: colors.pokemonYellow + "80" }]}>
+          <View style={styles.retakeBannerHeader}>
+            <Ionicons name="warning" size={18} color={colors.pokemonYellow} />
+            <Text style={[styles.retakeBannerTitle, { color: colors.text }]}>
+              {identification.confidence === "low" ? "Could not read card clearly" : "Low confidence result"}
+            </Text>
+          </View>
+          <Text style={[styles.retakeBannerSubtitle, { color: colors.textSecondary }]}>
+            For a better result:
+          </Text>
+          <View style={styles.retakeTipsList}>
+            <Text style={[styles.retakeTip, { color: colors.textMuted }]}>
+              · Fill the frame — the card should take up at least 80% of the photo
+            </Text>
+            <Text style={[styles.retakeTip, { color: colors.textMuted }]}>
+              · Use even lighting with no glare or shadows across the card
+            </Text>
+            <Text style={[styles.retakeTip, { color: colors.textMuted }]}>
+              · Hold steady and keep the phone parallel to the card (not angled)
+            </Text>
+          </View>
+          <Pressable
+            style={[styles.retakeBtn, { backgroundColor: colors.pokemonRed }]}
+            onPress={() => { clearAll(); }}
+          >
+            <Ionicons name="camera" size={15} color="#FFF" />
+            <Text style={styles.retakeBtnText}>Retake Photo</Text>
           </Pressable>
         </View>
       )}
@@ -1920,6 +1952,22 @@ export default function ScannerScreen() {
               </View>
             </Pressable>
           </View>
+
+          {!capturedImage && !identification && (
+            <View style={[styles.alignmentGuide, { borderColor: colors.pokemonRed + "50", backgroundColor: colors.surface }]}>
+              <View style={styles.alignmentFrame}>
+                <View style={[styles.alignCorner, styles.alignTL, { borderColor: colors.pokemonRed }]} />
+                <View style={[styles.alignCorner, styles.alignTR, { borderColor: colors.pokemonRed }]} />
+                <View style={[styles.alignCorner, styles.alignBL, { borderColor: colors.pokemonRed }]} />
+                <View style={[styles.alignCorner, styles.alignBR, { borderColor: colors.pokemonRed }]} />
+                <View style={styles.alignInner}>
+                  <MaterialCommunityIcons name="card-outline" size={28} color={colors.pokemonRed + "60"} />
+                  <Text style={[styles.alignLabel, { color: colors.textMuted }]}>Align card within the frame</Text>
+                  <Text style={[styles.alignSub, { color: colors.textMuted + "90" }]}>Fill the frame · Good lighting · Hold steady</Text>
+                </View>
+              </View>
+            </View>
+          )}
 
           <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.pokemonRed + "40" }]}>
             <Ionicons name="search" size={18} color={colors.pokemonRed} />
@@ -2260,6 +2308,53 @@ const styles = StyleSheet.create({
   quotaPremBtnText: { fontSize: 14, fontFamily: "Outfit_700Bold" },
   quotaDismissBtn: { paddingHorizontal: 16, paddingVertical: 11, borderRadius: 12, borderWidth: 1 },
   quotaDismissText: { fontSize: 14, fontFamily: "Outfit_500Medium" },
+  retakeBanner: {
+    borderRadius: 14,
+    borderWidth: 1.5,
+    padding: 14,
+    gap: 8,
+    marginBottom: 10,
+  },
+  retakeBannerHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
+  retakeBannerTitle: { fontSize: 14, fontFamily: "Outfit_700Bold", flex: 1 },
+  retakeBannerSubtitle: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
+  retakeTipsList: { gap: 4 },
+  retakeTip: { fontSize: 12, fontFamily: "Outfit_400Regular", lineHeight: 18 },
+  retakeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 2,
+  },
+  retakeBtnText: { fontSize: 13, fontFamily: "Outfit_700Bold", color: "#FFF" },
+  alignmentGuide: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+  },
+  alignmentFrame: {
+    position: "relative",
+    height: 100,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  alignCorner: {
+    position: "absolute",
+    width: 16,
+    height: 16,
+    borderWidth: 2,
+  },
+  alignTL: { top: 4, left: 4, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 4 },
+  alignTR: { top: 4, right: 4, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 4 },
+  alignBL: { bottom: 4, left: 4, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 4 },
+  alignBR: { bottom: 4, right: 4, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 4 },
+  alignInner: { alignItems: "center", gap: 4 },
+  alignLabel: { fontSize: 12, fontFamily: "Outfit_600SemiBold", textAlign: "center" },
+  alignSub: { fontSize: 11, fontFamily: "Outfit_400Regular", textAlign: "center" },
 });
 
 const streakStyles = StyleSheet.create({
