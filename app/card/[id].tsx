@@ -56,6 +56,8 @@ export default function CardDetailScreen() {
   const { user, addCard, createListing, collection } = useUser();
   const [selectedCondition, setSelectedCondition] = useState("Near Mint");
   const [selectedVariant, setSelectedVariant] = useState<CardVariant>("Non-Holo");
+  const [gradingCompany, setGradingCompany] = useState("");
+  const [grade, setGrade] = useState("");
 
   const [ebayFetchedPrice, setEbayFetchedPrice] = useState<{ price: number | null; source: string } | null>(null);
   const [ebayPriceLoading, setEbayPriceLoading] = useState(false);
@@ -125,6 +127,8 @@ export default function CardDetailScreen() {
       condition: selectedCondition,
       variant: selectedVariant,
       priceGBP: priceData.price,
+      gradingCompany: gradingCompany.trim() || null,
+      grade: grade.trim() || null,
     });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert("Added!", `${card.name} added to your collection.`);
@@ -471,6 +475,95 @@ export default function CardDetailScreen() {
               </Pressable>
             ))}
           </ScrollView>
+
+          <Text style={[styles.conditionTitle, { color: colors.text }]}>Grading (Optional)</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.conditionRow, { marginBottom: 8 }]}
+          >
+            {(["None", "PSA", "Beckett", "CGC", "ACE"] as const).map((co) => {
+              const selected = (co === "None" ? "" : co) === gradingCompany;
+              return (
+                <Pressable
+                  key={co}
+                  style={[
+                    styles.conditionChip,
+                    {
+                      backgroundColor: selected ? "#3498DB" : colors.card,
+                      borderColor: selected ? "#3498DB" : colors.borderLight,
+                    },
+                  ]}
+                  onPress={() => {
+                    setGradingCompany(co === "None" ? "" : co);
+                    if (co === "None") setGrade("");
+                  }}
+                >
+                  <Text style={[styles.conditionChipText, { color: selected ? "#FFF" : colors.textSecondary }]}>
+                    {co}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          {gradingCompany !== "" && (
+            <View style={{ marginBottom: 10 }}>
+              <TextInput
+                style={{
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: grade ? "#3498DB80" : colors.borderLight,
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  color: colors.text,
+                  fontFamily: "Outfit_400Regular",
+                  fontSize: 14,
+                }}
+                placeholder={gradingCompany === "Beckett" ? "Grade (1–10, e.g. 9.5)" : "Grade (1–10, e.g. 9)"}
+                placeholderTextColor={colors.textMuted}
+                value={grade}
+                onChangeText={(t) => {
+                  // Allow digits, dot, and single decimal for BGS half-points
+                  const cleaned = t.replace(/[^0-9.]/g, "");
+                  setGrade(cleaned);
+                }}
+                keyboardType="decimal-pad"
+                autoCorrect={false}
+                maxLength={4}
+              />
+              {grade !== "" && (() => {
+                const n = parseFloat(grade);
+                const valid = !isNaN(n) && n >= 1 && n <= 10 &&
+                  (gradingCompany === "Beckett" ? (n * 2) % 1 === 0 : Number.isInteger(n));
+                return (
+                  <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: valid ? "#27AE60" : colors.pokemonRed, marginTop: 3, marginLeft: 4 }}>
+                    {valid
+                      ? `${gradingCompany} ${grade} — valid grade`
+                      : gradingCompany === "Beckett"
+                        ? "Beckett grades: 1–10 in 0.5 steps (e.g. 9, 9.5)"
+                        : "Grade must be a whole number 1–10"}
+                  </Text>
+                );
+              })()}
+            </View>
+          )}
+
+          {gradingCompany !== "" && grade !== "" && (() => {
+            const n = parseFloat(grade);
+            const valid = !isNaN(n) && n >= 1 && n <= 10;
+            return valid ? (
+              <View style={{ flexDirection: "row", marginBottom: 8 }}>
+                <View style={{ backgroundColor: "#3498DB20", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, flexDirection: "row", gap: 4, alignItems: "center" }}>
+                  <Ionicons name="checkmark-circle" size={12} color="#3498DB" />
+                  <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: "#3498DB" }}>
+                    Graded {gradingCompany} {grade} will be saved as a separate entry
+                  </Text>
+                </View>
+              </View>
+            ) : null;
+          })()}
 
           <View style={styles.actionButtons}>
             <Pressable

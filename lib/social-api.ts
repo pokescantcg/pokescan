@@ -62,6 +62,7 @@ export interface SocialUser {
   avatarUrl?: string | null;
   isPremium?: boolean;
   collectionVisible?: boolean;
+  isVerifiedCollector?: boolean;
 }
 
 export interface FriendsData {

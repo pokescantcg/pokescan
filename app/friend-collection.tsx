@@ -50,7 +50,8 @@ export default function FriendCollectionScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { userId, displayName } = useLocalSearchParams<{ userId: string; displayName: string }>();
+  const { userId, displayName, isPublic } = useLocalSearchParams<{ userId: string; displayName: string; isPublic?: string }>();
+  const isPublicView = isPublic === "true";
 
   const [collection, setCollection] = useState<CollectionItem[]>([]);
   const [owner, setOwner] = useState<SocialUser | null>(null);
@@ -62,9 +63,20 @@ export default function FriendCollectionScreen() {
   const fetchCollection = async () => {
     try {
       setError(null);
-      const data = await socialApi.getFriendCollection(userId);
-      setCollection(data.collection);
-      setOwner(data.owner);
+      if (isPublicView) {
+        const token = await import("@/lib/storage").then(m => m.getSessionToken());
+        const { getApiUrl } = await import("@/lib/query-client");
+        const url = new URL(`/api/collections/public/${userId}`, getApiUrl());
+        const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load");
+        setCollection(data.collection);
+        setOwner(data.owner);
+      } else {
+        const data = await socialApi.getFriendCollection(userId);
+        setCollection(data.collection);
+        setOwner(data.owner);
+      }
     } catch (e: any) {
       setError(e.message || "Failed to load collection");
     }
@@ -109,9 +121,14 @@ export default function FriendCollectionScreen() {
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
-              {ownerName}'s Collection
-            </Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+                {ownerName}'s Collection
+              </Text>
+              {owner?.isVerifiedCollector && (
+                <Ionicons name="checkmark-circle" size={18} color="#3498DB" />
+              )}
+            </View>
             {owner && (
               <Text style={[styles.subtitle, { color: colors.textMuted }]}>@{owner.username}</Text>
             )}
@@ -159,7 +176,7 @@ export default function FriendCollectionScreen() {
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(item) => `${item.cardId}-${item.condition}-${item.variant}`}
+          keyExtractor={(item) => item.id ?? `${item.cardId}-${item.condition}-${item.variant || "Non-Holo"}-${item.gradingCompany || ""}-${item.grade || ""}`}
           contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 20 }]}
           showsVerticalScrollIndicator={false}
           stickySectionHeadersEnabled={false}
@@ -208,6 +225,13 @@ export default function FriendCollectionScreen() {
                 <Text style={[styles.cardMeta, { color: colors.textMuted }]}>
                   {item.variant && item.variant !== "Non-Holo" ? `${item.variant} · ` : ""}{item.condition}
                 </Text>
+                {item.gradingCompany && item.grade && (
+                  <View style={{ flexDirection: "row", marginTop: 2 }}>
+                    <View style={{ backgroundColor: "#3498DB20", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
+                      <Text style={{ fontSize: 10, fontFamily: "Outfit_700Bold", color: "#3498DB" }}>{item.gradingCompany} {item.grade}</Text>
+                    </View>
+                  </View>
+                )}
                 {item.priceGBP ? (
                   <Text style={[styles.cardPrice, { color: colors.success }]}>{formatGBP(item.priceGBP)}</Text>
                 ) : null}

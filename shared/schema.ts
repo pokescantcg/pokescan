@@ -31,6 +31,7 @@ export const pokescanUsers = pgTable("pokescan_users", {
   chatMutedUntil: timestamp("chat_muted_until", { withTimezone: true }),
   chatBannedUntil: timestamp("chat_banned_until", { withTimezone: true }),
   collectionVisible: boolean("collection_visible").notNull().default(false),
+  isVerifiedCollector: boolean("is_verified_collector").notNull().default(false),
   emailVerified: boolean("email_verified").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
 });
@@ -206,6 +207,8 @@ export const pokescanCollections = pgTable("pokescan_collections", {
   condition: text("condition").notNull(),
   variant: text("variant").default("Non-Holo"),
   priceGBP: real("price_gbp"),
+  gradingCompany: varchar("grading_company", { length: 32 }),
+  grade: varchar("grade", { length: 16 }),
   addedAt: timestamp("added_at", { withTimezone: true }).notNull().default(sql`NOW()`),
 });
 
@@ -234,6 +237,22 @@ export const pokescanAdminActivityLog = pgTable("pokescan_admin_activity_log", {
 });
 
 export type PokescanAdminActivityLog = typeof pokescanAdminActivityLog.$inferSelect;
+
+export const pokescanCollectorVerifications = pgTable("pokescan_collector_verifications", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  cardId: text("card_id").notNull(),
+  cardName: text("card_name").notNull(),
+  cardImage: text("card_image").notNull(),
+  frontPhoto: text("front_photo").notNull(),
+  backPhoto: text("back_photo").notNull(),
+  status: text("status").notNull().default("pending"),
+  reviewedBy: varchar("reviewed_by", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type PokescanCollectorVerification = typeof pokescanCollectorVerifications.$inferSelect;
 
 export const syncStatus = pgTable("sync_status", {
   id: serial("id").primaryKey(),

@@ -1138,6 +1138,25 @@ export default function AdminPanelScreen() {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [isRefreshingUsers, setIsRefreshingUsers] = useState(false);
+
+  // Collector verification state
+  interface VerificationApp {
+    id: string;
+    userId: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string | null;
+    cardId: string;
+    cardName: string;
+    cardImage: string;
+    frontPhoto: string;
+    backPhoto: string;
+    status: string;
+    createdAt: string;
+  }
+  const [verifications, setVerifications] = useState<VerificationApp[]>([]);
+  const [verificationsLoading, setVerificationsLoading] = useState(false);
+  const [verificationPhotoModal, setVerificationPhotoModal] = useState<{ front: string; back: string; name: string } | null>(null);
   const [reports, setReports] = useState<AdminReport[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
@@ -1397,7 +1416,7 @@ export default function AdminPanelScreen() {
   React.useEffect(() => {
     if (activeTab === "reports") loadReports();
     if (activeTab === "revenue") loadRevenue();
-    if (activeTab === "users") handleRefreshUsers();
+    if (activeTab === "users") { handleRefreshUsers(); loadVerifications(); }
     if (activeTab === "logs") {
       if (logsSubTab === "activity") loadActivityLogs(1);
       else loadAllReports(1);
@@ -1425,6 +1444,38 @@ export default function AdminPanelScreen() {
     setIsRefreshingUsers(true);
     await refreshUsers();
     setIsRefreshingUsers(false);
+  }, [refreshUsers]);
+
+  const loadVerifications = useCallback(async () => {
+    setVerificationsLoading(true);
+    try {
+      const url = new URL("/api/admin/collector-verifications", getApiUrl());
+      url.searchParams.set("status", "pending");
+      const res = await fetch(url.toString(), { headers: await requireAdminAuthHeader() });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json();
+      setVerifications(data.verifications || []);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to load applications");
+    } finally {
+      setVerificationsLoading(false);
+    }
+  }, []);
+
+  const handleVerificationDecision = useCallback(async (id: string, action: "approve" | "reject") => {
+    try {
+      const url = new URL(`/api/admin/collector-verifications/${id}/${action}`, getApiUrl());
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: await requireAdminAuthHeader(),
+      });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setVerifications((prev) => prev.filter((v) => v.id !== id));
+      if (action === "approve") await refreshUsers();
+    } catch (e: any) {
+      Alert.alert("Error", e.message || `Could not ${action}`);
+    }
   }, [refreshUsers]);
 
   type DbPreview = {
@@ -2958,6 +3009,74 @@ export default function AdminPanelScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         >
+          {/* Verified Collector Applications */}
+          {verifications.length > 0 && (
+            <View style={{ marginBottom: 16 }}>
+              <Text style={[styles.sectionHeader, { color: colors.textMuted }]}>
+                VERIFIED COLLECTOR APPLICATIONS ({verifications.length})
+              </Text>
+              {verifications.map((v) => (
+                <View
+                  key={v.id}
+                  style={{ backgroundColor: colors.card, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: "#3498DB40" }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    {v.avatarUrl ? (
+                      <Image source={{ uri: v.avatarUrl }} style={{ width: 36, height: 36, borderRadius: 18 }} contentFit="cover" />
+                    ) : (
+                      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#CC0000", alignItems: "center", justifyContent: "center" }}>
+                        <Text style={{ color: "#FFF", fontFamily: "Outfit_700Bold", fontSize: 14 }}>{v.displayName.charAt(0)}</Text>
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontFamily: "Outfit_700Bold", color: colors.text }}>{v.displayName}</Text>
+                      <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>@{v.username}</Text>
+                    </View>
+                    <View style={{ backgroundColor: "#3498DB20", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                      <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#3498DB" }}>PENDING</Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    {v.cardImage ? (
+                      <Image source={{ uri: v.cardImage }} style={{ width: 36, height: 50, borderRadius: 4 }} contentFit="contain" />
+                    ) : null}
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text }} numberOfLines={1}>{v.cardName}</Text>
+                      <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>{v.cardId}</Text>
+                    </View>
+                    <Pressable
+                      style={{ backgroundColor: colors.surfaceElevated, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, flexDirection: "row", gap: 4, alignItems: "center" }}
+                      onPress={() => setVerificationPhotoModal({ front: v.frontPhoto, back: v.backPhoto, name: v.cardName })}
+                    >
+                      <Ionicons name="images-outline" size={14} color={colors.text} />
+                      <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.text }}>Photos</Text>
+                    </Pressable>
+                  </View>
+                  <View style={{ flexDirection: "row", gap: 10 }}>
+                    <Pressable
+                      style={{ flex: 1, backgroundColor: "#27AE60", borderRadius: 10, paddingVertical: 10, alignItems: "center" }}
+                      onPress={() => Alert.alert("Approve", `Approve verified collector badge for ${v.displayName}?`, [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Approve", onPress: () => handleVerificationDecision(v.id, "approve") },
+                      ])}
+                    >
+                      <Text style={{ fontSize: 14, fontFamily: "Outfit_700Bold", color: "#FFF" }}>Approve</Text>
+                    </Pressable>
+                    <Pressable
+                      style={{ flex: 1, backgroundColor: "#CC0000", borderRadius: 10, paddingVertical: 10, alignItems: "center" }}
+                      onPress={() => Alert.alert("Reject", `Reject application from ${v.displayName}?`, [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Reject", style: "destructive", onPress: () => handleVerificationDecision(v.id, "reject") },
+                      ])}
+                    >
+                      <Text style={{ fontSize: 14, fontFamily: "Outfit_700Bold", color: "#FFF" }}>Reject</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+
           <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
             {isSuperadminUser && (
               <Pressable
@@ -3050,6 +3169,36 @@ export default function AdminPanelScreen() {
           )}
         </ScrollView>
       )}
+
+      {/* Verification photo preview modal */}
+      <Modal
+        visible={!!verificationPhotoModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setVerificationPhotoModal(null)}
+      >
+        <View style={{ flex: 1, backgroundColor: colors.background }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+            <Pressable onPress={() => setVerificationPhotoModal(null)}>
+              <Ionicons name="close" size={24} color={colors.text} />
+            </Pressable>
+            <Text style={{ fontSize: 16, fontFamily: "Outfit_700Bold", color: colors.text }} numberOfLines={1}>
+              {verificationPhotoModal?.name}
+            </Text>
+            <View style={{ width: 24 }} />
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+            <Text style={{ fontSize: 13, fontFamily: "Outfit_700Bold", color: colors.textMuted, marginBottom: 8 }}>FRONT</Text>
+            {verificationPhotoModal?.front && (
+              <Image source={{ uri: verificationPhotoModal.front }} style={{ width: "100%", height: 300, borderRadius: 12 }} contentFit="contain" />
+            )}
+            <Text style={{ fontSize: 13, fontFamily: "Outfit_700Bold", color: colors.textMuted, marginTop: 16, marginBottom: 8 }}>BACK</Text>
+            {verificationPhotoModal?.back && (
+              <Image source={{ uri: verificationPhotoModal.back }} style={{ width: "100%", height: 300, borderRadius: 12 }} contentFit="contain" />
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }

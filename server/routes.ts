@@ -304,9 +304,37 @@ let appConfig = {
   scannerEnabled: true,
 };
 
+async function runSchemaMigrations(): Promise<void> {
+  try {
+    await pool.query(`
+      ALTER TABLE pokescan_collections ADD COLUMN IF NOT EXISTS grading_company VARCHAR(32);
+      ALTER TABLE pokescan_collections ADD COLUMN IF NOT EXISTS grade VARCHAR(16);
+      ALTER TABLE pokescan_collections ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE;
+      ALTER TABLE pokescan_users ADD COLUMN IF NOT EXISTS is_verified_collector BOOLEAN NOT NULL DEFAULT FALSE;
+      CREATE TABLE IF NOT EXISTS pokescan_collector_verifications (
+        id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::varchar,
+        user_id VARCHAR(36) NOT NULL REFERENCES pokescan_users(id) ON DELETE CASCADE,
+        card_id TEXT NOT NULL,
+        card_name TEXT NOT NULL,
+        card_image TEXT NOT NULL,
+        front_photo TEXT NOT NULL,
+        back_photo TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        reviewed_by VARCHAR(36) REFERENCES pokescan_users(id) ON DELETE SET NULL,
+        reviewed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    console.log("[Migration] Schema migrations applied");
+  } catch (err) {
+    console.error("[Migration] Failed:", err);
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   startSyncService();
   seedSuperadmin().catch((e) => console.error("[seedSuperadmin] failed:", e));
+  runSchemaMigrations().catch((e) => console.error("[Migration] failed:", e));
 
   app.get("/api/config", (_req: Request, res: Response) => {
     res.json(appConfig);
@@ -2443,6 +2471,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         condition: r.condition,
         variant: r.variant || "Non-Holo",
         priceGBP: r.price_gbp,
+        gradingCompany: r.grading_company || null,
+        grade: r.grade || null,
         addedAt: r.added_at,
       }));
       res.json({ collection: items });
@@ -2459,11 +2489,21 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       const user = await storage.validateSession(token);
       if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
 
-      const { cardId, cardName, cardImage, setName, setId, rarity, quantity, condition, variant, priceGBP, migrate } = req.body;
+      const { cardId, cardName, cardImage, setName, setId, rarity, quantity, condition, variant, priceGBP, migrate, gradingCompany, grade } = req.body;
       const v = variant || "Non-Holo";
+      const gc = gradingCompany || null;
+      const gr = grade || null;
 
+      // Grading is part of the card's identity: a graded copy and a raw copy coexist as separate rows.
+      // Match on grading_company + grade too so they never overwrite each other.
       const existing = await db.execute(
-        sql`SELECT id, quantity FROM pokescan_collections WHERE user_id = ${user.id} AND card_id = ${cardId} AND condition = ${condition} AND COALESCE(variant, 'Non-Holo') = ${v}`
+        sql`SELECT id, quantity FROM pokescan_collections
+            WHERE user_id = ${user.id}
+              AND card_id = ${cardId}
+              AND condition = ${condition}
+              AND COALESCE(variant, 'Non-Holo') = ${v}
+              AND COALESCE(grading_company, '') = COALESCE(${gc}, '')
+              AND COALESCE(grade, '') = COALESCE(${gr}, '')`
       );
 
       if (existing.rows.length > 0) {
@@ -2474,7 +2514,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         );
       } else {
         await db.execute(
-          sql`INSERT INTO pokescan_collections (user_id, card_id, card_name, card_image, set_name, set_id, rarity, quantity, condition, variant, price_gbp) VALUES (${user.id}, ${cardId}, ${cardName}, ${cardImage ?? null}, ${setName || setId || "Unknown"}, ${setId || null}, ${rarity || "Unknown"}, ${quantity || 1}, ${condition}, ${v}, ${priceGBP ?? null})`
+          sql`INSERT INTO pokescan_collections (user_id, card_id, card_name, card_image, set_name, set_id, rarity, quantity, condition, variant, price_gbp, grading_company, grade) VALUES (${user.id}, ${cardId}, ${cardName}, ${cardImage ?? null}, ${setName || setId || "Unknown"}, ${setId || null}, ${rarity || "Unknown"}, ${quantity || 1}, ${condition}, ${v}, ${priceGBP ?? null}, ${gc}, ${gr})`
         );
       }
 
@@ -2493,6 +2533,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         condition: r.condition,
         variant: r.variant || "Non-Holo",
         priceGBP: r.price_gbp,
+        gradingCompany: r.grading_company || null,
+        grade: r.grade || null,
         addedAt: r.added_at,
       }));
       res.json({ collection: items });
@@ -2510,10 +2552,14 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
 
       const { id } = req.params;
-      const { quantity } = req.body;
+      const { quantity, gradingCompany, grade } = req.body;
 
       if (quantity <= 0) {
         await db.execute(sql`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`);
+      } else if (gradingCompany !== undefined) {
+        const gc = gradingCompany || null;
+        const gr = grade || null;
+        await db.execute(sql`UPDATE pokescan_collections SET quantity = ${quantity}, grading_company = ${gc}, grade = ${gr} WHERE id = ${id} AND user_id = ${user.id}`);
       } else {
         await db.execute(sql`UPDATE pokescan_collections SET quantity = ${quantity} WHERE id = ${id} AND user_id = ${user.id}`);
       }
@@ -2533,6 +2579,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         condition: r.condition,
         variant: r.variant || "Non-Holo",
         priceGBP: r.price_gbp,
+        gradingCompany: r.grading_company || null,
+        grade: r.grade || null,
         addedAt: r.added_at,
       }));
       res.json({ collection: items });
@@ -2567,6 +2615,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         condition: r.condition,
         variant: r.variant || "Non-Holo",
         priceGBP: r.price_gbp,
+        gradingCompany: r.grading_company || null,
+        grade: r.grade || null,
         addedAt: r.added_at,
       }));
       res.json({ collection: items });
@@ -2583,12 +2633,26 @@ If you cannot identify the card, set confidence to "low" and provide your best g
       if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
       const user = await storage.validateSession(token);
       if (!user) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (!user.isPremium) { res.status(403).json({ error: "Premium required" }); return; }
       const { visible } = req.body;
       const updated = await storage.updateUser(user.id, { collectionVisible: !!visible });
       res.json({ collectionVisible: updated?.collectionVisible ?? !!visible });
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Failed to update visibility" });
+    }
+  });
+
+  // Alias for collection visibility following task API contract
+  app.patch("/api/collection/privacy", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid session" }); return; }
+      const { isPublic } = req.body;
+      const updated = await storage.updateUser(user.id, { collectionVisible: !!isPublic });
+      res.json({ isPublic: updated?.collectionVisible ?? !!isPublic });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to update privacy" });
     }
   });
 
@@ -2633,11 +2697,250 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         condition: r.condition,
         variant: r.variant || "Non-Holo",
         priceGBP: r.price_gbp,
+        gradingCompany: r.grading_company || null,
+        grade: r.grade || null,
         addedAt: r.added_at,
       }));
-      res.json({ collection: items, owner: { id: target.id, displayName: target.displayName, username: target.username, avatarUrl: target.avatarUrl } });
+      res.json({ collection: items, owner: { id: target.id, displayName: target.displayName, username: target.username, avatarUrl: target.avatarUrl, isVerifiedCollector: target.isVerifiedCollector ?? false } });
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Failed to fetch collection" });
+    }
+  });
+
+  // ─── Public Collections browse ────────────────────────────────────────────
+  app.get("/api/collections/public", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const me = await storage.validateSession(token);
+      if (!me) { res.status(401).json({ error: "Invalid session" }); return; }
+
+      const search = (req.query.search as string || "").trim();
+      const page = parseInt((req.query.page as string) || "1", 10);
+      const pageSize = 20;
+      const offset = (page - 1) * pageSize;
+
+      const searchClause = search
+        ? sql`AND (u.username ILIKE ${'%' + search + '%'} OR u.display_name ILIKE ${'%' + search + '%'})`
+        : sql``;
+
+      const result = await db.execute(
+        sql`SELECT u.id, u.username, u.display_name, u.avatar_url, u.is_verified_collector,
+                   COUNT(c.id)::int AS card_count,
+                   COALESCE(SUM(c.quantity), 0)::int AS total_quantity,
+                   COALESCE(SUM(c.price_gbp * c.quantity), 0) AS total_value
+            FROM pokescan_users u
+            LEFT JOIN pokescan_collections c ON c.user_id = u.id
+            WHERE u.collection_visible = true ${searchClause}
+            GROUP BY u.id, u.username, u.display_name, u.avatar_url, u.is_verified_collector
+            ORDER BY total_value DESC
+            LIMIT ${pageSize} OFFSET ${offset}`
+      );
+
+      const collectors = (result.rows as any[]).map((r) => ({
+        id: r.id,
+        username: r.username,
+        displayName: r.display_name,
+        avatarUrl: r.avatar_url || null,
+        isVerifiedCollector: r.is_verified_collector ?? false,
+        cardCount: r.card_count,
+        totalQuantity: r.total_quantity,
+        totalValue: parseFloat(r.total_value) || 0,
+      }));
+
+      res.json({ collectors, page, hasMore: collectors.length === pageSize });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to fetch public collections" });
+    }
+  });
+
+  // ─── Public collection view (no friendship required) ───────────────────────
+  app.get("/api/collections/public/:userId", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const me = await storage.validateSession(token);
+      if (!me) { res.status(401).json({ error: "Invalid session" }); return; }
+
+      const { userId } = req.params;
+      const target = await storage.getUserById(userId);
+      if (!target) { res.status(404).json({ error: "User not found" }); return; }
+      if (!target.collectionVisible) { res.status(403).json({ error: "This collection is private" }); return; }
+
+      const rows = await db.execute(
+        sql`SELECT * FROM pokescan_collections WHERE user_id = ${userId} ORDER BY added_at DESC`
+      );
+      const items = (rows.rows as any[]).map((r) => ({
+        id: r.id,
+        cardId: r.card_id,
+        cardName: r.card_name,
+        cardImage: r.card_image,
+        setName: r.set_name,
+        setId: r.set_id,
+        rarity: r.rarity,
+        quantity: r.quantity,
+        condition: r.condition,
+        variant: r.variant || "Non-Holo",
+        priceGBP: r.price_gbp,
+        gradingCompany: r.grading_company || null,
+        grade: r.grade || null,
+        addedAt: r.added_at,
+      }));
+      res.json({
+        collection: items,
+        owner: {
+          id: target.id,
+          displayName: target.displayName,
+          username: target.username,
+          avatarUrl: target.avatarUrl,
+          isVerifiedCollector: target.isVerifiedCollector ?? false,
+        }
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to fetch collection" });
+    }
+  });
+
+  // ─── Collector Verification ────────────────────────────────────────────────
+  app.post("/api/collector-verification", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid session" }); return; }
+
+      const { cardId, cardName, cardImage, frontPhoto, backPhoto } = req.body;
+      if (!cardId || !cardName || !frontPhoto || !backPhoto) {
+        res.status(400).json({ error: "cardId, cardName, frontPhoto and backPhoto are required" }); return;
+      }
+
+      // Verify the card belongs to this user's collection and is a graded entry
+      const cardOwnership = await db.execute(
+        sql`SELECT id, grading_company, grade FROM pokescan_collections
+            WHERE user_id = ${user.id} AND card_id = ${cardId}
+              AND grading_company IS NOT NULL AND grade IS NOT NULL
+            LIMIT 1`
+      );
+      if (cardOwnership.rows.length === 0) {
+        res.status(403).json({ error: "The selected card must be a professionally graded entry in your collection (add it with a grading company and grade first)" }); return;
+      }
+
+      // Check for existing pending application
+      const existing = await db.execute(
+        sql`SELECT id FROM pokescan_collector_verifications WHERE user_id = ${user.id} AND status = 'pending'`
+      );
+      if (existing.rows.length > 0) {
+        res.status(409).json({ error: "You already have a pending verification application" }); return;
+      }
+
+      // Check if already verified
+      const userRow = await db.execute(sql`SELECT is_verified_collector FROM pokescan_users WHERE id = ${user.id}`);
+      if ((userRow.rows[0] as any)?.is_verified_collector) {
+        res.status(409).json({ error: "You are already a Verified Collector" }); return;
+      }
+
+      await db.execute(
+        sql`INSERT INTO pokescan_collector_verifications (user_id, card_id, card_name, card_image, front_photo, back_photo)
+            VALUES (${user.id}, ${cardId}, ${cardName}, ${cardImage || ""}, ${frontPhoto}, ${backPhoto})`
+      );
+      res.json({ success: true, message: "Application submitted" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to submit verification" });
+    }
+  });
+
+  app.get("/api/collector-verification/status", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid session" }); return; }
+
+      const row = await db.execute(
+        sql`SELECT id, status, created_at FROM pokescan_collector_verifications WHERE user_id = ${user.id} ORDER BY created_at DESC LIMIT 1`
+      );
+      const app = row.rows[0] as any;
+      res.json({
+        isVerifiedCollector: user.isVerifiedCollector ?? false,
+        application: app ? { id: app.id, status: app.status, createdAt: app.created_at } : null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to get verification status" });
+    }
+  });
+
+  app.get("/api/admin/collector-verifications", async (req: Request, res: Response) => {
+    try {
+      const adminToken = req.headers.authorization?.replace("Bearer ", "");
+      const admin = adminToken ? await storage.validateSession(adminToken) : null;
+      if (!admin || (admin.role !== "admin" && admin.role !== "moderator")) { res.status(403).json({ error: "Forbidden" }); return; }
+
+      const status = (req.query.status as string) || "pending";
+      const result = await db.execute(
+        sql`SELECT v.*, u.username, u.display_name, u.avatar_url
+            FROM pokescan_collector_verifications v
+            JOIN pokescan_users u ON u.id = v.user_id
+            WHERE v.status = ${status}
+            ORDER BY v.created_at DESC`
+      );
+      const verifications = (result.rows as any[]).map((r) => ({
+        id: r.id,
+        userId: r.user_id,
+        username: r.username,
+        displayName: r.display_name,
+        avatarUrl: r.avatar_url || null,
+        cardId: r.card_id,
+        cardName: r.card_name,
+        cardImage: r.card_image,
+        frontPhoto: r.front_photo,
+        backPhoto: r.back_photo,
+        status: r.status,
+        reviewedBy: r.reviewed_by || null,
+        reviewedAt: r.reviewed_at || null,
+        createdAt: r.created_at,
+      }));
+      res.json({ verifications });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to fetch verifications" });
+    }
+  });
+
+  app.post("/api/admin/collector-verifications/:id/approve", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      const reviewer = token ? await storage.validateSession(token) : null;
+      if (!reviewer || (reviewer.role !== "admin" && reviewer.role !== "moderator")) { res.status(403).json({ error: "Forbidden" }); return; }
+
+      const { id } = req.params;
+      const ver = await db.execute(sql`SELECT * FROM pokescan_collector_verifications WHERE id = ${id}`);
+      if (!ver.rows.length) { res.status(404).json({ error: "Not found" }); return; }
+      const v = ver.rows[0] as any;
+
+      await db.execute(
+        sql`UPDATE pokescan_collector_verifications SET status = 'approved', reviewed_by = ${reviewer?.id || null}, reviewed_at = NOW() WHERE id = ${id}`
+      );
+      await db.execute(
+        sql`UPDATE pokescan_users SET is_verified_collector = true WHERE id = ${v.user_id}`
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to approve" });
+    }
+  });
+
+  app.post("/api/admin/collector-verifications/:id/reject", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      const reviewer = token ? await storage.validateSession(token) : null;
+      if (!reviewer || (reviewer.role !== "admin" && reviewer.role !== "moderator")) { res.status(403).json({ error: "Forbidden" }); return; }
+
+      const { id } = req.params;
+      await db.execute(
+        sql`UPDATE pokescan_collector_verifications SET status = 'rejected', reviewed_by = ${reviewer?.id || null}, reviewed_at = NOW() WHERE id = ${id}`
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "Failed to reject" });
     }
   });
 

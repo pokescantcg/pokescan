@@ -33,6 +33,7 @@ export interface DbUser {
   chatBannedUntil?: Date | string | null;
   collectionVisible?: boolean;
   emailVerified?: boolean;
+  isVerifiedCollector?: boolean;
 }
 
 export interface IStorage {
@@ -265,6 +266,7 @@ function mapRow(row: any): DbUser {
     chatBannedUntil: row.chat_banned_until ?? null,
     collectionVisible: row.collection_visible ?? false,
     emailVerified: row.email_verified ?? false,
+    isVerifiedCollector: row.is_verified_collector ?? false,
   };
 }
 

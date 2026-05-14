@@ -10,6 +10,10 @@ import {
   Alert,
   RefreshControl,
   Animated,
+  Modal,
+  TextInput,
+  ScrollView,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -35,11 +39,13 @@ function CollectionCard({
   colors,
   onRemove,
   onUpdateQty,
+  onEditGrading,
 }: {
   item: CollectionItem;
   colors: ReturnType<typeof useThemeColors>;
   onRemove: () => void;
   onUpdateQty: (qty: number) => void;
+  onEditGrading: () => void;
 }) {
   return (
     <Pressable
@@ -57,6 +63,25 @@ function CollectionCard({
         <Text style={[styles.cardCondition, { color: colors.textMuted }]}>
           {item.variant && item.variant !== "Non-Holo" ? `${item.variant} · ` : ""}{item.condition}
         </Text>
+        <Pressable
+          onPress={(e) => { e.stopPropagation(); onEditGrading(); }}
+          hitSlop={6}
+          style={{ alignSelf: "flex-start", marginTop: 2 }}
+        >
+          {item.gradingCompany && item.grade ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "#3498DB22", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+              <Text style={{ fontSize: 10, fontFamily: "Outfit_700Bold", color: "#3498DB" }}>
+                {item.gradingCompany} {item.grade}
+              </Text>
+              <Ionicons name="pencil" size={9} color="#3498DB" />
+            </View>
+          ) : (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 3, backgroundColor: colors.surfaceElevated, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6 }}>
+              <Ionicons name="ribbon-outline" size={9} color={colors.textMuted} />
+              <Text style={{ fontSize: 9, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>Add grade</Text>
+            </View>
+          )}
+        </Pressable>
         <Text style={[styles.cardPrice, { color: item.priceGBP ? colors.success : colors.textMuted }]}>
           {formatGBP(item.priceGBP)} each
         </Text>
@@ -187,14 +212,50 @@ interface SetSection {
   data: CollectionItem[];
 }
 
+const GRADING_COMPANIES = ["None", "PSA", "Beckett", "CGC", "ACE"] as const;
+
 export default function CollectionScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user, collection, collectionValue, removeCard, updateQuantity } = useUser();
+  const { user, collection, collectionValue, removeCard, updateQuantity, updateGrading } = useUser();
   const [sortBy, setSortBy] = useState<"name" | "value" | "recent">("recent");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [collapsedSets, setCollapsedSets] = useState<Set<string>>(new Set());
+
+  // Grading edit modal
+  const [gradingItem, setGradingItem] = useState<CollectionItem | null>(null);
+  const [editCompany, setEditCompany] = useState("");
+  const [editGrade, setEditGrade] = useState("");
+  const [gradingSaving, setGradingSaving] = useState(false);
+
+  const openGradingModal = useCallback((item: CollectionItem) => {
+    setGradingItem(item);
+    setEditCompany(item.gradingCompany || "");
+    setEditGrade(item.grade || "");
+  }, []);
+
+  const closeGradingModal = useCallback(() => {
+    setGradingItem(null);
+    setEditCompany("");
+    setEditGrade("");
+  }, []);
+
+  const saveGrading = useCallback(async () => {
+    if (!gradingItem?.id) return;
+    setGradingSaving(true);
+    try {
+      const gc = editCompany && editCompany !== "None" ? editCompany : null;
+      const gr = gc && editGrade.trim() ? editGrade.trim() : null;
+      await updateGrading(gradingItem.id, gc, gr);
+      closeGradingModal();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert("Error", "Failed to update grading. Please try again.");
+    } finally {
+      setGradingSaving(false);
+    }
+  }, [gradingItem, editCompany, editGrade, updateGrading, closeGradingModal]);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -391,7 +452,7 @@ export default function CollectionScreen() {
 
       <SectionList
         sections={sections}
-        keyExtractor={(item) => `${item.cardId}-${item.condition}-${item.variant || "Non-Holo"}`}
+        keyExtractor={(item) => item.id ?? `${item.cardId}-${item.condition}-${item.variant || "Non-Holo"}-${item.gradingCompany || ""}-${item.grade || ""}`}
         contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled={false}
@@ -422,11 +483,12 @@ export default function CollectionScreen() {
                 {
                   text: "Remove",
                   style: "destructive",
-                  onPress: () => removeCard(item.cardId, item.condition, item.variant),
+                  onPress: () => removeCard(item.cardId, item.condition, item.variant, item.id),
                 },
               ]);
             }}
-            onUpdateQty={(qty) => updateQuantity(item.cardId, item.condition, qty, item.variant)}
+            onUpdateQty={(qty) => updateQuantity(item.cardId, item.condition, qty, item.variant, item.id)}
+            onEditGrading={() => openGradingModal(item)}
           />
         )}
         ListEmptyComponent={
@@ -445,6 +507,95 @@ export default function CollectionScreen() {
           </View>
         }
       />
+
+      {/* Grading Edit Modal */}
+      <Modal visible={!!gradingItem} animationType="slide" transparent presentationStyle="overFullScreen" onRequestClose={closeGradingModal}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+          <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }} onPress={closeGradingModal}>
+            <Pressable onPress={() => {}} style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: insets.bottom + 24 }}>
+              <View style={{ width: 40, height: 4, backgroundColor: colors.borderLight, borderRadius: 2, alignSelf: "center", marginBottom: 20 }} />
+              <Text style={{ fontSize: 18, fontFamily: "Outfit_700Bold", color: colors.text, marginBottom: 4 }}>
+                {gradingItem?.gradingCompany ? "Edit Grading" : "Add Grading"}
+              </Text>
+              <Text style={{ fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.textMuted, marginBottom: 18 }}>
+                {gradingItem?.cardName}
+              </Text>
+
+              <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, marginBottom: 8 }}>Grading Company</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 18 }}>
+                {GRADING_COMPANIES.map((co) => {
+                  const isSelected = co === "None" ? editCompany === "" : editCompany === co;
+                  return (
+                    <Pressable
+                      key={co}
+                      style={{
+                        paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+                        backgroundColor: isSelected ? "#3498DB" : colors.card,
+                        borderWidth: 1, borderColor: isSelected ? "#3498DB" : colors.borderLight,
+                      }}
+                      onPress={() => {
+                        setEditCompany(co === "None" ? "" : co);
+                        if (co === "None") setEditGrade("");
+                      }}
+                    >
+                      <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: isSelected ? "#FFF" : colors.textSecondary }}>{co}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+
+              {editCompany !== "" && (
+                <>
+                  <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, marginBottom: 8 }}>Grade</Text>
+                  <TextInput
+                    style={{
+                      backgroundColor: colors.card, borderWidth: 1,
+                      borderColor: editGrade ? "#3498DB80" : colors.borderLight,
+                      borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
+                      color: colors.text, fontFamily: "Outfit_400Regular", fontSize: 16, marginBottom: 6,
+                    }}
+                    placeholder={editCompany === "Beckett" ? "e.g. 9.5" : "e.g. 9"}
+                    placeholderTextColor={colors.textMuted}
+                    value={editGrade}
+                    onChangeText={(t) => setEditGrade(t.replace(/[^0-9.]/g, ""))}
+                    keyboardType="decimal-pad"
+                    maxLength={4}
+                    autoFocus
+                  />
+                  {editGrade !== "" && (() => {
+                    const n = parseFloat(editGrade);
+                    const valid = !isNaN(n) && n >= 1 && n <= 10 &&
+                      (editCompany === "Beckett" ? (n * 2) % 1 === 0 : Number.isInteger(n));
+                    return (
+                      <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: valid ? "#27AE60" : colors.pokemonRed, marginBottom: 12 }}>
+                        {valid ? `Valid ${editCompany} grade` : editCompany === "Beckett" ? "Beckett: 1–10 in 0.5 steps" : "Whole number 1–10"}
+                      </Text>
+                    );
+                  })()}
+                </>
+              )}
+
+              <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
+                <Pressable
+                  style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: colors.surfaceElevated, alignItems: "center" }}
+                  onPress={closeGradingModal}
+                >
+                  <Text style={{ fontSize: 15, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => ({ flex: 2, paddingVertical: 14, borderRadius: 12, backgroundColor: gradingSaving ? "#3498DB80" : "#3498DB", alignItems: "center", opacity: pressed ? 0.85 : 1 })}
+                  onPress={saveGrading}
+                  disabled={gradingSaving}
+                >
+                  <Text style={{ fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFF" }}>
+                    {gradingSaving ? "Saving…" : editCompany ? "Save Grading" : "Remove Grading"}
+                  </Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }

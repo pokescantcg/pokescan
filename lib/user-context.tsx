@@ -19,6 +19,7 @@ import {
   addToCollection,
   removeFromCollection,
   updateCollectionQuantity,
+  updateCollectionGrading,
   migrateLocalCollectionToServer,
   getListings,
   addListing,
@@ -66,8 +67,9 @@ interface UserContextValue {
   logout: () => Promise<void>;
   togglePremium: () => Promise<void>;
   addCard: (item: Omit<CollectionItem, "id" | "addedAt">) => Promise<void>;
-  removeCard: (cardId: string, condition: string, variant?: CardVariant) => Promise<void>;
-  updateQuantity: (cardId: string, condition: string, quantity: number, variant?: CardVariant) => Promise<void>;
+  removeCard: (cardId: string, condition: string, variant?: CardVariant, itemId?: string) => Promise<void>;
+  updateQuantity: (cardId: string, condition: string, quantity: number, variant?: CardVariant, itemId?: string) => Promise<void>;
+  updateGrading: (itemId: string, gradingCompany: string | null, grade: string | null) => Promise<void>;
   createListing: (listing: Omit<MarketListing, "id" | "createdAt" | "status" | "reviewedBy" | "reviewedAt" | "reviewNote">) => Promise<void>;
   updateListingDetails: (listingId: string, updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null; photos?: string[] }) => Promise<void>;
   deleteListing: (listingId: string) => Promise<void>;
@@ -239,13 +241,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setCollection(updated);
   }, []);
 
-  const removeCard = useCallback(async (cardId: string, condition: string, variant?: CardVariant) => {
-    const updated = await removeFromCollection(cardId, condition, variant);
+  const removeCard = useCallback(async (cardId: string, condition: string, variant?: CardVariant, itemId?: string) => {
+    const updated = await removeFromCollection(cardId, condition, variant, itemId);
     setCollection(updated);
   }, []);
 
-  const updateQuantity = useCallback(async (cardId: string, condition: string, quantity: number, variant?: CardVariant) => {
-    const updated = await updateCollectionQuantity(cardId, condition, quantity, variant);
+  const updateQuantity = useCallback(async (cardId: string, condition: string, quantity: number, variant?: CardVariant, itemId?: string) => {
+    const updated = await updateCollectionQuantity(cardId, condition, quantity, variant, itemId);
+    setCollection(updated);
+  }, []);
+
+  const updateGrading = useCallback(async (itemId: string, gradingCompany: string | null, grade: string | null) => {
+    const updated = await updateCollectionGrading(itemId, gradingCompany, grade);
     setCollection(updated);
   }, []);
 
@@ -379,6 +386,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       addCard,
       removeCard,
       updateQuantity,
+      updateGrading,
       createListing,
       updateListingDetails: handleUpdateListingDetails,
       deleteListing: handleDeleteListing,
@@ -396,7 +404,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       isAdminUser,
       isSuperadminUser: superadminFlag,
     }),
-    [user, isLoading, collection, listings, collectionValue, allUsers, register, registerWithPassword, loginWithPassword, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleRequestAdminOtp, handleVerifyAdminOtp, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleUpdateListingDetails, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, handleRefreshUsers, pendingListingCount, refreshPendingListingCount, isStaff, isAdminUser, superadminFlag]
+    [user, isLoading, collection, listings, collectionValue, allUsers, register, registerWithPassword, loginWithPassword, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleRequestAdminOtp, handleVerifyAdminOtp, logout, handleTogglePremium, addCard, removeCard, updateQuantity, updateGrading, createListing, handleUpdateListingDetails, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, handleRefreshUsers, pendingListingCount, refreshPendingListingCount, isStaff, isAdminUser, superadminFlag]
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

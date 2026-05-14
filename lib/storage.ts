@@ -25,6 +25,7 @@ export interface UserProfile {
   chatMutedUntil?: string | null;
   chatBannedUntil?: string | null;
   collectionVisible?: boolean;
+  isVerifiedCollector?: boolean;
   emailVerified?: boolean;
 }
 
@@ -43,6 +44,8 @@ export interface CollectionItem {
   variant?: CardVariant;
   addedAt: string;
   priceGBP: number | null;
+  gradingCompany?: string | null;
+  grade?: string | null;
 }
 
 export interface MarketListing {
@@ -358,6 +361,7 @@ function dbUserToProfile(dbUser: any): UserProfile {
     chatMutedUntil: dbUser.chatMutedUntil ?? dbUser.chat_muted_until ?? null,
     chatBannedUntil: dbUser.chatBannedUntil ?? dbUser.chat_banned_until ?? null,
     collectionVisible: dbUser.collectionVisible ?? dbUser.collection_visible ?? false,
+    isVerifiedCollector: dbUser.isVerifiedCollector ?? dbUser.is_verified_collector ?? false,
     emailVerified: dbUser.emailVerified ?? dbUser.email_verified ?? false,
   };
 }
@@ -623,15 +627,16 @@ export async function addToCollection(item: Omit<CollectionItem, "id" | "addedAt
   }
 }
 
-export async function removeFromCollection(cardId: string, condition: string, variant?: CardVariant): Promise<CollectionItem[]> {
+export async function removeFromCollection(cardId: string, condition: string, variant?: CardVariant, itemId?: string): Promise<CollectionItem[]> {
   try {
     const token = await getSessionToken();
     if (!token) throw new Error("Not authenticated");
     const collection = await loadCollectionCache().then(c => c.length ? c : getCollection());
     const v = variant || "Non-Holo";
-    const target = collection.find(
-      (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
-    );
+    // Prefer matching by server-assigned id (handles graded/raw coexistence)
+    const target = itemId
+      ? collection.find((c) => c.id === itemId)
+      : collection.find((c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v);
     if (!target || !target.id) throw new Error("Item not found");
     const url = new URL(`/api/collection/${target.id}`, getApiUrl()).href;
     const res = await fetch(url, {
@@ -646,24 +651,25 @@ export async function removeFromCollection(cardId: string, condition: string, va
   } catch {
     let collection = await getCollectionLocal();
     const v = variant || "Non-Holo";
-    collection = collection.filter(
-      (c) => !(c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v)
-    );
+    collection = itemId
+      ? collection.filter((c) => c.id !== itemId)
+      : collection.filter((c) => !(c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v));
     await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
     return collection;
   }
 }
 
-export async function updateCollectionQuantity(cardId: string, condition: string, quantity: number, variant?: CardVariant): Promise<CollectionItem[]> {
-  if (quantity <= 0) return removeFromCollection(cardId, condition, variant);
+export async function updateCollectionQuantity(cardId: string, condition: string, quantity: number, variant?: CardVariant, itemId?: string): Promise<CollectionItem[]> {
+  if (quantity <= 0) return removeFromCollection(cardId, condition, variant, itemId);
   try {
     const token = await getSessionToken();
     if (!token) throw new Error("Not authenticated");
     const collection = await loadCollectionCache().then(c => c.length ? c : getCollection());
     const v = variant || "Non-Holo";
-    const target = collection.find(
-      (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
-    );
+    // Prefer matching by server-assigned id (handles graded/raw coexistence)
+    const target = itemId
+      ? collection.find((c) => c.id === itemId)
+      : collection.find((c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v);
     if (!target || !target.id) throw new Error("Item not found");
     const url = new URL(`/api/collection/${target.id}`, getApiUrl()).href;
     const res = await fetch(url, {
@@ -679,13 +685,32 @@ export async function updateCollectionQuantity(cardId: string, condition: string
   } catch {
     const collection = await getCollectionLocal();
     const v = variant || "Non-Holo";
-    const item = collection.find(
-      (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
-    );
+    const item = itemId
+      ? collection.find((c) => c.id === itemId)
+      : collection.find((c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v);
     if (item) item.quantity = quantity;
     await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
     return collection;
   }
+}
+
+export async function updateCollectionGrading(itemId: string, gradingCompany: string | null, grade: string | null): Promise<CollectionItem[]> {
+  const token = await getSessionToken();
+  if (!token) throw new Error("Not authenticated");
+  const collection = await loadCollectionCache().then(c => c.length ? c : getCollection());
+  const target = collection.find((c) => c.id === itemId);
+  if (!target) throw new Error("Item not found");
+  const url = new URL(`/api/collection/${itemId}`, getApiUrl()).href;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ quantity: target.quantity, gradingCompany, grade }),
+  });
+  if (!res.ok) throw new Error("Failed to update grading");
+  const data = await res.json();
+  const items = (data.collection ?? []) as CollectionItem[];
+  saveCollectionCache(items);
+  return items;
 }
 
 async function getCollectionLocal(): Promise<CollectionItem[]> {

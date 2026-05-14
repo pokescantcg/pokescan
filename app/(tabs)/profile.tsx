@@ -101,7 +101,6 @@ export default function ProfileScreen() {
   }, []);
 
   const handleToggleCollectionVisible = useCallback(async () => {
-    if (!user?.isPremium) return;
     setTogglingVisibility(true);
     const next = !collectionVisible;
     setCollectionVisible(next);
@@ -471,6 +470,12 @@ export default function ProfileScreen() {
                 <Text style={styles.premiumTagText}>PREMIUM</Text>
               </View>
             )}
+            {user.isVerifiedCollector && (
+              <View style={[styles.premiumTag, { backgroundColor: "#3498DB", marginTop: 4 }]}>
+                <Ionicons name="checkmark-circle" size={12} color="#FFF" />
+                <Text style={[styles.premiumTagText, { color: "#FFF" }]}>VERIFIED COLLECTOR</Text>
+              </View>
+            )}
           </View>
         </LinearGradient>
 
@@ -525,30 +530,62 @@ export default function ProfileScreen() {
           </Pressable>
         ) : null}
 
-        {user.isPremium && (
+        <Pressable
+          style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 0 }]}
+          onPress={handleToggleCollectionVisible}
+          disabled={togglingVisibility}
+        >
+          <Ionicons name="albums-outline" size={22} color={collectionVisible ? colors.success : colors.textMuted} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.premiumBannerTitle, { color: colors.text, fontSize: 14 }]}>
+              Collection Visibility
+            </Text>
+            <Text style={[styles.premiumBannerDesc, { color: colors.textMuted }]}>
+              {collectionVisible ? "Anyone can view your collection" : "Your collection is private"}
+            </Text>
+          </View>
+          {togglingVisibility ? (
+            <ActivityIndicator size="small" color={colors.pokemonRed} />
+          ) : (
+            <View style={[styles.visToggle, { backgroundColor: collectionVisible ? colors.success : colors.border }]}>
+              <View style={[styles.visToggleKnob, { alignSelf: collectionVisible ? "flex-end" : "flex-start" }]} />
+            </View>
+          )}
+        </Pressable>
+
+        {!user.isVerifiedCollector && (
           <Pressable
-            style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 0 }]}
-            onPress={handleToggleCollectionVisible}
-            disabled={togglingVisibility}
+            style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: "#3498DB40", marginTop: 0 }]}
+            onPress={() => router.push("/collector-verification")}
           >
-            <Ionicons name="albums-outline" size={22} color={collectionVisible ? colors.success : colors.textMuted} />
+            <Ionicons name="checkmark-circle-outline" size={22} color="#3498DB" />
             <View style={{ flex: 1 }}>
-              <Text style={[styles.premiumBannerTitle, { color: colors.text, fontSize: 14 }]}>
-                Collection Visibility
+              <Text style={[styles.premiumBannerTitle, { color: "#3498DB", fontSize: 14 }]}>
+                Get Verified Collector Badge
               </Text>
               <Text style={[styles.premiumBannerDesc, { color: colors.textMuted }]}>
-                {collectionVisible ? "Friends can view your collection" : "Your collection is private"}
+                Apply to display a verified badge on your profile
               </Text>
             </View>
-            {togglingVisibility ? (
-              <ActivityIndicator size="small" color={colors.pokemonRed} />
-            ) : (
-              <View style={[styles.visToggle, { backgroundColor: collectionVisible ? colors.success : colors.border }]}>
-                <View style={[styles.visToggleKnob, { alignSelf: collectionVisible ? "flex-end" : "flex-start" }]} />
-              </View>
-            )}
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </Pressable>
         )}
+
+        <Pressable
+          style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: colors.pokemonBlue + "40", marginTop: 0 }]}
+          onPress={() => router.push("/public-collections")}
+        >
+          <Ionicons name="people-outline" size={22} color={colors.pokemonBlue} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.premiumBannerTitle, { color: colors.text, fontSize: 14 }]}>
+              Public Collections
+            </Text>
+            <Text style={[styles.premiumBannerDesc, { color: colors.textMuted }]}>
+              Browse other collectors' public collections
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </Pressable>
 
         <View style={styles.dbSection}>
           <DatabaseSyncCard
