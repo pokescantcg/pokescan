@@ -2741,7 +2741,7 @@ ${setReference}`
       const user = await storage.validateSession(token);
       if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
       const rows = await db.execute(
-        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 50`
+        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`
       );
       const entries = (rows.rows as any[]).map((r) => ({
         id: r.id,
@@ -2778,8 +2778,13 @@ ${setReference}`
                     ${thumbnail || null}, ${priceGBP ?? null},
                     ${JSON.stringify(identification || {})}, ${JSON.stringify(tcgApiResults || [])}, ${JSON.stringify(pcvResults || [])})`
       );
+      await db.execute(
+        sql`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id} AND id NOT IN (
+              SELECT id FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25
+            )`
+      );
       const rows = await db.execute(
-        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 50`
+        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`
       );
       const entries = (rows.rows as any[]).map((r) => ({
         id: r.id,
@@ -2827,6 +2832,11 @@ ${setReference}`
           migrated++;
         } catch { failed++; }
       }
+      await db.execute(
+        sql`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id} AND id NOT IN (
+              SELECT id FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25
+            )`
+      );
       res.json({ migrated, failed });
     } catch (error: any) {
       console.error("Scan history bulk migrate error:", error);
@@ -2857,7 +2867,7 @@ ${setReference}`
       const { id } = req.params;
       await db.execute(sql`DELETE FROM pokescan_scan_history WHERE id = ${id} AND user_id = ${user.id}`);
       const rows = await db.execute(
-        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 50`
+        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`
       );
       const entries = (rows.rows as any[]).map((r) => ({
         id: r.id,

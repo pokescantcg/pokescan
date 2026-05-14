@@ -84,7 +84,7 @@ const KEYS = {
   LOCAL_USER: "pokescan_local_user",
 };
 
-const SCAN_HISTORY_MAX = 20;
+const SCAN_HISTORY_MAX = 25;
 
 export interface ScanHistoryEntry {
   id: string;
