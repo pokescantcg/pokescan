@@ -79,6 +79,7 @@ export const pokemonSets = pgTable("pokemon_sets", {
   imageUrl: text("image_url"),
   hidden: boolean("hidden").default(false),
   syncedAt: timestamp("synced_at").default(sql`CURRENT_TIMESTAMP`),
+  deletedAt: timestamp("deleted_at"),
 });
 
 export const pokemonCards = pgTable("pokemon_cards", {
@@ -96,6 +97,7 @@ export const pokemonCards = pgTable("pokemon_cards", {
   nationalPokedexNumbers: text("national_pokedex_numbers"),
   description: text("description"),
   syncedAt: timestamp("synced_at").default(sql`CURRENT_TIMESTAMP`),
+  deletedAt: timestamp("deleted_at"),
 });
 
 export const cardPricing = pgTable(

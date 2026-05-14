@@ -35,7 +35,7 @@ import {
   pokescanChatroomMessages,
   pokescanAdminActivityLog,
 } from "@shared/schema";
-import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt, inArray } from "drizzle-orm";
+import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt, inArray, isNull, isNotNull } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
 
 async function cleanupOldChatroomMessages() {
@@ -328,6 +328,8 @@ async function runSchemaMigrations(): Promise<void> {
       ALTER TABLE pokescan_collections ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT TRUE;
       ALTER TABLE pokescan_users ADD COLUMN IF NOT EXISTS is_verified_collector BOOLEAN NOT NULL DEFAULT FALSE;
       ALTER TABLE pokemon_cards ADD COLUMN IF NOT EXISTS description TEXT;
+      ALTER TABLE pokemon_cards ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
+      ALTER TABLE pokemon_sets ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP;
       CREATE TABLE IF NOT EXISTS pokescan_collector_verifications (
         id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::varchar,
         user_id VARCHAR(36) NOT NULL REFERENCES pokescan_users(id) ON DELETE CASCADE,
@@ -379,11 +381,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .from(pokemonSets)
         .where(
           and(
+            isNull(pokemonSets.deletedAt),
             exists(
               db
                 .select({ id: pokemonCards.id })
                 .from(pokemonCards)
-                .where(eq(pokemonCards.setId, pokemonSets.id))
+                .where(and(eq(pokemonCards.setId, pokemonSets.id), isNull(pokemonCards.deletedAt)))
             ),
             or(eq(pokemonSets.hidden, false), sql`${pokemonSets.hidden} IS NULL`)
           )
@@ -434,8 +437,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // 2. Check DB
       try {
         const [totalCountResult, setInfoResult] = await Promise.all([
-          db.select({ count: sql<number>`count(*)::int` }).from(pokemonCards).where(eq(pokemonCards.setId, setId)),
-          db.select().from(pokemonSets).where(eq(pokemonSets.id, setId)).limit(1),
+          db.select({ count: sql<number>`count(*)::int` }).from(pokemonCards).where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt))),
+          db.select().from(pokemonSets).where(and(eq(pokemonSets.id, setId), isNull(pokemonSets.deletedAt))).limit(1),
         ]);
         const totalCount = totalCountResult[0]?.count ?? 0;
         const setRow = setInfoResult[0] ?? null;
@@ -450,7 +453,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const dbCards = await db
             .select()
             .from(pokemonCards)
-            .where(eq(pokemonCards.setId, setId))
+            .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)))
             .orderBy(pokemonCards.number)
             .limit(pageSize)
             .offset(offset);
@@ -572,7 +575,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .select({ card: pokemonCards, set: pokemonSets })
           .from(pokemonCards)
           .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
-          .where(ilike(pokemonCards.name, `%${query.trim()}%`))
+          .where(and(ilike(pokemonCards.name, `%${query.trim()}%`), isNull(pokemonCards.deletedAt)))
           .orderBy(desc(pokemonSets.releaseDate))
           .limit(pageSize)
           .offset(offset);
@@ -597,7 +600,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const totalCountResult = await db
             .select({ count: sql<number>`count(*)::int` })
             .from(pokemonCards)
-            .where(ilike(pokemonCards.name, `%${query.trim()}%`));
+            .where(and(ilike(pokemonCards.name, `%${query.trim()}%`), isNull(pokemonCards.deletedAt)));
 
           const totalCount = totalCountResult[0]?.count ?? formatted.length;
           res.json({ data: formatted, count: formatted.length, totalCount, source: "db" });
@@ -645,12 +648,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { setId } = req.params;
 
       // Only serve from DB if the set is fully seeded (≥90% of expected cards)
-      const setInfoResult = await db.select({ total: pokemonSets.total }).from(pokemonSets).where(eq(pokemonSets.id, setId)).limit(1);
+      const setInfoResult = await db.select({ total: pokemonSets.total }).from(pokemonSets).where(and(eq(pokemonSets.id, setId), isNull(pokemonSets.deletedAt))).limit(1);
       const expectedTotal = setInfoResult[0]?.total ?? 0;
       const dbCards = await db
         .select()
         .from(pokemonCards)
-        .where(eq(pokemonCards.setId, setId))
+        .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)))
         .orderBy(pokemonCards.number);
       const fullySeeded = dbCards.length > 0 && (expectedTotal === 0 || dbCards.length >= Math.floor(expectedTotal * 0.9));
 
@@ -749,7 +752,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const dbCard = await db
         .select()
         .from(pokemonCards)
-        .where(eq(pokemonCards.id, cardId))
+        .where(and(eq(pokemonCards.id, cardId), isNull(pokemonCards.deletedAt)))
         .limit(1);
 
       if (dbCard.length > 0) {
@@ -1209,7 +1212,7 @@ If you cannot identify the card, set confidence to "low" and provide your best g
             .from(pokemonCards)
             .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
             .leftJoin(cardPricing, eq(cardPricing.cardId, pokemonCards.id))
-            .where(or(...nameConditions))
+            .where(and(or(...nameConditions), isNull(pokemonCards.deletedAt)))
             .orderBy(desc(pokemonSets.releaseDate))
             .limit(20);
 
@@ -3434,7 +3437,8 @@ If you cannot identify the card, set confidence to "low" and provide your best g
           cardCount: sql<number>`count(${pokemonCards.id})::int`,
         })
         .from(pokemonSets)
-        .leftJoin(pokemonCards, eq(pokemonCards.setId, pokemonSets.id))
+        .leftJoin(pokemonCards, and(eq(pokemonCards.setId, pokemonSets.id), isNull(pokemonCards.deletedAt)))
+        .where(isNull(pokemonSets.deletedAt))
         .groupBy(pokemonSets.id, pokemonSets.name, pokemonSets.series, pokemonSets.hidden, pokemonSets.releaseDate)
         .orderBy(desc(pokemonSets.releaseDate));
 
@@ -4118,17 +4122,22 @@ Return ONLY valid JSON in exactly this format:
     const pageSize = Math.min(100, Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)));
     const search = (req.query.search as string || "").trim();
     const setIdFilter = (req.query.setId as string || "").trim();
+    const trash = (req.query.trash as string) === "1";
     const offset = (page - 1) * pageSize;
+    const deletedFilter = trash ? isNotNull(pokemonCards.deletedAt) : isNull(pokemonCards.deletedAt);
     let condition;
     if (search && setIdFilter) {
       condition = and(
+        deletedFilter,
         or(ilike(pokemonCards.name, `%${search}%`), ilike(pokemonCards.id, `%${search}%`)),
         eq(pokemonCards.setId, setIdFilter)
       );
     } else if (search) {
-      condition = or(ilike(pokemonCards.name, `%${search}%`), ilike(pokemonCards.id, `%${search}%`));
+      condition = and(deletedFilter, or(ilike(pokemonCards.name, `%${search}%`), ilike(pokemonCards.id, `%${search}%`)));
     } else if (setIdFilter) {
-      condition = eq(pokemonCards.setId, setIdFilter);
+      condition = and(deletedFilter, eq(pokemonCards.setId, setIdFilter));
+    } else {
+      condition = deletedFilter;
     }
     const [countResult, rows] = await Promise.all([
       db.select({ count: sql<number>`count(*)::int` }).from(pokemonCards).where(condition),
@@ -4147,6 +4156,7 @@ Return ONLY valid JSON in exactly this format:
         hp: pokemonCards.hp,
         nationalPokedexNumbers: pokemonCards.nationalPokedexNumbers,
         description: pokemonCards.description,
+        deletedAt: pokemonCards.deletedAt,
       }).from(pokemonCards)
         .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
         .where(condition).orderBy(pokemonCards.number).limit(pageSize).offset(offset),
@@ -4191,18 +4201,21 @@ Return ONLY valid JSON in exactly this format:
     const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
     const pageSize = Math.min(50, Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)));
     const search = (req.query.search as string || "").trim();
+    const trash = (req.query.trash as string) === "1";
     const offset = (page - 1) * pageSize;
+    const deletedFilter = trash ? isNotNull(pokemonSets.deletedAt) : isNull(pokemonSets.deletedAt);
     const condition = search
-      ? or(ilike(pokemonSets.name, `%${search}%`), ilike(pokemonSets.id, `%${search}%`))
-      : undefined;
+      ? and(deletedFilter, or(ilike(pokemonSets.name, `%${search}%`), ilike(pokemonSets.id, `%${search}%`)))
+      : deletedFilter;
     const [countResult, sets] = await Promise.all([
       db.select({ count: sql<number>`count(*)::int` }).from(pokemonSets).where(condition),
       db.select({
         id: pokemonSets.id, name: pokemonSets.name, series: pokemonSets.series,
         releaseDate: pokemonSets.releaseDate, hidden: pokemonSets.hidden, total: pokemonSets.total,
+        deletedAt: pokemonSets.deletedAt,
         cardCount: sql<number>`count(${pokemonCards.id})::int`,
       }).from(pokemonSets)
-        .leftJoin(pokemonCards, eq(pokemonCards.setId, pokemonSets.id))
+        .leftJoin(pokemonCards, and(eq(pokemonCards.setId, pokemonSets.id), isNull(pokemonCards.deletedAt)))
         .where(condition)
         .groupBy(pokemonSets.id)
         .orderBy(desc(pokemonSets.releaseDate))
@@ -4228,29 +4241,42 @@ Return ONLY valid JSON in exactly this format:
   app.delete("/api/admin/db/cards/:id", async (req: Request, res: Response) => {
     if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
     const { id } = req.params;
-    const existing = await db.select({ id: pokemonCards.id }).from(pokemonCards).where(eq(pokemonCards.id, id)).limit(1);
+    const existing = await db.select({ id: pokemonCards.id }).from(pokemonCards).where(and(eq(pokemonCards.id, id), isNull(pokemonCards.deletedAt))).limit(1);
     if (existing.length === 0) { res.status(404).json({ error: "Card not found" }); return; }
-    await db.transaction(async (tx) => {
-      await tx.delete(cardPricing).where(eq(cardPricing.cardId, id));
-      await tx.delete(ebayPrices).where(eq(ebayPrices.cardId, id));
-      await tx.delete(pokemonCards).where(eq(pokemonCards.id, id));
-    });
+    await db.update(pokemonCards).set({ deletedAt: new Date() }).where(eq(pokemonCards.id, id));
+    res.json({ success: true });
+  });
+
+  app.post("/api/admin/db/cards/:id/restore", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const { id } = req.params;
+    const existing = await db.select({ id: pokemonCards.id }).from(pokemonCards).where(and(eq(pokemonCards.id, id), isNotNull(pokemonCards.deletedAt))).limit(1);
+    if (existing.length === 0) { res.status(404).json({ error: "Card not found in trash" }); return; }
+    await db.update(pokemonCards).set({ deletedAt: null }).where(eq(pokemonCards.id, id));
     res.json({ success: true });
   });
 
   app.delete("/api/admin/db/sets/:id", async (req: Request, res: Response) => {
     if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
     const { id } = req.params;
-    const existing = await db.select({ id: pokemonSets.id }).from(pokemonSets).where(eq(pokemonSets.id, id)).limit(1);
+    const existing = await db.select({ id: pokemonSets.id }).from(pokemonSets).where(and(eq(pokemonSets.id, id), isNull(pokemonSets.deletedAt))).limit(1);
     if (existing.length === 0) { res.status(404).json({ error: "Set not found" }); return; }
+    const now = new Date();
     await db.transaction(async (tx) => {
-      const cardIds = (await tx.select({ id: pokemonCards.id }).from(pokemonCards).where(eq(pokemonCards.setId, id))).map(r => r.id);
-      if (cardIds.length > 0) {
-        await tx.delete(cardPricing).where(inArray(cardPricing.cardId, cardIds));
-        await tx.delete(ebayPrices).where(inArray(ebayPrices.cardId, cardIds));
-        await tx.delete(pokemonCards).where(eq(pokemonCards.setId, id));
-      }
-      await tx.delete(pokemonSets).where(eq(pokemonSets.id, id));
+      await tx.update(pokemonCards).set({ deletedAt: now }).where(eq(pokemonCards.setId, id));
+      await tx.update(pokemonSets).set({ deletedAt: now }).where(eq(pokemonSets.id, id));
+    });
+    res.json({ success: true });
+  });
+
+  app.post("/api/admin/db/sets/:id/restore", async (req: Request, res: Response) => {
+    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    const { id } = req.params;
+    const existing = await db.select({ id: pokemonSets.id }).from(pokemonSets).where(and(eq(pokemonSets.id, id), isNotNull(pokemonSets.deletedAt))).limit(1);
+    if (existing.length === 0) { res.status(404).json({ error: "Set not found in trash" }); return; }
+    await db.transaction(async (tx) => {
+      await tx.update(pokemonCards).set({ deletedAt: null }).where(and(eq(pokemonCards.setId, id), isNotNull(pokemonCards.deletedAt)));
+      await tx.update(pokemonSets).set({ deletedAt: null }).where(eq(pokemonSets.id, id));
     });
     res.json({ success: true });
   });

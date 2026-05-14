@@ -1141,6 +1141,7 @@ interface DbCard {
   hp: string | null;
   nationalPokedexNumbers: string | null;
   description: string | null;
+  deletedAt?: string | null;
 }
 
 function getSetLang(id: string): string {
@@ -1158,6 +1159,7 @@ interface DbSet {
   hidden: boolean | null;
   total: number | null;
   cardCount: number;
+  deletedAt?: string | null;
 }
 
 function EditCardModal({
@@ -1245,12 +1247,12 @@ function EditCardModal({
   const handleDelete = () => {
     if (!card) return;
     Alert.alert(
-      "Delete Card",
-      `Are you sure you want to permanently delete "${card.name}"? This cannot be undone.`,
+      "Move to Trash",
+      `Move "${card.name}" to the trash? You can restore it later from the Trash view.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Delete", style: "destructive", onPress: async () => {
+          text: "Move to Trash", style: "destructive", onPress: async () => {
             setDeleting(true);
             try {
               const headers = await requireAdminAuthHeader();
@@ -1359,7 +1361,7 @@ function EditCardModal({
                   disabled={deleting || saving}
                 >
                   <Ionicons name="trash-outline" size={15} color="#FFF" />
-                  <Text style={editStyles.deleteBtnText}>{deleting ? "Deleting…" : "Delete Card"}</Text>
+                  <Text style={editStyles.deleteBtnText}>{deleting ? "Moving to Trash…" : "Move to Trash"}</Text>
                 </Pressable>
 
                 <View style={[editStyles.btnRow, { marginTop: 6 }]}>
@@ -1466,12 +1468,12 @@ function EditSetModal({
   const handleDelete = () => {
     if (!set) return;
     Alert.alert(
-      "Delete Set",
-      `Are you sure you want to permanently delete the set "${set.name}"? This will also delete all ${set.cardCount} card(s) in it. This cannot be undone.`,
+      "Move to Trash",
+      `Move the set "${set.name}" to the trash? All ${set.cardCount} card(s) in it will also be moved. You can restore everything later from the Trash view.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Delete", style: "destructive", onPress: async () => {
+          text: "Move to Trash", style: "destructive", onPress: async () => {
             setDeleting(true);
             try {
               const headers = await requireAdminAuthHeader();
@@ -1588,7 +1590,7 @@ function EditSetModal({
                   disabled={deleting || saving}
                 >
                   <Ionicons name="trash-outline" size={15} color="#FFF" />
-                  <Text style={editStyles.deleteBtnText}>{deleting ? "Deleting…" : "Delete Set"}</Text>
+                  <Text style={editStyles.deleteBtnText}>{deleting ? "Moving to Trash…" : "Move to Trash"}</Text>
                 </Pressable>
 
                 <View style={editStyles.btnRow}>
@@ -1612,6 +1614,7 @@ function EditSetModal({
 function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<typeof useThemeColors>; onSwitchToUsers: () => void }) {
   const [expanded, setExpanded] = useState(false);
   const [activeType, setActiveType] = useState<"cards" | "sets" | "users">("cards");
+  const [trashMode, setTrashMode] = useState(false);
 
   const [cards, setCards] = useState<DbCard[]>([]);
   const [cardsTotal, setCardsTotal] = useState(0);
@@ -1627,13 +1630,16 @@ function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<type
   const [setsLoading, setSetsLoading] = useState(false);
   const [editingSet, setEditingSet] = useState<DbSet | null>(null);
 
-  const loadCards = useCallback(async (page: number, search: string, append = false) => {
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+
+  const loadCards = useCallback(async (page: number, search: string, append = false, trash = false) => {
     setCardsLoading(true);
     try {
       const url = new URL("/api/admin/db/cards", getApiUrl());
       url.searchParams.set("page", String(page));
       url.searchParams.set("pageSize", "50");
       if (search) url.searchParams.set("search", search);
+      if (trash) url.searchParams.set("trash", "1");
       const headers = await requireAdminAuthHeader();
       const res = await fetch(url.toString(), { headers });
       const data = await res.json();
@@ -1648,13 +1654,14 @@ function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<type
     }
   }, []);
 
-  const loadSets = useCallback(async (page: number, search: string, append = false) => {
+  const loadSets = useCallback(async (page: number, search: string, append = false, trash = false) => {
     setSetsLoading(true);
     try {
       const url = new URL("/api/admin/db/sets", getApiUrl());
       url.searchParams.set("page", String(page));
       url.searchParams.set("pageSize", "50");
       if (search) url.searchParams.set("search", search);
+      if (trash) url.searchParams.set("trash", "1");
       const headers = await requireAdminAuthHeader();
       const res = await fetch(url.toString(), { headers });
       const data = await res.json();
@@ -1669,16 +1676,63 @@ function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<type
     }
   }, []);
 
+  const handleRestoreCard = async (card: DbCard) => {
+    setRestoringId(card.id);
+    try {
+      const headers = await requireAdminAuthHeader();
+      const url = new URL(`/api/admin/db/cards/${card.id}/restore`, getApiUrl()).toString();
+      const res = await fetch(url, { method: "POST", headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to restore card");
+      setCards(prev => prev.filter(c => c.id !== card.id));
+      setCardsTotal(prev => Math.max(0, prev - 1));
+      Alert.alert("Restored", `"${card.name}" has been restored.`);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to restore card.");
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const handleRestoreSet = async (s: DbSet) => {
+    setRestoringId(s.id);
+    try {
+      const headers = await requireAdminAuthHeader();
+      const url = new URL(`/api/admin/db/sets/${s.id}/restore`, getApiUrl()).toString();
+      const res = await fetch(url, { method: "POST", headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to restore set");
+      setSets(prev => prev.filter(x => x.id !== s.id));
+      setSetsTotal(prev => Math.max(0, prev - 1));
+      Alert.alert("Restored", `"${s.name}" and its cards have been restored.`);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to restore set.");
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
   const handleTypeChange = (t: "cards" | "sets" | "users") => {
     setActiveType(t);
-    if (t === "cards" && cards.length === 0) loadCards(1, "");
-    if (t === "sets" && sets.length === 0) loadSets(1, "");
+    if (t === "cards") { setCards([]); loadCards(1, "", false, trashMode); }
+    if (t === "sets") { setSets([]); loadSets(1, "", false, trashMode); }
+  };
+
+  const handleTrashToggle = () => {
+    const next = !trashMode;
+    setTrashMode(next);
+    setCards([]);
+    setSets([]);
+    setCardsSearch("");
+    setSetsSearch("");
+    if (activeType === "cards") loadCards(1, "", false, next);
+    if (activeType === "sets") loadSets(1, "", false, next);
   };
 
   const handleExpand = () => {
     const next = !expanded;
     setExpanded(next);
-    if (next && cards.length === 0) loadCards(1, "");
+    if (next && cards.length === 0) loadCards(1, "", false, trashMode);
   };
 
   return (
@@ -1696,7 +1750,7 @@ function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<type
 
       {expanded && (
         <View style={{ marginTop: 14, gap: 12 }}>
-          <View style={{ flexDirection: "row", gap: 6 }}>
+          <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
             {(["cards", "sets", "users"] as const).map(t => (
               <Pressable
                 key={t}
@@ -1712,7 +1766,28 @@ function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<type
                 </Text>
               </Pressable>
             ))}
+            {activeType !== "users" && (
+              <Pressable
+                onPress={handleTrashToggle}
+                style={{
+                  width: 40, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center",
+                  backgroundColor: trashMode ? "#CC000022" : colors.background,
+                  borderWidth: 1, borderColor: trashMode ? "#CC0000" : colors.borderLight,
+                }}
+              >
+                <Ionicons name="trash-outline" size={17} color={trashMode ? "#CC0000" : colors.textMuted} />
+              </Pressable>
+            )}
           </View>
+
+          {trashMode && activeType !== "users" && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: "#CC000015", borderRadius: 10, borderWidth: 1, borderColor: "#CC000040" }}>
+              <Ionicons name="trash" size={14} color="#CC0000" />
+              <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: "#CC0000", flex: 1 }}>
+                Trash — showing deleted {activeType}. Tap Restore to recover.
+              </Text>
+            </View>
+          )}
 
           {activeType === "cards" && (
             <View style={{ gap: 8 }}>
@@ -1723,42 +1798,60 @@ function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<type
                   placeholderTextColor={colors.textMuted}
                   value={cardsSearch}
                   onChangeText={setCardsSearch}
-                  onSubmitEditing={() => { setCards([]); loadCards(1, cardsSearch); }}
+                  onSubmitEditing={() => { setCards([]); loadCards(1, cardsSearch, false, trashMode); }}
                   returnKeyType="search"
                 />
                 <Pressable
-                  onPress={() => { setCards([]); loadCards(1, cardsSearch); }}
+                  onPress={() => { setCards([]); loadCards(1, cardsSearch, false, trashMode); }}
                   style={{ paddingHorizontal: 14, backgroundColor: "#0288D1", borderRadius: 10, alignItems: "center", justifyContent: "center" }}
                 >
                   <Ionicons name="search" size={18} color="#FFF" />
                 </Pressable>
               </View>
               <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>
-                {cardsTotal.toLocaleString()} cards total
+                {cardsTotal.toLocaleString()} {trashMode ? "deleted" : ""} cards total
               </Text>
               <View style={{ maxHeight: 360 }}>
                 <ScrollView showsVerticalScrollIndicator nestedScrollEnabled>
                   {cards.map(card => (
-                    <Pressable
+                    <View
                       key={card.id}
-                      onPress={() => setEditingCard(card)}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.background, borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: colors.borderLight }}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: trashMode ? "#CC000008" : colors.background, borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: trashMode ? "#CC000030" : colors.borderLight }}
                     >
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text }} numberOfLines={1}>{card.name}</Text>
+                        <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: trashMode ? colors.textMuted : colors.text }} numberOfLines={1}>{card.name}</Text>
                         <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }} numberOfLines={1}>
                           {card.id} · #{card.number}{card.rarity ? ` · ${card.rarity}` : ""}
                         </Text>
                       </View>
-                      <Ionicons name="pencil-outline" size={16} color="#0288D1" />
-                    </Pressable>
+                      {trashMode ? (
+                        <Pressable
+                          onPress={() => handleRestoreCard(card)}
+                          disabled={restoringId === card.id}
+                          style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#27AE6022", borderRadius: 8, borderWidth: 1, borderColor: "#27AE60", opacity: restoringId === card.id ? 0.5 : 1 }}
+                        >
+                          <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: "#27AE60" }}>
+                            {restoringId === card.id ? "…" : "Restore"}
+                          </Text>
+                        </Pressable>
+                      ) : (
+                        <Pressable onPress={() => setEditingCard(card)}>
+                          <Ionicons name="pencil-outline" size={16} color="#0288D1" />
+                        </Pressable>
+                      )}
+                    </View>
                   ))}
                   {cardsLoading && (
                     <Text style={{ textAlign: "center", color: colors.textMuted, fontFamily: "Outfit_400Regular", fontSize: 13, paddingVertical: 8 }}>Loading…</Text>
                   )}
+                  {!cardsLoading && cards.length === 0 && (
+                    <Text style={{ textAlign: "center", color: colors.textMuted, fontFamily: "Outfit_400Regular", fontSize: 13, paddingVertical: 8 }}>
+                      {trashMode ? "Trash is empty" : "No cards found"}
+                    </Text>
+                  )}
                   {!cardsLoading && cards.length < cardsTotal && (
                     <Pressable
-                      onPress={() => loadCards(cardsPage + 1, cardsSearch, true)}
+                      onPress={() => loadCards(cardsPage + 1, cardsSearch, true, trashMode)}
                       style={{ paddingVertical: 10, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight, alignItems: "center", marginTop: 4 }}
                     >
                       <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Load More</Text>
@@ -1778,31 +1871,30 @@ function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<type
                   placeholderTextColor={colors.textMuted}
                   value={setsSearch}
                   onChangeText={setSetsSearch}
-                  onSubmitEditing={() => { setSets([]); loadSets(1, setsSearch); }}
+                  onSubmitEditing={() => { setSets([]); loadSets(1, setsSearch, false, trashMode); }}
                   returnKeyType="search"
                 />
                 <Pressable
-                  onPress={() => { setSets([]); loadSets(1, setsSearch); }}
+                  onPress={() => { setSets([]); loadSets(1, setsSearch, false, trashMode); }}
                   style={{ paddingHorizontal: 14, backgroundColor: "#0288D1", borderRadius: 10, alignItems: "center", justifyContent: "center" }}
                 >
                   <Ionicons name="search" size={18} color="#FFF" />
                 </Pressable>
               </View>
               <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>
-                {setsTotal.toLocaleString()} sets total
+                {setsTotal.toLocaleString()} {trashMode ? "deleted" : ""} sets total
               </Text>
               <View style={{ maxHeight: 360 }}>
                 <ScrollView showsVerticalScrollIndicator nestedScrollEnabled>
                   {sets.map(s => (
-                    <Pressable
+                    <View
                       key={s.id}
-                      onPress={() => setEditingSet(s)}
-                      style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.background, borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: s.hidden ? "#E6510044" : colors.borderLight }}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: trashMode ? "#CC000008" : colors.background, borderRadius: 10, padding: 10, marginBottom: 6, borderWidth: 1, borderColor: trashMode ? "#CC000030" : (s.hidden ? "#E6510044" : colors.borderLight) }}
                     >
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: s.hidden ? "#E65100" : "#27AE60" }} />
+                      {!trashMode && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: s.hidden ? "#E65100" : "#27AE60" }} />}
                       <View style={{ flex: 1 }}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text, flexShrink: 1 }} numberOfLines={1}>{s.name}</Text>
+                          <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: trashMode ? colors.textMuted : colors.text, flexShrink: 1 }} numberOfLines={1}>{s.name}</Text>
                           {(() => {
                             const lang = getSetLang(s.id);
                             const lc = lang === "JP" ? "#E53935" : lang === "KO" ? "#1565C0" : lang === "ZH" ? "#F57F17" : "#2E7D32";
@@ -1814,18 +1906,37 @@ function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<type
                           })()}
                         </View>
                         <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }} numberOfLines={1}>
-                          {s.id} · {s.cardCount} cards{s.hidden ? " · HIDDEN" : ""}
+                          {s.id} · {s.cardCount} cards{!trashMode && s.hidden ? " · HIDDEN" : ""}
                         </Text>
                       </View>
-                      <Ionicons name="pencil-outline" size={16} color="#0288D1" />
-                    </Pressable>
+                      {trashMode ? (
+                        <Pressable
+                          onPress={() => handleRestoreSet(s)}
+                          disabled={restoringId === s.id}
+                          style={{ paddingHorizontal: 10, paddingVertical: 6, backgroundColor: "#27AE6022", borderRadius: 8, borderWidth: 1, borderColor: "#27AE60", opacity: restoringId === s.id ? 0.5 : 1 }}
+                        >
+                          <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: "#27AE60" }}>
+                            {restoringId === s.id ? "…" : "Restore"}
+                          </Text>
+                        </Pressable>
+                      ) : (
+                        <Pressable onPress={() => setEditingSet(s)}>
+                          <Ionicons name="pencil-outline" size={16} color="#0288D1" />
+                        </Pressable>
+                      )}
+                    </View>
                   ))}
                   {setsLoading && (
                     <Text style={{ textAlign: "center", color: colors.textMuted, fontFamily: "Outfit_400Regular", fontSize: 13, paddingVertical: 8 }}>Loading…</Text>
                   )}
+                  {!setsLoading && sets.length === 0 && (
+                    <Text style={{ textAlign: "center", color: colors.textMuted, fontFamily: "Outfit_400Regular", fontSize: 13, paddingVertical: 8 }}>
+                      {trashMode ? "Trash is empty" : "No sets found"}
+                    </Text>
+                  )}
                   {!setsLoading && sets.length < setsTotal && (
                     <Pressable
-                      onPress={() => loadSets(setsPage + 1, setsSearch, true)}
+                      onPress={() => loadSets(setsPage + 1, setsSearch, true, trashMode)}
                       style={{ paddingVertical: 10, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.borderLight, alignItems: "center", marginTop: 4 }}
                     >
                       <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Load More</Text>
@@ -1857,36 +1968,40 @@ function DbBrowserSection({ colors, onSwitchToUsers }: { colors: ReturnType<type
         </View>
       )}
 
-      <EditCardModal
-        card={editingCard}
-        colors={colors}
-        visible={!!editingCard}
-        onClose={() => setEditingCard(null)}
-        onSaved={(updated) => {
-          setCards(prev => prev.map(c => c.id === updated.id ? updated : c));
-          setEditingCard(null);
-        }}
-        onDeleted={(id) => {
-          setCards(prev => prev.filter(c => c.id !== id));
-          setCardsTotal(prev => Math.max(0, prev - 1));
-          setEditingCard(null);
-        }}
-      />
-      <EditSetModal
-        set={editingSet}
-        colors={colors}
-        visible={!!editingSet}
-        onClose={() => setEditingSet(null)}
-        onSaved={(updated) => {
-          setSets(prev => prev.map(s => s.id === updated.id ? updated : s));
-          setEditingSet(null);
-        }}
-        onDeleted={(id) => {
-          setSets(prev => prev.filter(s => s.id !== id));
-          setSetsTotal(prev => Math.max(0, prev - 1));
-          setEditingSet(null);
-        }}
-      />
+      {!trashMode && (
+        <>
+          <EditCardModal
+            card={editingCard}
+            colors={colors}
+            visible={!!editingCard}
+            onClose={() => setEditingCard(null)}
+            onSaved={(updated) => {
+              setCards(prev => prev.map(c => c.id === updated.id ? updated : c));
+              setEditingCard(null);
+            }}
+            onDeleted={(id) => {
+              setCards(prev => prev.filter(c => c.id !== id));
+              setCardsTotal(prev => Math.max(0, prev - 1));
+              setEditingCard(null);
+            }}
+          />
+          <EditSetModal
+            set={editingSet}
+            colors={colors}
+            visible={!!editingSet}
+            onClose={() => setEditingSet(null)}
+            onSaved={(updated) => {
+              setSets(prev => prev.map(s => s.id === updated.id ? updated : s));
+              setEditingSet(null);
+            }}
+            onDeleted={(id) => {
+              setSets(prev => prev.filter(s => s.id !== id));
+              setSetsTotal(prev => Math.max(0, prev - 1));
+              setEditingSet(null);
+            }}
+          />
+        </>
+      )}
     </View>
   );
 }
