@@ -13,7 +13,9 @@ import {
   Alert,
   Linking,
   Modal,
+  useWindowDimensions,
 } from "react-native";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
@@ -41,6 +43,132 @@ import {
   fetchPCVSearch,
   findCard,
 } from "@/lib/pokemon-api";
+
+function ScannerCameraModal({
+  visible,
+  onClose,
+  onCapture,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onCapture: (uri: string, base64: string | undefined) => void;
+}) {
+  const cameraRef = useRef<CameraView>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [isCapturing, setIsCapturing] = useState(false);
+  const { width: sw, height: sh } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const frameW = sw * 0.7;
+  const frameH = frameW * (4 / 3);
+  const dimTopH = Math.max((sh - frameH) * 0.38, 60);
+  const dimSideW = (sw - frameW) / 2;
+
+  const handleCapture = async () => {
+    if (!cameraRef.current || isCapturing) return;
+    setIsCapturing(true);
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: true });
+      if (photo) {
+        onCapture(photo.uri, photo.base64);
+        onClose();
+      }
+    } catch (e) {
+      console.error("Camera capture error:", e);
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: "#000" }}>
+        {permission?.granted ? (
+          <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back">
+            <View style={camStyles.overlay}>
+              {/* top dim */}
+              <View style={[camStyles.dim, { height: dimTopH, width: sw }]} />
+              {/* middle row: side dims + card frame */}
+              <View style={{ flexDirection: "row", height: frameH }}>
+                <View style={[camStyles.dim, { width: dimSideW, height: frameH }]} />
+                <View style={[camStyles.frame, { width: frameW, height: frameH }]}>
+                  <View style={[camStyles.corner, camStyles.cornerTL]} />
+                  <View style={[camStyles.corner, camStyles.cornerTR]} />
+                  <View style={[camStyles.corner, camStyles.cornerBL]} />
+                  <View style={[camStyles.corner, camStyles.cornerBR]} />
+                </View>
+                <View style={[camStyles.dim, { width: dimSideW, height: frameH }]} />
+              </View>
+              {/* bottom dim: label + shutter */}
+              <View style={[camStyles.dim, { flex: 1, width: sw, paddingBottom: insets.bottom + 24 }]}>
+                <Text style={camStyles.frameLabel}>Align card within the frame</Text>
+                <Text style={camStyles.frameSub}>Fill the frame · Good lighting · Hold steady</Text>
+                <View style={camStyles.shutterRow}>
+                  <Pressable onPress={onClose} style={camStyles.closeBtn} hitSlop={10}>
+                    <Ionicons name="close" size={28} color="#FFF" />
+                  </Pressable>
+                  <Pressable
+                    onPress={handleCapture}
+                    disabled={isCapturing}
+                    style={[camStyles.shutter, { opacity: isCapturing ? 0.5 : 1 }]}
+                  >
+                    <View style={camStyles.shutterInner} />
+                  </Pressable>
+                  <View style={{ width: 52 }} />
+                </View>
+              </View>
+            </View>
+          </CameraView>
+        ) : (
+          <View style={camStyles.permView}>
+            <Ionicons name="camera-outline" size={48} color="#FFF" style={{ opacity: 0.7 }} />
+            <Text style={camStyles.permText}>Camera access is needed to scan cards</Text>
+            <Pressable onPress={requestPermission} style={camStyles.permBtn}>
+              <Text style={camStyles.permBtnText}>Grant Permission</Text>
+            </Pressable>
+            <Pressable onPress={onClose} style={[camStyles.permBtn, { backgroundColor: "#333", marginTop: 8 }]}>
+              <Text style={camStyles.permBtnText}>Cancel</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+const camStyles = StyleSheet.create({
+  overlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+  dim: { backgroundColor: "rgba(0,0,0,0.65)" },
+  frame: {
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.35)",
+    position: "relative",
+  },
+  corner: {
+    position: "absolute",
+    width: 22,
+    height: 22,
+    borderColor: "#FFF",
+    borderWidth: 3,
+  },
+  cornerTL: { top: -1.5, left: -1.5, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 10 },
+  cornerTR: { top: -1.5, right: -1.5, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 10 },
+  cornerBL: { bottom: -1.5, left: -1.5, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 10 },
+  cornerBR: { bottom: -1.5, right: -1.5, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 10 },
+  frameLabel: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFF", textAlign: "center", marginTop: 18, textShadowColor: "rgba(0,0,0,0.8)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 },
+  frameSub: { fontSize: 12, fontFamily: "Outfit_400Regular", color: "rgba(255,255,255,0.7)", textAlign: "center", marginTop: 6 },
+  shutterRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginTop: 28, gap: 0 },
+  closeBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: "rgba(255,255,255,0.2)", alignItems: "center", justifyContent: "center" },
+  shutter: { width: 72, height: 72, borderRadius: 36, backgroundColor: "#FFF", alignItems: "center", justifyContent: "center", marginHorizontal: 32, borderWidth: 4, borderColor: "rgba(255,255,255,0.5)" },
+  shutterInner: { width: 58, height: 58, borderRadius: 29, backgroundColor: "#FFF", borderWidth: 2, borderColor: "#DDD" },
+  permView: { flex: 1, backgroundColor: "#111", alignItems: "center", justifyContent: "center", gap: 16, padding: 32 },
+  permText: { fontSize: 16, fontFamily: "Outfit_500Medium", color: "#FFF", textAlign: "center" },
+  permBtn: { backgroundColor: "#CC0000", paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12, minWidth: 180, alignItems: "center" },
+  permBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFF" },
+});
 
 function langFlag(lang: string): string {
   if (lang === "Japanese") return "🇯🇵";
@@ -1462,6 +1590,7 @@ export default function ScannerScreen() {
   const [hasSearched, setHasSearched] = useState(false);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isIdentifying, setIsIdentifying] = useState(false);
+  const [showCameraModal, setShowCameraModal] = useState(false);
   const [identification, setIdentification] = useState<CardIdentification | null>(null);
   const [pcvResults, setPcvResults] = useState<PCVCard[]>([]);
   const [tcgApiResults, setTcgApiResults] = useState<PokemonCard[]>([]);
@@ -1557,25 +1686,12 @@ export default function ScannerScreen() {
     }
   }, [refreshQuota]);
 
-  const handleCameraCapture = useCallback(async () => {
-    try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("Permission Required", "Camera access is needed to scan cards.");
-        return;
-      }
-      const result = await ImagePicker.launchCameraAsync({
-        quality: 0.85,
-        allowsEditing: true,
-        aspect: [3, 4],
-        base64: true,
-      });
-      if (!result.canceled && result.assets[0]) {
-        processImageFromBase64(result.assets[0].uri, result.assets[0].base64);
-      }
-    } catch (e) {
-      console.error("Camera error:", e);
-    }
+  const handleCameraCapture = useCallback(() => {
+    setShowCameraModal(true);
+  }, []);
+
+  const handleCameraModalCapture = useCallback((uri: string, base64: string | undefined) => {
+    processImageFromBase64(uri, base64);
   }, [processImageFromBase64]);
 
   const handleGallery = useCallback(async () => {
@@ -1816,6 +1932,13 @@ export default function ScannerScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <PokeBackground opacity={colorScheme === "dark" ? 0.18 : 0.12} />
+
+      <ScannerCameraModal
+        visible={showCameraModal}
+        onClose={() => setShowCameraModal(false)}
+        onCapture={handleCameraModalCapture}
+      />
+
       {/* ── Streak notification modal ── */}
       <Modal
         visible={!!streakModal}
