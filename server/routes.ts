@@ -34,6 +34,7 @@ import {
   pokescanReports,
   pokescanChatroomMessages,
   pokescanAdminActivityLog,
+  pokescanScanHistory,
 } from "@shared/schema";
 import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt, inArray, isNull, isNotNull } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
@@ -412,6 +413,20 @@ async function runSchemaMigrations(): Promise<void> {
         reviewed_by VARCHAR(36) REFERENCES pokescan_users(id) ON DELETE SET NULL,
         reviewed_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS pokescan_scan_history (
+        id VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::varchar,
+        user_id VARCHAR(36) NOT NULL REFERENCES pokescan_users(id) ON DELETE CASCADE,
+        card_name TEXT NOT NULL,
+        set_name TEXT NOT NULL,
+        card_number TEXT NOT NULL DEFAULT '',
+        language TEXT NOT NULL DEFAULT 'english',
+        thumbnail TEXT,
+        price_gbp REAL,
+        identification TEXT NOT NULL DEFAULT '{}',
+        tcg_api_results TEXT NOT NULL DEFAULT '[]',
+        pcv_results TEXT NOT NULL DEFAULT '[]',
+        scanned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
     console.log("[Migration] Schema migrations applied");
@@ -2714,6 +2729,153 @@ ${setReference}`
     } catch (error: any) {
       console.error("Avatar upload error:", error);
       res.status(500).json({ error: error.message || "Upload failed" });
+    }
+  });
+
+  // ─── Scan History CRUD ───────────────────────────────────────────────────────
+
+  app.get("/api/scan-history", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      const rows = await db.execute(
+        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 50`
+      );
+      const entries = (rows.rows as any[]).map((r) => ({
+        id: r.id,
+        timestamp: r.scanned_at,
+        cardName: r.card_name,
+        setName: r.set_name,
+        cardNumber: r.card_number,
+        language: r.language,
+        thumbnail: r.thumbnail,
+        priceGBP: r.price_gbp,
+        identification: JSON.parse(r.identification || "{}"),
+        tcgApiResults: JSON.parse(r.tcg_api_results || "[]"),
+        pcvResults: JSON.parse(r.pcv_results || "[]"),
+      }));
+      res.json({ history: entries });
+    } catch (error: any) {
+      console.error("Scan history fetch error:", error);
+      res.status(500).json({ error: error.message || "Failed to fetch scan history" });
+    }
+  });
+
+  app.post("/api/scan-history", express.json({ limit: "10mb" }), async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      const { cardName, setName, cardNumber, language, thumbnail, priceGBP, identification, tcgApiResults, pcvResults } = req.body;
+      if (!cardName) { res.status(400).json({ error: "cardName is required" }); return; }
+      const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      await db.execute(
+        sql`INSERT INTO pokescan_scan_history (id, user_id, card_name, set_name, card_number, language, thumbnail, price_gbp, identification, tcg_api_results, pcv_results)
+            VALUES (${id}, ${user.id}, ${cardName}, ${setName || ""}, ${cardNumber || ""}, ${language || "english"},
+                    ${thumbnail || null}, ${priceGBP ?? null},
+                    ${JSON.stringify(identification || {})}, ${JSON.stringify(tcgApiResults || [])}, ${JSON.stringify(pcvResults || [])})`
+      );
+      const rows = await db.execute(
+        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 50`
+      );
+      const entries = (rows.rows as any[]).map((r) => ({
+        id: r.id,
+        timestamp: r.scanned_at,
+        cardName: r.card_name,
+        setName: r.set_name,
+        cardNumber: r.card_number,
+        language: r.language,
+        thumbnail: r.thumbnail,
+        priceGBP: r.price_gbp,
+        identification: JSON.parse(r.identification || "{}"),
+        tcgApiResults: JSON.parse(r.tcg_api_results || "[]"),
+        pcvResults: JSON.parse(r.pcv_results || "[]"),
+      }));
+      res.json({ history: entries });
+    } catch (error: any) {
+      console.error("Scan history add error:", error);
+      res.status(500).json({ error: error.message || "Failed to add scan history entry" });
+    }
+  });
+
+  app.post("/api/scan-history/bulk", express.json({ limit: "10mb" }), async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      const { entries } = req.body;
+      if (!Array.isArray(entries) || entries.length === 0) { res.json({ migrated: 0, failed: 0 }); return; }
+      let migrated = 0;
+      let failed = 0;
+      for (const entry of entries) {
+        try {
+          const existingRows = await db.execute(
+            sql`SELECT id FROM pokescan_scan_history WHERE id = ${entry.id} AND user_id = ${user.id}`
+          );
+          if ((existingRows.rows as any[]).length > 0) { migrated++; continue; }
+          const scannedAt = entry.timestamp ? new Date(entry.timestamp) : new Date();
+          await db.execute(
+            sql`INSERT INTO pokescan_scan_history (id, user_id, card_name, set_name, card_number, language, thumbnail, price_gbp, identification, tcg_api_results, pcv_results, scanned_at)
+                VALUES (${entry.id}, ${user.id}, ${entry.cardName || ""}, ${entry.setName || ""}, ${entry.cardNumber || ""},
+                        ${entry.language || "english"}, ${entry.thumbnail || null}, ${entry.priceGBP ?? null},
+                        ${JSON.stringify(entry.identification || {})}, ${JSON.stringify(entry.tcgApiResults || [])}, ${JSON.stringify(entry.pcvResults || [])}, ${scannedAt})`
+          );
+          migrated++;
+        } catch { failed++; }
+      }
+      res.json({ migrated, failed });
+    } catch (error: any) {
+      console.error("Scan history bulk migrate error:", error);
+      res.status(500).json({ error: error.message || "Migration failed" });
+    }
+  });
+
+  app.delete("/api/scan-history", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      await db.execute(sql`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id}`);
+      res.json({ history: [] });
+    } catch (error: any) {
+      console.error("Scan history clear error:", error);
+      res.status(500).json({ error: error.message || "Failed to clear scan history" });
+    }
+  });
+
+  app.delete("/api/scan-history/:id", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      const { id } = req.params;
+      await db.execute(sql`DELETE FROM pokescan_scan_history WHERE id = ${id} AND user_id = ${user.id}`);
+      const rows = await db.execute(
+        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 50`
+      );
+      const entries = (rows.rows as any[]).map((r) => ({
+        id: r.id,
+        timestamp: r.scanned_at,
+        cardName: r.card_name,
+        setName: r.set_name,
+        cardNumber: r.card_number,
+        language: r.language,
+        thumbnail: r.thumbnail,
+        priceGBP: r.price_gbp,
+        identification: JSON.parse(r.identification || "{}"),
+        tcgApiResults: JSON.parse(r.tcg_api_results || "[]"),
+        pcvResults: JSON.parse(r.pcv_results || "[]"),
+      }));
+      res.json({ history: entries });
+    } catch (error: any) {
+      console.error("Scan history delete error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete scan history entry" });
     }
   });
 

@@ -110,32 +110,113 @@ export interface ScanHistoryEntry {
   pcvResults: any[];
 }
 
-function scanHistoryKey(userId: string): string {
+// Two-key pattern (mirrors collection):
+//   cache key  — written only by getScanHistory on successful server fetch
+//   offline key — written only by addScanToHistory when server is unreachable
+// The keys never overlap so a server read can never erase unsynced offline entries.
+// Legacy key (pokescan_scan_history_${userId}) is consumed once during migration.
+
+function scanHistoryCacheKey(userId: string): string {
+  return `pokescan_scan_history_cache_${userId}`;
+}
+
+function scanHistoryOfflineKey(userId: string): string {
+  return `pokescan_scan_history_offline_${userId}`;
+}
+
+function scanHistoryLegacyKey(userId: string): string {
   return `pokescan_scan_history_${userId}`;
 }
 
-export async function getScanHistory(userId: string): Promise<ScanHistoryEntry[]> {
+async function getScanHistoryCache(userId: string): Promise<ScanHistoryEntry[]> {
   try {
-    const data = await AsyncStorage.getItem(scanHistoryKey(userId));
+    const data = await AsyncStorage.getItem(scanHistoryCacheKey(userId));
     return data ? JSON.parse(data) : [];
   } catch {
     return [];
   }
 }
 
+async function saveScanHistoryCache(userId: string, entries: ScanHistoryEntry[]): Promise<void> {
+  try {
+    await safeSetItem(scanHistoryCacheKey(userId), JSON.stringify(entries));
+  } catch {}
+}
+
+async function getOfflineScanHistory(userId: string): Promise<ScanHistoryEntry[]> {
+  try {
+    const data = await AsyncStorage.getItem(scanHistoryOfflineKey(userId));
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveOfflineScanHistory(userId: string, entries: ScanHistoryEntry[]): Promise<void> {
+  try {
+    await safeSetItem(scanHistoryOfflineKey(userId), JSON.stringify(entries));
+  } catch {}
+}
+
+function mergeScanHistoryEntries(primary: ScanHistoryEntry[], secondary: ScanHistoryEntry[]): ScanHistoryEntry[] {
+  const seen = new Set(primary.map((e) => e.id));
+  const merged = [...primary, ...secondary.filter((e) => !seen.has(e.id))];
+  merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return merged.slice(0, SCAN_HISTORY_MAX);
+}
+
+export async function getScanHistory(userId: string): Promise<ScanHistoryEntry[]> {
+  const offlineEntries = await getOfflineScanHistory(userId);
+  try {
+    const token = await getSessionToken();
+    if (token) {
+      const url = new URL("/api/scan-history", getApiUrl()).href;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.ok) {
+        const data = await res.json();
+        const serverEntries = (data.history ?? []) as ScanHistoryEntry[];
+        await saveScanHistoryCache(userId, serverEntries);
+        return mergeScanHistoryEntries(serverEntries, offlineEntries);
+      }
+    }
+  } catch {}
+  const cacheEntries = await getScanHistoryCache(userId);
+  return mergeScanHistoryEntries(cacheEntries, offlineEntries);
+}
+
 export async function addScanToHistory(
   userId: string,
   entry: Omit<ScanHistoryEntry, "id" | "timestamp">
 ): Promise<void> {
+  let serverSucceeded = false;
   try {
-    const history = await getScanHistory(userId);
-    const newEntry: ScanHistoryEntry = {
-      ...entry,
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
-      timestamp: new Date().toISOString(),
-    };
-    const updated = [newEntry, ...history].slice(0, SCAN_HISTORY_MAX);
-    await safeSetItem(scanHistoryKey(userId), JSON.stringify(updated));
+    const token = await getSessionToken();
+    if (token) {
+      try {
+        const url = new URL("/api/scan-history", getApiUrl()).href;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify(entry),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          await saveScanHistoryCache(userId, (data.history ?? []) as ScanHistoryEntry[]);
+          serverSucceeded = true;
+        }
+      } catch {
+        // Server unavailable — write to offline queue below
+      }
+    }
+    if (!serverSucceeded) {
+      const offline = await getOfflineScanHistory(userId);
+      const newEntry: ScanHistoryEntry = {
+        ...entry,
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 6),
+        timestamp: new Date().toISOString(),
+      };
+      await saveOfflineScanHistory(userId, [newEntry, ...offline].slice(0, SCAN_HISTORY_MAX));
+    }
   } catch {
     // Non-critical
   }
@@ -143,19 +224,87 @@ export async function addScanToHistory(
 
 export async function clearScanHistory(userId: string): Promise<void> {
   try {
-    await AsyncStorage.removeItem(scanHistoryKey(userId));
+    const token = await getSessionToken();
+    if (token) {
+      try {
+        const url = new URL("/api/scan-history", getApiUrl()).href;
+        await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      } catch {
+        // Server unavailable — still clear both local stores
+      }
+    }
+    await AsyncStorage.removeItem(scanHistoryCacheKey(userId));
+    await AsyncStorage.removeItem(scanHistoryOfflineKey(userId));
+    await AsyncStorage.removeItem(scanHistoryLegacyKey(userId));
   } catch {}
 }
 
 export async function removeScanHistoryEntry(userId: string, entryId: string): Promise<ScanHistoryEntry[]> {
-  const history = await getScanHistory(userId);
-  const updated = history.filter((e) => e.id !== entryId);
   try {
-    await safeSetItem(scanHistoryKey(userId), JSON.stringify(updated));
+    const token = await getSessionToken();
+    if (token) {
+      try {
+        const url = new URL(`/api/scan-history/${entryId}`, getApiUrl()).href;
+        const res = await fetch(url, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+        if (res.ok) {
+          const data = await res.json();
+          const serverEntries = (data.history ?? []) as ScanHistoryEntry[];
+          await saveScanHistoryCache(userId, serverEntries);
+          const offline = await getOfflineScanHistory(userId);
+          const updatedOffline = offline.filter((e) => e.id !== entryId);
+          await saveOfflineScanHistory(userId, updatedOffline);
+          return mergeScanHistoryEntries(serverEntries, updatedOffline);
+        }
+      } catch {
+        // Server unavailable — fall through to local delete
+      }
+    }
+    const [cache, offline] = await Promise.all([getScanHistoryCache(userId), getOfflineScanHistory(userId)]);
+    const updatedCache = cache.filter((e) => e.id !== entryId);
+    const updatedOffline = offline.filter((e) => e.id !== entryId);
+    await Promise.all([saveScanHistoryCache(userId, updatedCache), saveOfflineScanHistory(userId, updatedOffline)]);
+    return mergeScanHistoryEntries(updatedCache, updatedOffline);
   } catch {
-    return history;
+    const [cache, offline] = await Promise.all([getScanHistoryCache(userId), getOfflineScanHistory(userId)]);
+    const updatedCache = cache.filter((e) => e.id !== entryId);
+    const updatedOffline = offline.filter((e) => e.id !== entryId);
+    await Promise.all([saveScanHistoryCache(userId, updatedCache), saveOfflineScanHistory(userId, updatedOffline)]);
+    return mergeScanHistoryEntries(updatedCache, updatedOffline);
   }
-  return updated;
+}
+
+export async function migrateLocalScanHistoryToServer(userId: string): Promise<void> {
+  try {
+    const token = await getSessionToken();
+    if (!token) return;
+    // Read from offline queue AND legacy key (for entries written before this change)
+    const [offlineEntries, legacyEntries] = await Promise.all([
+      getOfflineScanHistory(userId),
+      (async () => {
+        try {
+          const data = await AsyncStorage.getItem(scanHistoryLegacyKey(userId));
+          return data ? (JSON.parse(data) as ScanHistoryEntry[]) : [];
+        } catch { return []; }
+      })(),
+    ]);
+    const allEntries = mergeScanHistoryEntries(offlineEntries, legacyEntries);
+    if (allEntries.length === 0) return;
+    const url = new URL("/api/scan-history/bulk", getApiUrl()).href;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ entries: allEntries }),
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({ failed: 1 }));
+      if ((data.failed ?? 0) === 0) {
+        await AsyncStorage.removeItem(scanHistoryOfflineKey(userId));
+        await AsyncStorage.removeItem(scanHistoryLegacyKey(userId));
+      }
+    }
+  } catch (err) {
+    console.error("Scan history migration error:", err);
+  }
 }
 
 const SESSION_KEY = "pokescan_session_token";

@@ -21,6 +21,7 @@ import {
   updateCollectionQuantity,
   updateCollectionGrading,
   migrateLocalCollectionToServer,
+  migrateLocalScanHistoryToServer,
   getListings,
   addListing,
   removeListing,
@@ -113,6 +114,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       if (restoredUser) {
         userData = restoredUser;
         migrateLocalCollectionToServer().catch(() => {});
+        migrateLocalScanHistoryToServer(restoredUser.id).catch(() => {});
       } else {
         const localUser = await getUser();
         if (localUser && localUser.authProvider !== "local") {
@@ -168,6 +170,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     await upsertUserInRegistry(newUser);
     const users = await getAllUsers();
     setAllUsers(users);
+    migrateLocalCollectionToServer().catch(() => {});
+    migrateLocalScanHistoryToServer(newUser.id).catch(() => {});
     return { userId, email };
   }, []);
 
@@ -178,6 +182,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const [users, saFlag] = await Promise.all([getAllUsers(), isSuperadmin()]);
     setAllUsers(users);
     setSuperadminFlag(saFlag);
+    migrateLocalCollectionToServer().catch(() => {});
+    migrateLocalScanHistoryToServer(newUser.id).catch(() => {});
   }, []);
 
   const handleSendRegistrationOtp = useCallback(async (userId: string, channel: "email" | "sms") => {
@@ -192,6 +198,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const { user: newUser } = await verifyOtpAndLogin(credential, code);
     setUser(newUser);
     migrateLocalCollectionToServer().then(() => getCollection().then(setCollection)).catch(() => {});
+    migrateLocalScanHistoryToServer(newUser.id).catch(() => {});
     const [users, saFlag] = await Promise.all([getAllUsers(), isSuperadmin()]);
     setAllUsers(users);
     setSuperadminFlag(saFlag);
@@ -201,6 +208,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     const newUser = await registerSocialUser(provider, displayName, email, avatarUrl);
     setUser(newUser);
     migrateLocalCollectionToServer().then(() => getCollection().then(setCollection)).catch(() => {});
+    migrateLocalScanHistoryToServer(newUser.id).catch(() => {});
     const users = await getAllUsers();
     setAllUsers(users);
   }, []);

@@ -257,6 +257,23 @@ export const pokescanCollectorVerifications = pgTable("pokescan_collector_verifi
 
 export type PokescanCollectorVerification = typeof pokescanCollectorVerifications.$inferSelect;
 
+export const pokescanScanHistory = pgTable("pokescan_scan_history", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  cardName: text("card_name").notNull(),
+  setName: text("set_name").notNull(),
+  cardNumber: text("card_number").notNull().default(""),
+  language: text("language").notNull().default("english"),
+  thumbnail: text("thumbnail"),
+  priceGBP: real("price_gbp"),
+  identification: text("identification").notNull().default("{}"),
+  tcgApiResults: text("tcg_api_results").notNull().default("[]"),
+  pcvResults: text("pcv_results").notNull().default("[]"),
+  scannedAt: timestamp("scanned_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type PokescanScanHistory = typeof pokescanScanHistory.$inferSelect;
+
 export const syncStatus = pgTable("sync_status", {
   id: serial("id").primaryKey(),
   totalSets: integer("total_sets").default(0),
