@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -14,7 +14,15 @@ import {
   Linking,
   TextInput,
   ActivityIndicator,
+  Dimensions,
 } from "react-native";
+import { GestureDetector, Gesture } from "react-native-gesture-handler";
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  runOnJS,
+} from "react-native-reanimated";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -39,6 +47,223 @@ const REPORT_REASONS = [
 ];
 
 const CONDITIONS = ["Mint", "Near Mint", "Excellent", "Good", "Lightly Played", "Played", "Poor"];
+
+function PhotoZoomItem({
+  uri,
+  width,
+  height,
+  onDismiss,
+  onZoomChange,
+}: {
+  uri: string;
+  width: number;
+  height: number;
+  onDismiss: () => void;
+  onZoomChange: (isZoomed: boolean) => void;
+}) {
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const offsetX = useSharedValue(0);
+  const offsetY = useSharedValue(0);
+  const savedOffsetX = useSharedValue(0);
+  const savedOffsetY = useSharedValue(0);
+
+  const resetZoom = () => {
+    "worklet";
+    scale.value = withSpring(1);
+    savedScale.value = 1;
+    offsetX.value = withSpring(0);
+    offsetY.value = withSpring(0);
+    savedOffsetX.value = 0;
+    savedOffsetY.value = 0;
+  };
+
+  const pinch = Gesture.Pinch()
+    .onUpdate((e) => {
+      scale.value = Math.max(1, Math.min(5, savedScale.value * e.scale));
+    })
+    .onEnd(() => {
+      if (scale.value < 1.1) {
+        resetZoom();
+        runOnJS(onZoomChange)(false);
+      } else {
+        savedScale.value = scale.value;
+        runOnJS(onZoomChange)(true);
+      }
+    });
+
+  const pan = Gesture.Pan()
+    .onUpdate((e) => {
+      if (scale.value > 1.05) {
+        offsetX.value = savedOffsetX.value + e.translationX;
+        offsetY.value = savedOffsetY.value + e.translationY;
+      } else {
+        offsetY.value = e.translationY;
+      }
+    })
+    .onEnd((e) => {
+      if (scale.value <= 1.05) {
+        if (Math.abs(e.translationY) > 100 || Math.abs(e.velocityY) > 500) {
+          runOnJS(onDismiss)();
+        } else {
+          offsetY.value = withSpring(0);
+          savedOffsetY.value = 0;
+        }
+      } else {
+        savedOffsetX.value = offsetX.value;
+        savedOffsetY.value = offsetY.value;
+      }
+    });
+
+  const composed = Gesture.Simultaneous(pinch, pan);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: offsetX.value },
+      { translateY: offsetY.value },
+      { scale: scale.value },
+    ],
+  }));
+
+  return (
+    <GestureDetector gesture={composed}>
+      <Reanimated.View
+        style={{ width, height, justifyContent: "center", alignItems: "center", overflow: "hidden" }}
+      >
+        <Reanimated.View style={animatedStyle}>
+          <Image
+            source={{ uri }}
+            style={{ width, height: height * 0.85 }}
+            contentFit="contain"
+          />
+        </Reanimated.View>
+      </Reanimated.View>
+    </GestureDetector>
+  );
+}
+
+function FullScreenPhotoViewer({
+  photos,
+  initialIndex,
+  visible,
+  onClose,
+}: {
+  photos: string[];
+  initialIndex: number;
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const { width: SW, height: SH } = Dimensions.get("window");
+  const insets = useSafeAreaInsets();
+  const flatListRef = useRef<FlatList>(null);
+  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [flatListScrollEnabled, setFlatListScrollEnabled] = useState(true);
+
+  useEffect(() => {
+    if (visible) {
+      setCurrentIndex(initialIndex);
+      setFlatListScrollEnabled(true);
+    }
+  }, [visible, initialIndex]);
+
+  const handleZoomChange = useCallback((isZoomed: boolean) => {
+    setFlatListScrollEnabled(!isZoomed);
+  }, []);
+
+  const renderItem = ({ item }: { item: string }) => (
+    <PhotoZoomItem
+      uri={item}
+      width={SW}
+      height={SH}
+      onDismiss={onClose}
+      onZoomChange={handleZoomChange}
+    />
+  );
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.95)" }}>
+        <FlatList
+          ref={flatListRef}
+          data={photos}
+          horizontal
+          pagingEnabled
+          scrollEnabled={flatListScrollEnabled}
+          keyExtractor={(_, idx) => String(idx)}
+          renderItem={renderItem}
+          showsHorizontalScrollIndicator={false}
+          initialScrollIndex={initialIndex}
+          getItemLayout={(_, index) => ({
+            length: SW,
+            offset: SW * index,
+            index,
+          })}
+          onScrollToIndexFailed={({ index }) => {
+            flatListRef.current?.scrollToOffset({
+              offset: SW * index,
+              animated: false,
+            });
+          }}
+          onMomentumScrollEnd={(e) => {
+            const idx = Math.round(e.nativeEvent.contentOffset.x / SW);
+            setCurrentIndex(idx);
+          }}
+        />
+
+        {/* Close button */}
+        <Pressable
+          onPress={onClose}
+          hitSlop={12}
+          style={{
+            position: "absolute",
+            top: (Platform.OS === "web" ? 67 : insets.top) + 12,
+            right: 16,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            backgroundColor: "rgba(0,0,0,0.55)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="close" size={22} color="#FFF" />
+        </Pressable>
+
+        {/* Dot indicator */}
+        {photos.length > 1 && (
+          <View
+            style={{
+              position: "absolute",
+              bottom: (Platform.OS === "web" ? 34 : insets.bottom) + 24,
+              alignSelf: "center",
+              flexDirection: "row",
+              gap: 6,
+            }}
+          >
+            {photos.map((_, idx) => (
+              <View
+                key={idx}
+                style={{
+                  width: idx === currentIndex ? 18 : 6,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor:
+                    idx === currentIndex ? "#FFF" : "rgba(255,255,255,0.35)",
+                }}
+              />
+            ))}
+          </View>
+        )}
+      </View>
+    </Modal>
+  );
+}
 
 function ListingDetailModal({
   listing,
@@ -74,6 +299,11 @@ function ListingDetailModal({
   const [editExternalUrl, setEditExternalUrl] = useState("");
   const [editPhotos, setEditPhotos] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!visible) setViewerIndex(null);
+  }, [visible]);
 
   const { data: card } = useQuery<PokemonCard>({
     queryKey: ["/api/pokemon/cards", listing?.cardId],
@@ -478,17 +708,38 @@ function ListingDetailModal({
                   contentContainerStyle={{ gap: 10 }}
                 >
                   {listing.photos.map((uri, idx) => (
-                    <Image
+                    <Pressable
                       key={idx}
-                      source={{ uri }}
-                      style={modalStyles.photo}
-                      contentFit="cover"
-                    />
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setViewerIndex(idx);
+                      }}
+                      style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
+                    >
+                      <Image
+                        source={{ uri }}
+                        style={modalStyles.photo}
+                        contentFit="cover"
+                      />
+                      <View style={modalStyles.photoZoomHint}>
+                        <Ionicons name="expand-outline" size={12} color="#FFF" />
+                      </View>
+                    </Pressable>
                   ))}
                 </ScrollView>
               </View>
             )}
           </ScrollView>
+        )}
+
+        {/* Full-screen photo viewer */}
+        {hasPhotos && viewerIndex !== null && (
+          <FullScreenPhotoViewer
+            photos={listing.photos}
+            initialIndex={viewerIndex}
+            visible={viewerIndex !== null}
+            onClose={() => setViewerIndex(null)}
+          />
         )}
 
         {/* Bottom action bar */}
@@ -999,6 +1250,17 @@ const modalStyles = StyleSheet.create({
   },
   externalBtnText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
   photo: { width: 130, height: 130, borderRadius: 10 },
+  photoZoomHint: {
+    position: "absolute",
+    bottom: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   actionBar: {
     flexDirection: "row",
     gap: 10,
