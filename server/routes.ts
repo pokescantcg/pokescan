@@ -33,6 +33,7 @@ import {
   pokescanMessages,
   pokescanReports,
   pokescanChatroomMessages,
+  pokescanAdminActivityLog,
 } from "@shared/schema";
 import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
@@ -2131,10 +2132,224 @@ If you cannot identify the card, set confidence to "low" and provide your best g
         );
       }
       if (result.rows.length === 0) { res.status(404).json({ error: "Listing not found" }); return; }
-      res.json({ listing: rowToListing(result.rows[0]) });
+
+      const row = result.rows[0];
+      const action = status !== undefined ? status : "note_edited";
+      try {
+        await db.insert(pokescanAdminActivityLog).values({
+          listingId: id,
+          listingName: row.card_name ?? null,
+          action,
+          performedBy: user.id,
+          note: reviewNote ?? null,
+        });
+      } catch (logErr) {
+        console.warn("[ActivityLog] Failed to write log entry:", logErr);
+      }
+
+      res.json({ listing: rowToListing(row) });
     } catch (err: any) {
       console.error("[Admin Listings] PATCH error:", err.message);
       res.status(500).json({ error: "Could not update listing" });
+    }
+  });
+
+  // GET /api/admin/activity-log — paginated moderation activity log.
+  // Admin/superadmin only (not plain moderators): the Logs tab in the admin UI is also
+  // restricted to admins/superadmins. Moderators use the Reports tab for their queue.
+  // Note: seedSuperadmin always sets the superadmin email's role to "admin", so
+  // user.role === "admin" already covers superadmins. isSuperadminAuthorized is called
+  // explicitly as a belt-and-suspenders check for legacy superadmin token paths.
+  app.get("/api/admin/activity-log", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (user.role !== "admin" && !(await isSuperadminAuthorized(req))) {
+        res.status(403).json({ error: "Admin access required" }); return;
+      }
+
+      const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+      const limit = Math.min(50, Math.max(1, parseInt((req.query.limit as string) || "20", 10)));
+      const offset = (page - 1) * limit;
+      const moderator = (req.query.moderator as string) || "";
+      const dateFrom = (req.query.dateFrom as string) || "";
+      const dateTo = (req.query.dateTo as string) || "";
+
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+      if (dateFrom && (!datePattern.test(dateFrom) || isNaN(Date.parse(dateFrom)))) {
+        res.status(400).json({ error: "Invalid dateFrom format — use YYYY-MM-DD" }); return;
+      }
+      if (dateTo && (!datePattern.test(dateTo) || isNaN(Date.parse(dateTo)))) {
+        res.status(400).json({ error: "Invalid dateTo format — use YYYY-MM-DD" }); return;
+      }
+
+      const conditions: string[] = [];
+      const params: (string | number)[] = [];
+      let pi = 1;
+
+      if (moderator) {
+        conditions.push(`u.username ILIKE $${pi++}`);
+        params.push(`%${moderator}%`);
+      }
+      if (dateFrom) {
+        conditions.push(`al.created_at >= $${pi++}`);
+        params.push(new Date(dateFrom).toISOString());
+      }
+      if (dateTo) {
+        conditions.push(`al.created_at <= $${pi++}`);
+        params.push(new Date(dateTo + "T23:59:59").toISOString());
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+      const countResult = await pool.query(
+        `SELECT COUNT(*)::int AS total
+           FROM pokescan_admin_activity_log al
+           LEFT JOIN pokescan_users u ON u.id = al.performed_by
+           ${where}`,
+        params
+      );
+      const total = countResult.rows[0]?.total ?? 0;
+
+      const dataResult = await pool.query(
+        `SELECT al.*, u.username AS moderator_username, u.display_name AS moderator_display_name
+           FROM pokescan_admin_activity_log al
+           LEFT JOIN pokescan_users u ON u.id = al.performed_by
+           ${where}
+           ORDER BY al.created_at DESC
+           LIMIT $${pi++} OFFSET $${pi++}`,
+        [...params, limit, offset]
+      );
+
+      res.json({
+        logs: dataResult.rows.map((r) => ({
+          id: r.id,
+          listingId: r.listing_id,
+          listingName: r.listing_name,
+          action: r.action,
+          performedBy: r.performed_by,
+          moderatorUsername: r.moderator_username,
+          moderatorDisplayName: r.moderator_display_name,
+          note: r.note,
+          createdAt: r.created_at,
+        })),
+        total,
+        page,
+        limit,
+        hasMore: offset + limit < total,
+      });
+    } catch (err: any) {
+      console.error("[ActivityLog] GET error:", err.message);
+      res.status(500).json({ error: "Could not fetch activity log" });
+    }
+  });
+
+  // GET /api/admin/reports/all — all reports with pagination and optional status filter.
+  // Admin/superadmin only, same rationale as /api/admin/activity-log above.
+  app.get("/api/admin/reports/all", async (req: Request, res: Response) => {
+    try {
+      const token = req.headers.authorization?.replace("Bearer ", "");
+      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const user = await storage.validateSession(token);
+      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (user.role !== "admin" && !(await isSuperadminAuthorized(req))) {
+        res.status(403).json({ error: "Admin access required" }); return;
+      }
+
+      const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+      const limit = Math.min(50, Math.max(1, parseInt((req.query.limit as string) || "20", 10)));
+      const offset = (page - 1) * limit;
+      const status = (req.query.status as string) || "all";
+      const reporter = (req.query.reporter as string) || "";
+      const dateFrom = (req.query.dateFrom as string) || "";
+      const dateTo = (req.query.dateTo as string) || "";
+
+      const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+      if (dateFrom && (!datePattern.test(dateFrom) || isNaN(Date.parse(dateFrom)))) {
+        res.status(400).json({ error: "Invalid dateFrom format — use YYYY-MM-DD" }); return;
+      }
+      if (dateTo && (!datePattern.test(dateTo) || isNaN(Date.parse(dateTo)))) {
+        res.status(400).json({ error: "Invalid dateTo format — use YYYY-MM-DD" }); return;
+      }
+
+      const conditions: string[] = [];
+      const params: (string | number)[] = [];
+      let pi = 1;
+
+      const allowedStatuses = ["pending", "reviewed", "dismissed"];
+      if (allowedStatuses.includes(status)) {
+        conditions.push(`r.status = $${pi++}`);
+        params.push(status);
+      }
+      if (reporter) {
+        conditions.push(`reporter.username ILIKE $${pi++}`);
+        params.push(`%${reporter}%`);
+      }
+      if (dateFrom) {
+        conditions.push(`r.created_at >= $${pi++}`);
+        params.push(new Date(dateFrom).toISOString());
+      }
+      if (dateTo) {
+        conditions.push(`r.created_at <= $${pi++}`);
+        params.push(new Date(dateTo + "T23:59:59").toISOString());
+      }
+
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+      const countResult = await pool.query(
+        `SELECT COUNT(*)::int AS total
+           FROM pokescan_reports r
+           LEFT JOIN pokescan_users reporter ON reporter.id = r.reporter_id
+           ${where}`,
+        params
+      );
+      const total = countResult.rows[0]?.total ?? 0;
+
+      const dataResult = await pool.query(
+        `SELECT r.*,
+                reporter.username AS reporter_username,
+                reporter.display_name AS reporter_display_name,
+                reported.username AS reported_username,
+                reviewed_by_user.username AS reviewed_by_username
+           FROM pokescan_reports r
+           LEFT JOIN pokescan_users reporter ON reporter.id = r.reporter_id
+           LEFT JOIN pokescan_users reported ON reported.id = r.reported_user_id
+           LEFT JOIN pokescan_users reviewed_by_user ON reviewed_by_user.id = r.reviewed_by
+           ${where}
+           ORDER BY r.created_at DESC
+           LIMIT $${pi++} OFFSET $${pi++}`,
+        [...params, limit, offset]
+      );
+
+      res.json({
+        reports: dataResult.rows.map((r) => ({
+          id: r.id,
+          reporterId: r.reporter_id,
+          reporterUsername: r.reporter_username,
+          reporterDisplayName: r.reporter_display_name,
+          reportedUserId: r.reported_user_id,
+          reportedUsername: r.reported_username,
+          contentType: r.content_type,
+          contentId: r.content_id,
+          reason: r.reason,
+          contentSnapshot: r.content_snapshot,
+          status: r.status,
+          reviewNote: r.review_note,
+          reviewedBy: r.reviewed_by,
+          reviewedByUsername: r.reviewed_by_username,
+          reviewedAt: r.reviewed_at,
+          createdAt: r.created_at,
+        })),
+        total,
+        page,
+        limit,
+        hasMore: offset + limit < total,
+      });
+    } catch (err: any) {
+      console.error("[AllReports] GET error:", err.message);
+      res.status(500).json({ error: "Could not fetch reports" });
     }
   });
 

@@ -8,33 +8,39 @@
     "scheme": "pokescantcg",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0B1426"
     },
+
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.pokescantcg"
     },
+
     "android": {
       "package": "pokescan.tcg1",
+      "versionCode": 30,
+
       "adaptiveIcon": {
         "backgroundColor": "#0B1426",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      }
+      },
+
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
+
     "web": {
-      "favicon": "./assets/images/favicon.png",
-      "name": "PokeScan TCG",
-      "shortName": "PokeScan",
-      "description": "PokeScan TCG — scan, identify and value your Pokémon cards instantly. Browse sets, manage your collection, and trade on the marketplace.",
-      "lang": "en",
-      "themeColor": "#CC0000",
-      "backgroundColor": "#0B1426"
+      "favicon": "./assets/images/favicon.png"
     },
+
     "plugins": [
       [
         "expo-router",
@@ -42,8 +48,10 @@
           "origin": "https://replit.com/"
         }
       ],
+
       "expo-font",
       "expo-web-browser",
+
       [
         "expo-camera",
         {
@@ -51,9 +59,20 @@
         }
       ]
     ],
+
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+
+    "extra": {
+      "router": {
+        "origin": "https://replit.com/"
+      },
+
+      "eas": {
+        "projectId": "cd413641-f209-410e-84dc-d3c166607cac"
+      }
     }
   }
 }

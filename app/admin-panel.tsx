@@ -251,7 +251,38 @@ const editStyles = StyleSheet.create({
   saveBtnText: { fontSize: 15, fontFamily: "Outfit_700Bold", color: "#FFF" },
 });
 
-type Tab = "listings" | "users" | "reports" | "revenue" | "database";
+type Tab = "listings" | "users" | "reports" | "revenue" | "database" | "logs";
+
+interface ActivityLogEntry {
+  id: string;
+  listingId: string | null;
+  listingName: string | null;
+  action: string;
+  performedBy: string | null;
+  moderatorUsername: string | null;
+  moderatorDisplayName: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+interface AllReportEntry {
+  id: string;
+  reporterId: string;
+  reporterUsername: string | null;
+  reporterDisplayName: string | null;
+  reportedUserId: string | null;
+  reportedUsername: string | null;
+  contentType: string;
+  contentId: string;
+  reason: string;
+  contentSnapshot: string | null;
+  status: string;
+  reviewNote: string | null;
+  reviewedBy: string | null;
+  reviewedByUsername: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}
 
 const STRIPE_PRICE_MONTHLY = "price_1TM7D8K7N6BNdayAPnuINUuU";
 
@@ -1114,6 +1145,25 @@ export default function AdminPanelScreen() {
   const [revenueData, setRevenueData] = useState<{ subscribers: any[]; stats: any } | null>(null);
   const [revenueLoading, setRevenueLoading] = useState(false);
 
+  const [logsSubTab, setLogsSubTab] = useState<"activity" | "allReports">("activity");
+  const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
+  const [activityLogsLoading, setActivityLogsLoading] = useState(false);
+  const [activityLogsPage, setActivityLogsPage] = useState(1);
+  const [activityLogsHasMore, setActivityLogsHasMore] = useState(false);
+  const [activityLogsModerator, setActivityLogsModerator] = useState("");
+  const [activityLogsDateFrom, setActivityLogsDateFrom] = useState("");
+  const [activityLogsDateTo, setActivityLogsDateTo] = useState("");
+
+  const [allReports, setAllReports] = useState<AllReportEntry[]>([]);
+  const [allReportsLoading, setAllReportsLoading] = useState(false);
+  const [allReportsPage, setAllReportsPage] = useState(1);
+  const [allReportsHasMore, setAllReportsHasMore] = useState(false);
+  const [allReportsStatus, setAllReportsStatus] = useState("all");
+  const [allReportsReporter, setAllReportsReporter] = useState("");
+  const [allReportsReviewNotes, setAllReportsReviewNotes] = useState<Record<string, string>>({});
+  const [allReportsDateFrom, setAllReportsDateFrom] = useState("");
+  const [allReportsDateTo, setAllReportsDateTo] = useState("");
+
   // Admin marketplace listings (separate from the user-facing `listings` array
   // so admins can see pending + rejected as well as approved).
   const [adminListings, setAdminListings] = useState<MarketListing[]>([]);
@@ -1287,11 +1337,79 @@ export default function AdminPanelScreen() {
     }
   }, []);
 
+  const loadActivityLogs = useCallback(async (page = 1, append = false) => {
+    setActivityLogsLoading(true);
+    try {
+      const headers = await requireAdminAuthHeader();
+      const url = new URL("/api/admin/activity-log", getApiUrl());
+      url.searchParams.set("page", String(page));
+      url.searchParams.set("limit", "20");
+      if (activityLogsModerator) url.searchParams.set("moderator", activityLogsModerator);
+      if (activityLogsDateFrom) url.searchParams.set("dateFrom", activityLogsDateFrom);
+      if (activityLogsDateTo) url.searchParams.set("dateTo", activityLogsDateTo);
+      const res = await fetch(url.toString(), { headers });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json();
+      setActivityLogs(prev => append ? [...prev, ...(data.logs || [])] : (data.logs || []));
+      setActivityLogsPage(page);
+      setActivityLogsHasMore(data.hasMore ?? false);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to load activity log");
+    } finally {
+      setActivityLogsLoading(false);
+    }
+  }, [activityLogsModerator, activityLogsDateFrom, activityLogsDateTo]);
+
+  const loadAllReports = useCallback(async (page = 1, append = false) => {
+    setAllReportsLoading(true);
+    try {
+      const headers = await requireAdminAuthHeader();
+      const url = new URL("/api/admin/reports/all", getApiUrl());
+      url.searchParams.set("page", String(page));
+      url.searchParams.set("limit", "20");
+      if (allReportsStatus !== "all") url.searchParams.set("status", allReportsStatus);
+      if (allReportsReporter) url.searchParams.set("reporter", allReportsReporter);
+      if (allReportsDateFrom) url.searchParams.set("dateFrom", allReportsDateFrom);
+      if (allReportsDateTo) url.searchParams.set("dateTo", allReportsDateTo);
+      const res = await fetch(url.toString(), { headers });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const data = await res.json();
+      setAllReports(prev => append ? [...prev, ...(data.reports || [])] : (data.reports || []));
+      setAllReportsPage(page);
+      setAllReportsHasMore(data.hasMore ?? false);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Failed to load reports");
+    } finally {
+      setAllReportsLoading(false);
+    }
+  }, [allReportsStatus, allReportsReporter, allReportsDateFrom, allReportsDateTo]);
+
+  const handleUpdateAllReport = useCallback(async (id: string, status: "reviewed" | "dismissed") => {
+    try {
+      await socialApi.updateReport(id, status, allReportsReviewNotes[id] || undefined);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await loadAllReports(1);
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Could not update report.");
+    }
+  }, [allReportsReviewNotes, loadAllReports]);
+
   React.useEffect(() => {
     if (activeTab === "reports") loadReports();
     if (activeTab === "revenue") loadRevenue();
     if (activeTab === "users") handleRefreshUsers();
+    if (activeTab === "logs") {
+      if (logsSubTab === "activity") loadActivityLogs(1);
+      else loadAllReports(1);
+    }
   }, [activeTab, loadReports, loadRevenue]);
+
+  React.useEffect(() => {
+    if (activeTab === "logs") {
+      if (logsSubTab === "activity") loadActivityLogs(1);
+      else loadAllReports(1);
+    }
+  }, [logsSubTab]);
 
   const handleUpdateReport = useCallback(async (id: string, status: "reviewed" | "dismissed") => {
     try {
@@ -1762,6 +1880,9 @@ export default function AdminPanelScreen() {
               label: `Reports${reports.filter(r => r.status === "pending").length > 0 ? ` (${reports.filter(r => r.status === "pending").length})` : ""}`,
               icon: "flag-outline",
             },
+            ...((isSuperadminUser || isAdminUser)
+              ? [{ value: "logs" as Tab, label: "Logs", icon: "document-text-outline" }]
+              : []),
             ...(isSuperadminUser
               ? [
                   { value: "revenue" as Tab, label: "Revenue", icon: "cash-outline" },
@@ -2091,6 +2212,303 @@ export default function AdminPanelScreen() {
             );
           }}
         />
+      )}
+
+      {activeTab === "logs" && (isSuperadminUser || isAdminUser) && (
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: "row", marginHorizontal: 16, marginBottom: 10, backgroundColor: colors.surface, borderRadius: 12, padding: 3, borderWidth: 1, borderColor: colors.borderLight }}>
+            <Pressable
+              style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center", backgroundColor: logsSubTab === "activity" ? colors.pokemonRed : "transparent" }}
+              onPress={() => setLogsSubTab("activity")}
+            >
+              <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: logsSubTab === "activity" ? "#FFF" : colors.textMuted }}>Mod Activity</Text>
+            </Pressable>
+            <Pressable
+              style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center", backgroundColor: logsSubTab === "allReports" ? colors.pokemonRed : "transparent" }}
+              onPress={() => setLogsSubTab("allReports")}
+            >
+              <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: logsSubTab === "allReports" ? "#FFF" : colors.textMuted }}>All Reports</Text>
+            </Pressable>
+          </View>
+
+          {logsSubTab === "activity" && (
+            <FlatList
+              data={activityLogs}
+              keyExtractor={(item) => item.id}
+              refreshing={activityLogsLoading && activityLogsPage === 1}
+              onRefresh={() => loadActivityLogs(1)}
+              onEndReached={() => { if (activityLogsHasMore && !activityLogsLoading) loadActivityLogs(activityLogsPage + 1, true); }}
+              onEndReachedThreshold={0.3}
+              contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={
+                <View style={{ gap: 8, marginBottom: 8 }}>
+                  <TextInput
+                    style={{ backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.text }}
+                    placeholder="Filter by moderator username..."
+                    placeholderTextColor={colors.textMuted}
+                    value={activityLogsModerator}
+                    onChangeText={setActivityLogsModerator}
+                    onSubmitEditing={() => loadActivityLogs(1)}
+                    returnKeyType="search"
+                  />
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <TextInput
+                      style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.text }}
+                      placeholder="From (YYYY-MM-DD)"
+                      placeholderTextColor={colors.textMuted}
+                      value={activityLogsDateFrom}
+                      onChangeText={setActivityLogsDateFrom}
+                    />
+                    <TextInput
+                      style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.text }}
+                      placeholder="To (YYYY-MM-DD)"
+                      placeholderTextColor={colors.textMuted}
+                      value={activityLogsDateTo}
+                      onChangeText={setActivityLogsDateTo}
+                    />
+                  </View>
+                  <Pressable
+                    style={{ backgroundColor: colors.pokemonRed, borderRadius: 10, paddingVertical: 9, alignItems: "center" }}
+                    onPress={() => loadActivityLogs(1)}
+                  >
+                    <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" }}>Apply Filter</Text>
+                  </Pressable>
+                </View>
+              }
+              ListEmptyComponent={
+                activityLogsLoading ? (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="hourglass-outline" size={48} color={colors.textMuted} />
+                    <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>Loading...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="document-text-outline" size={56} color={colors.textMuted} />
+                    <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No Activity</Text>
+                    <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>No moderation actions recorded yet</Text>
+                  </View>
+                )
+              }
+              ListFooterComponent={
+                activityLogsHasMore ? (
+                  <Pressable
+                    style={{ margin: 16, paddingVertical: 12, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
+                    onPress={() => loadActivityLogs(activityLogsPage + 1, true)}
+                    disabled={activityLogsLoading}
+                  >
+                    <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>{activityLogsLoading ? "Loading..." : "Load More"}</Text>
+                  </Pressable>
+                ) : null
+              }
+              renderItem={({ item: log }) => {
+                const actionColor = log.action === "approved" ? colors.success : log.action === "rejected" ? colors.error : colors.accent;
+                const actionLabel = log.action === "approved" ? "Approved" : log.action === "rejected" ? "Rejected" : "Note Edited";
+                const actionIcon: "checkmark-circle-outline" | "close-circle-outline" | "create-outline" =
+                  log.action === "approved" ? "checkmark-circle-outline" : log.action === "rejected" ? "close-circle-outline" : "create-outline";
+                const handleLogPress = async () => {
+                  if (!log.listingId) return;
+                  try {
+                    const url = new URL("/api/admin/listings", getApiUrl());
+                    url.searchParams.set("status", "all");
+                    const headers = await requireAdminAuthHeader();
+                    const res = await fetch(url.toString(), { headers });
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const found = (data.listings as MarketListing[] || []).find((l) => l.id === log.listingId);
+                    if (found) setSelectedListing(found);
+                    else Alert.alert("Listing Not Found", "This listing may have been deleted.");
+                  } catch {}
+                };
+                return (
+                  <Pressable style={{ backgroundColor: colors.card, borderRadius: 12, borderWidth: 1, borderColor: colors.borderLight, padding: 12, marginBottom: 8 }} onPress={handleLogPress}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, backgroundColor: actionColor + "20" }}>
+                        <Ionicons name={actionIcon} size={12} color={actionColor} />
+                        <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: actionColor }}>{actionLabel.toUpperCase()}</Text>
+                      </View>
+                      <Text style={{ flex: 1, fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted, textAlign: "right" }}>{getTimeAgo(log.createdAt)}</Text>
+                      {log.listingId && <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />}
+                    </View>
+                    <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.text, marginBottom: 2 }}>{log.listingName || "Unknown Listing"}</Text>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Ionicons name="person-outline" size={12} color={colors.textMuted} />
+                      <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>
+                        {log.moderatorDisplayName || log.moderatorUsername || "Unknown"}{log.moderatorUsername ? ` (@${log.moderatorUsername})` : ""}
+                      </Text>
+                    </View>
+                    {log.note ? (
+                      <View style={{ marginTop: 6, padding: 8, backgroundColor: colors.background, borderRadius: 8 }}>
+                        <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textMuted, letterSpacing: 0.5, marginBottom: 2 }}>NOTE</Text>
+                        <Text style={{ fontSize: 12, fontFamily: "Outfit_400Regular", color: colors.textSecondary }}>{log.note}</Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              }}
+            />
+          )}
+
+          {logsSubTab === "allReports" && (
+            <FlatList
+              data={allReports}
+              keyExtractor={(item) => item.id}
+              refreshing={allReportsLoading && allReportsPage === 1}
+              onRefresh={() => loadAllReports(1)}
+              onEndReached={() => { if (allReportsHasMore && !allReportsLoading) loadAllReports(allReportsPage + 1, true); }}
+              onEndReachedThreshold={0.3}
+              contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={
+                <View style={{ gap: 8, marginBottom: 8 }}>
+                  <View style={{ flexDirection: "row", gap: 6 }}>
+                    {(["all", "pending", "reviewed", "dismissed"] as const).map((s) => (
+                      <Pressable
+                        key={s}
+                        style={{ flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: "center", backgroundColor: allReportsStatus === s ? colors.pokemonRed : colors.surface, borderWidth: 1, borderColor: allReportsStatus === s ? colors.pokemonRed : colors.border }}
+                        onPress={() => { setAllReportsStatus(s); setAllReports([]); }}
+                      >
+                        <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: allReportsStatus === s ? "#FFF" : colors.textMuted }}>
+                          {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <TextInput
+                    style={{ backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.text }}
+                    placeholder="Filter by reporter username..."
+                    placeholderTextColor={colors.textMuted}
+                    value={allReportsReporter}
+                    onChangeText={setAllReportsReporter}
+                    onSubmitEditing={() => loadAllReports(1)}
+                    returnKeyType="search"
+                  />
+                  <View style={{ flexDirection: "row", gap: 8 }}>
+                    <TextInput
+                      style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.text }}
+                      placeholder="From (YYYY-MM-DD)"
+                      placeholderTextColor={colors.textMuted}
+                      value={allReportsDateFrom}
+                      onChangeText={setAllReportsDateFrom}
+                    />
+                    <TextInput
+                      style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.text }}
+                      placeholder="To (YYYY-MM-DD)"
+                      placeholderTextColor={colors.textMuted}
+                      value={allReportsDateTo}
+                      onChangeText={setAllReportsDateTo}
+                    />
+                  </View>
+                  <Pressable
+                    style={{ backgroundColor: colors.pokemonRed, borderRadius: 10, paddingVertical: 9, alignItems: "center" }}
+                    onPress={() => loadAllReports(1)}
+                  >
+                    <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" }}>Apply Filter</Text>
+                  </Pressable>
+                </View>
+              }
+              ListEmptyComponent={
+                allReportsLoading ? (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="hourglass-outline" size={48} color={colors.textMuted} />
+                    <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>Loading...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="shield-checkmark-outline" size={56} color={colors.textMuted} />
+                    <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No Reports</Text>
+                    <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>No reports match your filter</Text>
+                  </View>
+                )
+              }
+              ListFooterComponent={
+                allReportsHasMore ? (
+                  <Pressable
+                    style={{ margin: 16, paddingVertical: 12, borderRadius: 10, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
+                    onPress={() => loadAllReports(allReportsPage + 1, true)}
+                    disabled={allReportsLoading}
+                  >
+                    <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>{allReportsLoading ? "Loading..." : "Load More"}</Text>
+                  </Pressable>
+                ) : null
+              }
+              renderItem={({ item: report }) => {
+                const isPending = report.status === "pending";
+                const statusColor = isPending ? colors.pokemonRed : report.status === "reviewed" ? colors.success : colors.textMuted;
+                type ReportSnapshot = { cardName?: string; cardImage?: string; setName?: string; condition?: string; type?: string; priceGBP?: number; userName?: string; subject?: string; body?: string; senderUsername?: string };
+                let snapshot: ReportSnapshot | null = null;
+                try { snapshot = report.contentSnapshot ? (JSON.parse(report.contentSnapshot) as ReportSnapshot) : null; } catch {}
+                return (
+                  <View style={[styles.reportCard, { backgroundColor: colors.card, borderColor: isPending ? colors.pokemonRed : colors.border }]}>
+                    <View style={styles.reportCardHeader}>
+                      <View style={[styles.reportTypeBadge, { backgroundColor: report.contentType === "message" ? colors.pokemonBlue : colors.success }]}>
+                        <Ionicons name={report.contentType === "message" ? "mail-outline" : "pricetag-outline"} size={12} color="#FFF" />
+                        <Text style={styles.reportTypeBadgeText}>{report.contentType === "message" ? "MESSAGE" : "LISTING"}</Text>
+                      </View>
+                      <View style={[styles.reportStatusBadge, { backgroundColor: statusColor + "20" }]}>
+                        <Text style={[styles.reportStatusText, { color: statusColor }]}>{report.status.toUpperCase()}</Text>
+                      </View>
+                      <Text style={[styles.reportTime, { color: colors.textMuted }]}>{getTimeAgo(report.createdAt)}</Text>
+                    </View>
+                    <View style={styles.reportMeta}>
+                      <Ionicons name="person-outline" size={13} color={colors.textMuted} />
+                      <Text style={[styles.reportMetaText, { color: colors.textMuted }]}>
+                        Reporter: <Text style={{ color: colors.text }}>{report.reporterDisplayName || report.reporterUsername || "Unknown"}</Text>
+                        {report.reportedUsername ? <> · Against <Text style={{ color: colors.pokemonRed }}>@{report.reportedUsername}</Text></> : null}
+                      </Text>
+                    </View>
+                    <View style={[styles.reportReasonBox, { backgroundColor: colors.background }]}>
+                      <Text style={[styles.reportReasonLabel, { color: colors.textMuted }]}>REASON</Text>
+                      <Text style={[styles.reportReasonText, { color: colors.text }]}>{report.reason}</Text>
+                    </View>
+                    {snapshot && report.contentType === "listing" && (
+                      <View style={{ padding: 8, backgroundColor: colors.background, borderRadius: 8, marginTop: 4 }}>
+                        <Text style={{ fontSize: 10, fontFamily: "Outfit_700Bold", color: colors.textMuted, letterSpacing: 0.5, marginBottom: 4 }}>LISTING</Text>
+                        <Text style={{ fontSize: 13, fontFamily: "Outfit_600SemiBold", color: colors.text }}>{snapshot.cardName}</Text>
+                        <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>{snapshot.userName}</Text>
+                      </View>
+                    )}
+                    {report.reviewNote && (
+                      <View style={[styles.reportNote, { backgroundColor: colors.success + "15", borderColor: colors.success }]}>
+                        <Text style={[styles.reportNoteLabel, { color: colors.success }]}>REVIEW NOTE</Text>
+                        <Text style={[styles.reportNoteText, { color: colors.text }]}>{report.reviewNote}</Text>
+                        {report.reviewedByUsername && <Text style={[styles.reportNoteBy, { color: colors.textMuted }]}>— @{report.reviewedByUsername}</Text>}
+                      </View>
+                    )}
+                    {isPending && (
+                      <View style={styles.reportActions}>
+                        <TextInput
+                          style={[styles.reportNoteInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border }]}
+                          placeholder="Add a review note (optional)..."
+                          placeholderTextColor={colors.textMuted}
+                          value={allReportsReviewNotes[report.id] || ""}
+                          onChangeText={text => setAllReportsReviewNotes(prev => ({ ...prev, [report.id]: text }))}
+                          multiline
+                        />
+                        <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                          <Pressable
+                            style={[styles.reportActionBtn, { backgroundColor: colors.success, flex: 1 }]}
+                            onPress={() => handleUpdateAllReport(report.id, "reviewed")}
+                          >
+                            <Ionicons name="checkmark-circle-outline" size={16} color="#FFF" />
+                            <Text style={styles.reportActionBtnText}>Mark Reviewed</Text>
+                          </Pressable>
+                          <Pressable
+                            style={[styles.reportActionBtn, { backgroundColor: colors.textMuted, flex: 1 }]}
+                            onPress={() => handleUpdateAllReport(report.id, "dismissed")}
+                          >
+                            <Ionicons name="close-circle-outline" size={16} color="#FFF" />
+                            <Text style={styles.reportActionBtnText}>Dismiss</Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                );
+              }}
+            />
+          )}
+        </View>
       )}
 
       {activeTab === "revenue" && isSuperadminUser && (
