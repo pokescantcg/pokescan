@@ -27,7 +27,13 @@
       }
     },
     "web": {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "PokeScan TCG",
+      "shortName": "PokeScan",
+      "description": "PokeScan TCG — scan, identify and value your Pokémon cards instantly. Browse sets, manage your collection, and trade on the marketplace.",
+      "lang": "en",
+      "themeColor": "#CC0000",
+      "backgroundColor": "#0B1426"
     },
     "plugins": [
       [
