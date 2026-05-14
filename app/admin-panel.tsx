@@ -901,6 +901,8 @@ export default function AdminPanelScreen() {
   const [adminListingsLoading, setAdminListingsLoading] = useState(false);
   const [listingFilter, setListingFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
   const [selectedListing, setSelectedListing] = useState<MarketListing | null>(null);
+  const [moderationAction, setModerationAction] = useState<{ listing: MarketListing; status: "approved" | "rejected" } | null>(null);
+  const [moderationNote, setModerationNote] = useState("");
 
   const loadAdminListings = useCallback(async () => {
     setAdminListingsLoading(true);
@@ -919,43 +921,47 @@ export default function AdminPanelScreen() {
   }, [listingFilter]);
 
   const handleModerateListing = useCallback(
-    async (listing: MarketListing, status: "approved" | "rejected") => {
-      const verb = status === "approved" ? "Approve" : "Reject";
-      const proceed = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          `${verb} Listing`,
-          `${verb} "${listing.cardName}" by ${listing.userName}?`,
-          [
-            { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
-            { text: verb, style: status === "rejected" ? "destructive" : "default", onPress: () => resolve(true) },
-          ]
-        );
-      });
-      if (!proceed) return;
+    async (listing: MarketListing, status: "approved" | "rejected", note?: string) => {
       try {
         const url = new URL(`/api/admin/listings/${listing.id}`, getApiUrl());
+        const body: { status: "approved" | "rejected"; reviewNote?: string } = { status };
+        if (note && note.trim()) body.reviewNote = note.trim();
         const res = await fetch(url.toString(), {
           method: "PATCH",
           headers: { "Content-Type": "application/json", ...(await requireAdminAuthHeader()) },
-          body: JSON.stringify({ status }),
+          body: JSON.stringify(body),
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.error || `Server error ${res.status}`);
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const reviewNote = note?.trim() || null;
         setAdminListings((prev) =>
           listingFilter === "all"
-            ? prev.map((l) => (l.id === listing.id ? { ...l, status } : l))
+            ? prev.map((l) => (l.id === listing.id ? { ...l, status, reviewNote } : l))
             : prev.filter((l) => l.id !== listing.id)
         );
-        setSelectedListing((prev) => (prev && prev.id === listing.id ? { ...prev, status } : prev));
+        setSelectedListing((prev) => (prev && prev.id === listing.id ? { ...prev, status, reviewNote } : prev));
       } catch (e: any) {
         Alert.alert("Error", e.message || "Could not update listing");
       }
     },
     [listingFilter]
   );
+
+  const promptAndModerate = useCallback((listing: MarketListing, status: "approved" | "rejected") => {
+    setModerationNote("");
+    setModerationAction({ listing, status });
+  }, []);
+
+  const confirmModeration = useCallback(async () => {
+    if (!moderationAction) return;
+    const { listing, status } = moderationAction;
+    setModerationAction(null);
+    await handleModerateListing(listing, status, moderationNote);
+    setModerationNote("");
+  }, [moderationAction, moderationNote, handleModerateListing]);
 
   const handleMessageSeller = useCallback((listing: MarketListing) => {
     router.push({
@@ -1611,8 +1617,8 @@ export default function AdminPanelScreen() {
               colors={colors}
               onView={() => setSelectedListing(item)}
               onRemove={() => handleRemoveListing(item)}
-              onApprove={() => handleModerateListing(item, "approved")}
-              onReject={() => handleModerateListing(item, "rejected")}
+              onApprove={() => promptAndModerate(item, "approved")}
+              onReject={() => promptAndModerate(item, "rejected")}
               onMessage={() => handleMessageSeller(item)}
             />
           )}
@@ -1697,8 +1703,8 @@ export default function AdminPanelScreen() {
         listing={selectedListing}
         colors={colors}
         onClose={() => setSelectedListing(null)}
-        onApprove={() => selectedListing && handleModerateListing(selectedListing, "approved")}
-        onReject={() => selectedListing && handleModerateListing(selectedListing, "rejected")}
+        onApprove={() => selectedListing && promptAndModerate(selectedListing, "approved")}
+        onReject={() => selectedListing && promptAndModerate(selectedListing, "rejected")}
         onMessage={() => {
           if (selectedListing) {
             const l = selectedListing;
@@ -1715,6 +1721,74 @@ export default function AdminPanelScreen() {
         }}
       />
 
+      <Modal
+        visible={!!moderationAction}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModerationAction(null)}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "center", alignItems: "center", padding: 24 }}>
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ width: "100%" }}>
+              <View style={{ backgroundColor: colors.card, borderRadius: 16, padding: 20, gap: 14 }}>
+                <Text style={{ fontSize: 17, fontFamily: "Outfit_700Bold", color: colors.text }}>
+                  {moderationAction?.status === "approved" ? "Approve Listing" : "Reject Listing"}
+                </Text>
+                <Text style={{ fontSize: 13, fontFamily: "Outfit_400Regular", color: colors.textMuted }}>
+                  {moderationAction?.listing.cardName} — {moderationAction?.listing.userName}
+                </Text>
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, letterSpacing: 0.5 }}>
+                    NOTE FOR SELLER (optional)
+                  </Text>
+                  <TextInput
+                    value={moderationNote}
+                    onChangeText={setModerationNote}
+                    placeholder={moderationAction?.status === "approved" ? "e.g. Approved — great listing!" : "e.g. Photo quality too low, please resubmit."}
+                    placeholderTextColor={colors.textMuted}
+                    multiline
+                    numberOfLines={3}
+                    style={{
+                      backgroundColor: colors.surface,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      padding: 10,
+                      fontSize: 14,
+                      fontFamily: "Outfit_400Regular",
+                      color: colors.text,
+                      minHeight: 72,
+                      textAlignVertical: "top",
+                    }}
+                  />
+                </View>
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+                  <Pressable
+                    onPress={() => { setModerationAction(null); setModerationNote(""); }}
+                    style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: "center" }}
+                  >
+                    <Text style={{ fontSize: 14, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={confirmModeration}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 12,
+                      borderRadius: 10,
+                      backgroundColor: moderationAction?.status === "approved" ? colors.success : colors.error,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text style={{ fontSize: 14, fontFamily: "Outfit_700Bold", color: "#FFF" }}>
+                      {moderationAction?.status === "approved" ? "Approve" : "Reject"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {activeTab === "reports" && (
         <FlatList
