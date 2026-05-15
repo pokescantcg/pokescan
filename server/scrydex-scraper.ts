@@ -18,7 +18,13 @@
 import { db } from "./db";
 import { pokemonSets, pokemonCards } from "@shared/schema";
 import { count, inArray, isNull, eq, or, and } from "drizzle-orm";
+import {
+  normalizeFinishType,
+  normalizeEdition,
+  createVariantId,
+} from "./utils/card-normalizers";
 
+import { pokemonCardVariants } from "@shared/schema";
 const BASE_URL = "https://scrydex.com";
 const IMAGE_BASE = "https://images.scrydex.com/pokemon";
 
@@ -37,14 +43,23 @@ export interface ScrydexSet {
   symbolUrl: string;
 }
 
-export interface ScrydexCard {
-  id: string;       // e.g. "sv10-3" — matches pokemon_cards.id
-  setId: string;    // e.g. "sv10"
-  name: string;
-  number: string;
-  imageSmall: string;
-  imageLarge: string;
-  priceUsd: number | null;
+  export interface ScrydexCard {
+    id: string;
+    setId: string;
+    name: string;
+    number: string;
+
+    finishType: string;
+    editionType: string;
+    language: string;
+
+    variantId: string;
+
+    imageSmall: string;
+    imageLarge: string;
+
+    priceUsd: number | null;
+  }
 }
 
 export interface ScrydexSyncProgress {
@@ -229,11 +244,36 @@ function parseCardsFromSetHtml(html: string, setId: string): ScrydexCard[] {
   let m: RegExpExecArray | null;
 
   while ((m = linkRe.exec(html)) !== null) {
-    const cardSlug = m[1]; // e.g. "venusaur-ex"
-    const cardId   = m[2]; // e.g. "sv7-1"
+    const cardSlug = m[1];
+    const cardId = m[2];
 
-    if (seen.has(cardId)) continue;
-    seen.add(cardId);
+    const fullHref = m[0];
+
+    const variantMatch = fullHref.match(/variant=([^"&]+)/);
+    const rawVariant = variantMatch?.[1] || "normal";
+
+    const finishType = normalizeFinishType(rawVariant);
+    const editionType = normalizeEdition(rawVariant);
+
+    const language = setId.includes("_ja")
+      ? "japanese"
+      : setId.includes("_ko")
+      ? "korean"
+      : setId.includes("_zh")
+      ? "chinese"
+      : "english";
+
+    const variantId = createVariantId(
+      cardId,
+      finishType,
+      editionType,
+      language
+    );
+
+    const uniqueKey = `${cardId}:${variantId}`;
+
+    if (seen.has(uniqueKey)) continue;
+    seen.add(uniqueKey);
 
     // Skip cards that don't belong to this set (guards against cross-set links)
     if (!cardId.startsWith(`${setId}-`)) continue;
@@ -272,10 +312,24 @@ function parseCardsFromSetHtml(html: string, setId: string): ScrydexCard[] {
 
     // ── Price ──────────────────────────────────────────────────────────────
     const priceM  = block.match(/\$(\d+\.\d+)/);
-    const priceUsd = priceM ? parseFloat(priceM[1]) : null;
+    const priceGBP = priceM ? parseFloat(priceM[1]) : null;
 
-    cards.push({ id: cardId, setId, name, number, imageSmall, imageLarge, priceUsd });
-  }
+  cards.push({
+    id: cardId,
+    setId,
+    name,
+    number,
+
+    finishType,
+    editionType,
+    language,
+
+    variantId,
+
+    imageSmall,
+    imageLarge,
+    priceGBP,
+  });
 
   return cards;
 }
@@ -453,6 +507,30 @@ export async function runScrydexSync(
                 imageSmall: card.imageSmall,
                 imageLarge: card.imageLarge,
               }).onConflictDoNothing();
+
+              try {
+                await db.insert(pokemonCardVariants)
+                  .values({
+                    id: card.variantId,
+
+                    cardId: card.id,
+
+                    finishType: card.finishType,
+
+                    editionType: card.editionType,
+
+                    language: card.language,
+
+                    imageUrl: card.imageLarge,
+
+                    variantLabel:
+                      `${card.finishType} ${card.editionType}`,
+                  })
+                  .onConflictDoNothing();
+              } catch (err) {
+                console.error("Variant insert failed", err);
+              }
+
               progress.cardsAdded++;
             } catch (err: any) {
               // ignore FK violations etc.

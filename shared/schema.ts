@@ -115,24 +115,52 @@ export const pokemonCards = pgTable("pokemon_cards", {
   deletedAt: timestamp("deleted_at"),
 });
 
-export const cardPricing = pgTable(
-  "card_pricing",
-  {
-    id: serial("id").primaryKey(),
-    cardId: varchar("card_id").notNull().references(() => pokemonCards.id),
-    tcgLow: real("tcg_low"),
-    tcgMid: real("tcg_mid"),
-    tcgHigh: real("tcg_high"),
-    tcgMarket: real("tcg_market"),
-    tcgDirectLow: real("tcg_direct_low"),
-    cardmarketAvg: real("cardmarket_avg"),
-    cardmarketLow: real("cardmarket_low"),
-    cardmarketTrend: real("cardmarket_trend"),
-    priceGBP: real("price_gbp"),
-    updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
-  },
-  (t) => [unique("card_pricing_card_id_unique").on(t.cardId)]
-);
+export const cardPricing = pgTable("card_pricing", {
+  id: serial("id").primaryKey(),
+
+  variantId: varchar("variant_id")
+    .notNull()
+    .references(() => pokemonCardVariants.id),
+
+  source: text("source")
+    .notNull()
+    .default("tcgplayer"),
+
+  currency: text("currency")
+    .notNull()
+    .default("GBP"),
+
+  tcgLow: real("tcg_low"),
+
+  tcgMid: real("tcg_mid"),
+
+  tcgHigh: real("tcg_high"),
+
+  tcgMarket: real("tcg_market"),
+
+  tcgDirectLow: real("tcg_direct_low"),
+
+  cardmarketAvg: real("cardmarket_avg"),
+
+  cardmarketLow: real("cardmarket_low"),
+
+  cardmarketTrend: real("cardmarket_trend"),
+
+  ebaySoldAverage: real("ebay_sold_average"),
+
+  psa10Price: real("psa10_price"),
+
+  psa9Price: real("psa9_price"),
+
+  rawPrice: real("raw_price"),
+
+  priceGBP: real("price_gbp"),
+
+  confidenceScore: real("confidence_score"),
+
+  updatedAt: timestamp("updated_at")
+    .default(sql`CURRENT_TIMESTAMP`),
+});
 
 export const ebayPrices = pgTable("ebay_prices", {
   id: serial("id").primaryKey(),
@@ -223,7 +251,8 @@ export const pokescanCollections = pgTable("pokescan_collections", {
   rarity: text("rarity").notNull().default("Unknown"),
   quantity: integer("quantity").notNull().default(1),
   condition: text("condition").notNull(),
-  variant: text("variant").default("Non-Holo"),
+  variantId: varchar("variant_id")
+  .references(() => pokemonCardVariants.id),
   priceGBP: real("price_gbp"),
   gradingCompany: varchar("grading_company", { length: 32 }),
   grade: varchar("grade", { length: 16 }),
@@ -337,5 +366,25 @@ export const pokemonCardVariants = pgTable("pokemon_card_variants", {
   collectrId: text("collectr_id"),
 
   createdAt: timestamp("created_at")
+    .default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const cardPriceHistory = pgTable("card_price_history", {
+  id: serial("id").primaryKey(),
+
+  variantId: varchar("variant_id")
+    .notNull()
+    .references(() => pokemonCardVariants.id, {
+      onDelete: "cascade",
+    }),
+
+  source: text("source").notNull(),
+
+  price: real("price"),
+
+  currency: text("currency")
+    .default("GBP"),
+
+  fetchedAt: timestamp("fetched_at")
     .default(sql`CURRENT_TIMESTAMP`),
 });

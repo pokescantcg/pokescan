@@ -1,5 +1,8 @@
 import * as cheerio from "cheerio";
-
+import {
+  normalizeFinishType,
+  normalizeEdition,
+} from "./utils/card-normalizers";
 const BASE_URL = "https://pokecardvalues.co.uk";
 const CDN_BASE = "https://doujkbm8mih0s.cloudfront.net/static/images/alt";
 
@@ -18,13 +21,21 @@ export interface PCVSet {
 export interface PCVCard {
   name: string;
   number: string;
+
   holoType: string;
   rarity: string;
   edition: string;
+
+  normalizedFinishType: string;
+  normalizedEditionType: string;
+
   priceGBP: number | null;
+
   url: string;
+
   setName: string;
   setId: string;
+
   imageUrl: string;
 }
 
@@ -324,18 +335,29 @@ export async function scrapeSetCards(setId: string, slug: string): Promise<PCVCa
       cards.push({
         name,
         number,
+
         holoType,
         rarity,
         edition,
+
+        normalizedFinishType:
+          normalizeFinishType(holoType),
+
+        normalizedEditionType:
+          normalizeEdition(edition),
+
         priceGBP,
-        url: href.startsWith("http") ? href : `${BASE_URL}${href}`,
+
+        url: href.startsWith("http")
+          ? href
+          : `${BASE_URL}${href}`,
+
         setName: slug.replace(/-/g, " "),
+
         setId,
+
         imageUrl,
       });
-
-      cardIndex++;
-    }
 
     setCache(cacheKey, cards);
     return cards;
