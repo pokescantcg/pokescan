@@ -450,9 +450,7 @@ export async function runScrydexSync(
 
     // Only process sets that are either new OR have no cards yet.
     // Skip sets that already have cards — the TCG API seeder already covered those.
-    const setsToProcess = allSets.filter(
-      (s) => !existingSetIds.has(s.id) || !setsWithCards.has(s.id)
-    );
+    const setsToProcess = allSets;
 
     report({
       setsTotal: setsToProcess.length,

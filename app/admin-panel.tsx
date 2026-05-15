@@ -2705,6 +2705,7 @@ export default function AdminPanelScreen() {
   const [dbPreview, setDbPreview] = useState<DbPreview | null>(null);
   const [dbPreviewLoading, setDbPreviewLoading] = useState(false);
   const [syncRunning, setSyncRunning] = useState(false);
+  const [fullResyncRunning, setFullResyncRunning] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [syncLog, setSyncLog] = useState<string[]>([]);
   const syncLogRef = React.useRef<ScrollView | null>(null);
@@ -2815,6 +2816,58 @@ export default function AdminPanelScreen() {
     setSyncLog(prev => [...prev, "Sync cancelled."]);
     setSyncRunning(false);
   }, []);
+
+
+  const handleFullResync = useCallback(() => {
+    Alert.alert(
+      "Run Full Resync",
+      "This will rebuild card variants, pricing, holo/reverse holo data, editions, and refresh all Scrydex card data. This may take a long time. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Run Full Resync",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setFullResyncRunning(true);
+
+              const url = new URL("/api/admin/full-resync", getApiUrl());
+
+              const response = await fetch(url.toString(), {
+                method: "POST",
+                headers: await requireAdminAuthHeader(),
+              });
+
+              const data = await response.json();
+
+              if (!response.ok) {
+                throw new Error(data?.error || "Full resync failed");
+              }
+
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Success
+              );
+
+              Alert.alert(
+                "Full Resync Complete",
+                "Variants, pricing, holo types, editions, and card data were rebuilt successfully."
+              );
+            } catch (e: any) {
+              console.error(e);
+
+              Alert.alert(
+                "Full Resync Failed",
+                e?.message || "An unknown error occurred."
+              );
+            } finally {
+              setFullResyncRunning(false);
+            }
+          },
+        },
+      ]
+    );
+  }, []);
+
 
   const [asianSyncRunning, setAsianSyncRunning] = useState(false);
   const [asianSyncLog, setAsianSyncLog] = useState<string[]>([]);

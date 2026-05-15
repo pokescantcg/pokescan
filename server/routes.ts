@@ -40,6 +40,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt, inArray, isNull, isNotNull } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
+import { runFullResync } from "./full-resync";
 
 async function cleanupOldChatroomMessages() {
   try {
@@ -389,7 +390,23 @@ async function seedSuperadmin(): Promise<void> {
     console.error("[seedSuperadmin] error:", err);
   }
 }
+app.post("/api/admin/full-resync", async (_req, res) => {
+  try {
+    const result = await runFullResync();
 
+    res.json({
+      success: true,
+      result,
+    });
+  } catch (err: any) {
+    console.error("Full resync failed", err);
+
+    res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
 // ---------- Runtime app config (toggled from external admin panel) ----------
 let appConfig = {
   maintenanceMode: false,

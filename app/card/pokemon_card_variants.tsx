@@ -2,7 +2,6 @@ import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColors } from "@/constants/colors";
-import { pokemonCardVariants } from "@/shared/schema";
 
 export default function PokemonCardVariantsRoute() {
   const colors = useThemeColors();
@@ -14,9 +13,9 @@ export default function PokemonCardVariantsRoute() {
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
         <Text style={[styles.label, { color: colors.textSecondary }]}>Table name</Text>
         <Text style={[styles.value, { color: colors.text }]}>pokemon_card_variants</Text>
-        <Text style={[styles.label, { color: colors.textSecondary, marginTop: 12 }]}>Schema</Text>
-        <Text style={[styles.value, { color: colors.text }]} numberOfLines={0}>
-          {JSON.stringify(Object.keys(pokemonCardVariants), null, 2)}
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: 12 }]}>Columns</Text>
+        <Text style={[styles.value, { color: colors.text }]}>
+          id, card_id, finish_type, edition_type, language, is_promo, is_stamped, variant_label, image_url, tcgplayer_product_id, cardmarket_id, collectr_id, created_at
         </Text>
       </View>
     </ScrollView>
@@ -28,5 +27,5 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: "700", marginBottom: 16 },
   card: { borderWidth: 1, borderRadius: 16, padding: 16 },
   label: { fontSize: 12, fontWeight: "600", textTransform: "uppercase" },
-  value: { fontSize: 14, marginTop: 4 },
+  value: { fontSize: 14, marginTop: 4, lineHeight: 20 },
 });
