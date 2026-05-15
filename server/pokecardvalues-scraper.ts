@@ -358,6 +358,8 @@ export async function scrapeSetCards(setId: string, slug: string): Promise<PCVCa
 
         imageUrl,
       });
+      cardIndex++;
+    }
 
     setCache(cacheKey, cards);
     return cards;

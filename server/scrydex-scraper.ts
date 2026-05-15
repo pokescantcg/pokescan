@@ -16,7 +16,12 @@
  */
 
 import { db } from "./db";
-import { pokemonSets, pokemonCards } from "@shared/schema";
+import {
+  pokemonSets,
+  pokemonCards,
+  pokemonCardVariants,
+  cardPricing,
+} from "@shared/schema";
 import { count, inArray, isNull, eq, or, and } from "drizzle-orm";
 import {
   normalizeFinishType,
@@ -24,7 +29,7 @@ import {
   createVariantId,
 } from "./utils/card-normalizers";
 
-import { pokemonCardVariants } from "@shared/schema";
+
 const BASE_URL = "https://scrydex.com";
 const IMAGE_BASE = "https://images.scrydex.com/pokemon";
 
@@ -60,7 +65,7 @@ export interface ScrydexSet {
 
     priceUsd: number | null;
   }
-}
+
 
 export interface ScrydexSyncProgress {
   phase: "sets" | "cards" | "done" | "error";
@@ -216,42 +221,29 @@ export async function scrapeScrydexSetCards(
   return parseCardsFromSetHtml(html, setId);
 }
 
-function parseCardsFromSetHtml(html: string, setId: string): ScrydexCard[] {
+function parseCardsFromSetHtml(
+  html: string,
+  setId: string
+): ScrydexCard[] {
   const cards: ScrydexCard[] = [];
   const seen = new Set<string>();
 
-  /**
-   * Real Scrydex HTML structure (verified against live site):
-   *
-   *   <a href="/pokemon/cards/venusaur-ex/sv7-1?variant=holofoil">
-   *     <div class="flex flex-col..." data-id="sv7-1">
-   *       ...sparkle divs...
-   *       <img ... src="https://images.scrydex.com/pokemon/sv7-1/medium" />
-   *       <div class="w-full...">
-   *         <span class="text-body-12 text-white text-center">Venusaur ex #1</span>
-   *         <span class="text-center"></span>
-   *         <div class="flex flex-row...">
-   *           <span class="text-body-12 font-bold text-center">$0.96</span>
-   *         </div>
-   *       </div>
-   *     </div>
-   *   </a>
-   *
-   * Strategy: find each card href, then extract data from the next ~1500 chars.
-   * No longer relying on a single chained regex — each field extracted independently.
-   */
-  const linkRe = /href="\/pokemon\/cards\/([^/]+)\/([^?"]+)\?variant=[^"]+"/g;
+  const linkRe =
+    /href="\/pokemon\/cards\/([^/]+)\/([^?"]+)\?variant=([^"]+)"/g;
+
   let m: RegExpExecArray | null;
 
   while ((m = linkRe.exec(html)) !== null) {
     const cardSlug = m[1];
     const cardId = m[2];
+    const rawVariant = m[3] || "normal";
 
-    const fullHref = m[0];
+    // Prevent cross-set pollution
+    if (!cardId.startsWith(`${setId}-`)) {
+      continue;
+    }
 
-    const variantMatch = fullHref.match(/variant=([^"&]+)/);
-    const rawVariant = variantMatch?.[1] || "normal";
-
+    // Normalize variant metadata
     const finishType = normalizeFinishType(rawVariant);
     const editionType = normalizeEdition(rawVariant);
 
@@ -272,64 +264,91 @@ function parseCardsFromSetHtml(html: string, setId: string): ScrydexCard[] {
 
     const uniqueKey = `${cardId}:${variantId}`;
 
-    if (seen.has(uniqueKey)) continue;
+    // Skip duplicate variants
+    if (seen.has(uniqueKey)) {
+      continue;
+    }
+
     seen.add(uniqueKey);
 
-    // Skip cards that don't belong to this set (guards against cross-set links)
-    if (!cardId.startsWith(`${setId}-`)) continue;
-
-    // Extract the local block for this card (1500 chars covers the full card tile)
+    // Local HTML chunk
     const block = html.substring(m.index, m.index + 1500);
 
-    // ── Image URL ──────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────
+    // Images
+    // ─────────────────────────────────────────────────────────
+
     const imgM = block.match(
       /src="(https:\/\/images\.scrydex\.com\/pokemon\/[^"]+\/medium)"/
     );
+
     const imageSmall = imgM
       ? imgM[1]
       : `${IMAGE_BASE}/${cardId}/medium`;
-    const imageLarge = imageSmall.replace("/medium", "/large");
 
-    // ── Name + number ──────────────────────────────────────────────────────
-    // The name span has classes "text-body-12 text-white text-center"
-    // Content: "Venusaur ex #1"  or  "Pikachu #25"  etc.
-    let name   = htmlDecode(slugToName(cardSlug));
+    const imageLarge = imageSmall.replace(
+      "/medium",
+      "/large"
+    );
+
+    // ─────────────────────────────────────────────────────────
+    // Name + number
+    // ─────────────────────────────────────────────────────────
+
+    let name = htmlDecode(slugToName(cardSlug));
+
     let number = cardId.replace(`${setId}-`, "");
 
     const nameM = block.match(
       /class="[^"]*text-body-12[^"]*text-white[^"]*"[^>]*>([^<]+)<\/span>/
     );
+
     if (nameM) {
-      const raw     = htmlDecode(nameM[1].trim());
+      const raw = htmlDecode(nameM[1].trim());
+
       const numMatch = raw.match(/^(.+?)\s*#(\S+)$/);
+
       if (numMatch) {
-        name   = numMatch[1].trim();
+        name = numMatch[1].trim();
         number = numMatch[2];
       } else {
         name = raw;
       }
     }
 
-    // ── Price ──────────────────────────────────────────────────────────────
-    const priceM  = block.match(/\$(\d+\.\d+)/);
-    const priceGBP = priceM ? parseFloat(priceM[1]) : null;
+    // ─────────────────────────────────────────────────────────
+    // Price
+    // ─────────────────────────────────────────────────────────
 
-  cards.push({
-    id: cardId,
-    setId,
-    name,
-    number,
+    const priceM = block.match(/\$(\d+\.\d+)/);
 
-    finishType,
-    editionType,
-    language,
+    const priceUsd = priceM
+      ? parseFloat(priceM[1])
+      : null;
 
-    variantId,
+    // ─────────────────────────────────────────────────────────
+    // Push card
+    // ─────────────────────────────────────────────────────────
 
-    imageSmall,
-    imageLarge,
-    priceGBP,
-  });
+    cards.push({
+      id: cardId,
+      setId,
+
+      name,
+      number,
+
+      finishType,
+      editionType,
+      language,
+
+      variantId,
+
+      imageSmall,
+      imageLarge,
+
+      priceUsd,
+    });
+  }
 
   return cards;
 }
@@ -507,6 +526,33 @@ export async function runScrydexSync(
                 imageSmall: card.imageSmall,
                 imageLarge: card.imageLarge,
               }).onConflictDoNothing();
+              if (card.priceUsd !== null) {
+                const convertedValue =
+                  Math.round(card.priceUsd * 0.79 * 100) / 100;
+
+                try {
+                  await db.insert(cardPricing)
+                    .values({
+                      cardId: card.id,
+
+                      priceGBP: convertedValue,
+
+                      updatedAt: new Date(),
+                    })
+                    .onConflictDoUpdate({
+                      target: cardPricing.cardId,
+                      set: {
+                        priceGBP: convertedValue,
+                        updatedAt: new Date(),
+                      },
+                    });
+                } catch (err) {
+                  console.error(
+                    `[Scrydex] Price insert failed for ${card.id}`,
+                    err
+                  );
+                }
+              }
 
               try {
                 await db.insert(pokemonCardVariants)
