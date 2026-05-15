@@ -2838,10 +2838,16 @@ export default function AdminPanelScreen() {
                 headers: await requireAdminAuthHeader(),
               });
 
-              const data = await response.json();
+              const text = await response.text();
 
-              if (!response.ok) {
-                throw new Error(data?.error || "Full resync failed");
+              let data: any = {};
+
+              try {
+                data = JSON.parse(text);
+              } catch {
+                console.error("Non-JSON response:", text);
+
+                throw new Error(text || "Server returned invalid response");
               }
 
               Haptics.notificationAsync(
