@@ -303,3 +303,39 @@ export const syncStatus = pgTable("sync_status", {
   lastError: text("last_error"),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
+export const pokemonCardVariants = pgTable("pokemon_card_variants", {
+  id: varchar("id").primaryKey(),
+
+  cardId: varchar("card_id")
+    .notNull()
+    .references(() => pokemonCards.id),
+
+  finishType: text("finish_type")
+    .notNull()
+    .default("normal"),
+
+  editionType: text("edition_type")
+    .notNull()
+    .default("unlimited"),
+
+  language: text("language")
+    .notNull()
+    .default("english"),
+
+  isPromo: boolean("is_promo").default(false),
+
+  isStamped: boolean("is_stamped").default(false),
+
+  variantLabel: text("variant_label"),
+
+  imageUrl: text("image_url"),
+
+  tcgplayerProductId: text("tcgplayer_product_id"),
+
+  cardmarketId: text("cardmarket_id"),
+
+  collectrId: text("collectr_id"),
+
+  createdAt: timestamp("created_at")
+    .default(sql`CURRENT_TIMESTAMP`),
+});
