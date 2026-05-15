@@ -521,13 +521,7 @@ export async function runScrydexSync(
                   priceGBP: convertedValue,
                   updatedAt: new Date(),
                 })
-                .onConflictDoUpdate({
-                  target: cardPricing.cardId,
-                  set: {
-                    priceGBP: convertedValue,
-                    updatedAt: new Date(),
-                  },
-                });
+                .onConflictDoNothing();
             } catch (err) {
               console.error(
                 `[Scrydex] Failed pricing sync for ${card.id}`,
@@ -535,6 +529,7 @@ export async function runScrydexSync(
               );
             }
           }
+
           progress.cardsProcessed++;
 
           if (!existingCards.has(card.id)) {
@@ -554,22 +549,14 @@ export async function runScrydexSync(
                   Math.round(card.priceUsd * 0.79 * 100) / 100;
 
                 try {
-                  await db.insert(cardPricing)
-                    .values({
-                      cardId: card.id,
-
-                      priceGBP: convertedValue,
-
-                      updatedAt: new Date(),
-                    })
-                    .onConflictDoUpdate({
-                      target: cardPricing.cardId,
-                      set: {
+                      await db.insert(cardPricing)
+                      .values({
+                        cardId: card.id,
                         priceGBP: convertedValue,
                         updatedAt: new Date(),
-                      },
-                    });
-                } catch (err) {
+                      })
+                      .onConflictDoNothing();
+                      } catch (err) {
                   console.error(
                     `[Scrydex] Price insert failed for ${card.id}`,
                     err
