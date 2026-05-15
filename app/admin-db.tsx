@@ -352,6 +352,28 @@ export default function AdminDbScreen() {
     setTableRowCounts(prev => ({ ...prev, [selectedTable]: Math.max(0, (prev[selectedTable] ?? 1) - 1) }));
   };
 
+  const handleFullResync = async () => {
+    Alert.alert(
+      "Full Resync",
+      "This will clear and rebuild card variants and pricing data. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Resync",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await adminFetch("/api/admin/full-resync", { method: "POST" });
+              Alert.alert("Done", "Full resync started successfully.");
+            } catch (e: any) {
+              Alert.alert("Resync Failed", e.message || "Full resync failed");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const displayCols = getPrimaryDisplayCols(columns, pk);
   const tableInfo = TABLES.find(t => t.name === selectedTable);
 
@@ -389,6 +411,13 @@ export default function AdminDbScreen() {
           style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.accent, alignItems: "center", justifyContent: "center" }}
         >
           <Ionicons name="add" size={20} color="#FFF" />
+        </Pressable>
+        <Pressable
+          onPress={handleFullResync}
+          style={{ marginLeft: 8, paddingHorizontal: 12, height: 36, borderRadius: 10, backgroundColor: colors.pokemonRed, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6 }}
+        >
+          <Ionicons name="refresh" size={18} color="#FFF" />
+          <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 13, color: "#FFF" }}>Full Resync</Text>
         </Pressable>
       </View>
 
