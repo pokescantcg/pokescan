@@ -157,6 +157,7 @@ export const ebayPrices = pgTable("ebay_prices", {
   listingUrl: text("listing_url"),
   isSold: boolean("is_sold").default(true),
   fetchedAt: timestamp("fetched_at").default(sql`CURRENT_TIMESTAMP`),
+  variantId: text("variant_id").notNull().unique(),
 });
 
 export const pokescanFriendships = pgTable("pokescan_friendships", {
@@ -357,7 +358,7 @@ export const pokemonCardVariants = pgTable("pokemon_card_variants", {
 export const cardPriceHistory = pgTable("card_price_history", {
   id: serial("id").primaryKey(),
 
-  variantId: varchar("variant_id")
+  variantId: text("variant_id")
     .notNull()
     .references(() => pokemonCardVariants.id, {
       onDelete: "cascade",
