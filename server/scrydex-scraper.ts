@@ -517,7 +517,7 @@ export async function runScrydexSync(
             try {
               await db.insert(cardPricing)
                 .values({
-                  cardId: card.id,
+                  variantId: card.variantId,
                   priceGBP: convertedValue,
                   updatedAt: new Date(),
                 })
@@ -551,7 +551,7 @@ export async function runScrydexSync(
                 try {
                       await db.insert(cardPricing)
                       .values({
-                        cardId: card.id,
+                        variantId: card.variantId,
                         priceGBP: convertedValue,
                         updatedAt: new Date(),
                       })
