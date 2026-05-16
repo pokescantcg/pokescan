@@ -669,35 +669,15 @@ async function runFastCardSeed(): Promise<void> {
 }
 
 /** After TCG API seeding, fill any still-empty sets from Scrydex (Japanese, TCG Pocket, etc.) */
-async function runScrydexStartupSync(): Promise<void> {
-  try {
-    // Quick DB check before hitting Scrydex — skip if no sets are missing cards
-    const emptyRes = await db.execute(
-      sql`SELECT COUNT(*) AS cnt FROM pokemon_sets s
-          WHERE NOT EXISTS (SELECT 1 FROM pokemon_cards c WHERE c.set_id = s.id)`
-    );
-    const emptySets = parseInt((emptyRes.rows[0] as any)?.cnt ?? "0", 10);
-    if (emptySets === 0) {
-      console.log("[Scrydex] All sets have cards — skipping startup Scrydex sync.");
-      return;
-    }
-    console.log(`[Scrydex] ${emptySets} empty sets found — running Scrydex startup sync...`);
-    const { runScrydexSync } = await import("./scrydex-scraper");
-    const result = await runScrydexSync((p) => {
-      if (p.currentSet) {
-        console.log(`[Scrydex] [${p.setsProcessed}/${p.setsTotal}] ${p.currentSet} — +${p.cardsAdded} cards`);
-      }
-    });
-    console.log(`[Scrydex] Startup sync done — ${result.setsAdded} sets added, ${result.cardsAdded} cards added, ${result.cardsUpdated} images updated.`);
-  } catch (err: any) {
-    console.error("[Scrydex] Startup sync error:", err.message);
-  }
-}
+// Scrydex startup sync intentionally disabled
 
 export async function startSyncService(): Promise<void> {
   console.log("[CardSync] Sync service starting...");
 
-  if (priceRefreshTimer) clearInterval(priceRefreshTimer);
+  if (priceRefreshTimer) {
+    clearInterval(priceRefreshTimer);
+  }
+
   priceRefreshTimer = setInterval(() => {
     runPriceRefresh().catch((err) =>
       console.error("[CardSync] Price refresh interval error:", err)
@@ -708,40 +688,69 @@ export async function startSyncService(): Promise<void> {
   setTimeout(async () => {
     try {
       const [totalSetRows, seededSetRows] = await Promise.all([
-        db.select({ count: sql<number>`count(*)::int` }).from(pokemonSets),
-        db.select({ count: sql<number>`count(distinct set_id)::int` }).from(pokemonCards),
+        db.select({
+          count: sql<number>`count(*)::int`,
+        }).from(pokemonSets),
+
+        db.select({
+          count: sql<number>`count(distinct set_id)::int`,
+        }).from(pokemonCards),
       ]);
+
       const totalSets = totalSetRows[0]?.count ?? 0;
       const seededSets = seededSetRows[0]?.count ?? 0;
 
-      // Always seed Asian sets (JP/KO/ZH) in background — fast insert, skips existing
-      import("./asian-set-seed").then(({ seedAsianSets }) => {
-        seedAsianSets().then(r =>
-          console.log(`[AsianSeed] Done — inserted ${r.inserted}, skipped ${r.skipped}, errors ${r.errors}`)
-        ).catch(console.error);
-      }).catch(console.error);
+      // Always seed Asian sets in background
+      import("./asian-set-seed")
+        .then(({ seedAsianSets }) => {
+          seedAsianSets()
+            .then((r) =>
+              console.log(
+                `[AsianSeed] Done — inserted ${r.inserted}, skipped ${r.skipped}, errors ${r.errors}`
+              )
+            )
+            .catch(console.error);
+        })
+        .catch(console.error);
 
-      // Always seed Non-TCG sets (Babanuki, Mengka, etc.) in background
-      import("./non-tcg-seed").then(({ seedNonTcgSets }) => {
-        seedNonTcgSets().then(r =>
-          console.log(`[NonTcgSeed] Done — inserted ${r.inserted}, skipped ${r.skipped}, errors ${r.errors}`)
-        ).catch(console.error);
-      }).catch(console.error);
+      // Always seed non-TCG sets in background
+      import("./non-tcg-seed")
+        .then(({ seedNonTcgSets }) => {
+          seedNonTcgSets()
+            .then((r) =>
+              console.log(
+                `[NonTcgSeed] Done — inserted ${r.inserted}, skipped ${r.skipped}, errors ${r.errors}`
+              )
+            )
+            .catch(console.error);
+        })
+        .catch(console.error);
 
-      /** After Scrydex runs (which fills JP cards), mirror JP→KO/ZH and fix empty JP sets */
       async function runKoZhAndJpFix() {
         try {
-          const { seedKoZhCards, fixEmptyJpSets } = await import("./ko-zh-seed");
+          const { seedKoZhCards, fixEmptyJpSets } =
+            await import("./ko-zh-seed");
+
           const [jpFix, koZh] = await Promise.all([
             fixEmptyJpSets(),
             seedKoZhCards(),
           ]);
-          if (jpFix.inserted > 0)
-            console.log(`[JpFix] Inserted ${jpFix.inserted} cards for empty JP sets`);
-          if (koZh.inserted > 0)
-            console.log(`[KoZhSeed] Done — ${koZh.setsProcessed} sets, ${koZh.inserted} cards inserted`);
-          else
-            console.log(`[KoZhSeed] Nothing new to insert (${koZh.skipped} sets skipped — JP source not ready yet)`);
+
+          if (jpFix.inserted > 0) {
+            console.log(
+              `[JpFix] Inserted ${jpFix.inserted} cards for empty JP sets`
+            );
+          }
+
+          if (koZh.inserted > 0) {
+            console.log(
+              `[KoZhSeed] Done — ${koZh.setsProcessed} sets, ${koZh.inserted} cards inserted`
+            );
+          } else {
+            console.log(
+              `[KoZhSeed] Nothing new to insert (${koZh.skipped} sets skipped — JP source not ready yet)`
+            );
+          }
         } catch (err: any) {
           console.error("[KoZhSeed] Error:", err.message);
         }
@@ -749,28 +758,34 @@ export async function startSyncService(): Promise<void> {
 
       if (totalSets === 0) {
         console.log("[CardSync] DB empty — seeding sets first...");
+
         await syncAllSets();
-        console.log("[CardSync] Sets seeded. Starting fast card seed in background...");
+
+        console.log(
+          "[CardSync] Sets seeded. Starting fast card seed in background..."
+        );
+
         await runFastCardSeed();
-        // After TCG API seeding, fill remaining empty sets from Scrydex
-        runScrydexStartupSync()
-          .then(runKoZhAndJpFix)
-          .catch(console.error);
+
+        await runKoZhAndJpFix();
+
       } else if (seededSets < totalSets) {
-        // Some sets still have 0 cards — seed from TCG API first, then Scrydex
-        console.log(`[CardSync] ${seededSets}/${totalSets} sets have cards — seeding ${totalSets - seededSets} missing sets...`);
+        console.log(
+          `[CardSync] ${seededSets}/${totalSets} sets have cards — seeding missing sets...`
+        );
+
         await runFastCardSeed();
-        // After TCG API seeding, fill any that are still empty (non-TCG-API sets)
-        runScrydexStartupSync()
-          .then(runKoZhAndJpFix)
-          .catch(console.error);
+
+        await runKoZhAndJpFix();
+
       } else {
-        console.log(`[CardSync] DB fully seeded: ${seededSets}/${totalSets} sets with cards — OK.`);
-        // Still run Scrydex sync in background to catch any new/empty sets
-        runScrydexStartupSync()
-          .then(runKoZhAndJpFix)
-          .catch(console.error);
+        console.log(
+          `[CardSync] DB fully seeded: ${seededSets}/${totalSets} sets with cards — OK.`
+        );
+
+        await runKoZhAndJpFix();
       }
+
     } catch (err) {
       console.error("[CardSync] Auto-seed check failed:", err);
     }
@@ -780,5 +795,3 @@ export async function startSyncService(): Promise<void> {
 export async function getSyncStatus() {
   return getOrCreateSyncStatus();
 }
-
-export { syncRunning };
