@@ -500,6 +500,7 @@ async function runSchemaMigrations(): Promise<void> {
         fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS idx_card_price_history_variant_id ON card_price_history(variant_id);
+      ALTER TABLE card_pricing ALTER COLUMN "variantId" DROP NOT NULL;
     `);
     console.log("[Migration] Schema migrations applied");
   } catch (err) {
