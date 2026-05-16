@@ -491,6 +491,15 @@ async function runSchemaMigrations(): Promise<void> {
       ALTER TABLE ebay_prices ADD COLUMN IF NOT EXISTS is_sold BOOLEAN DEFAULT TRUE;
       ALTER TABLE ebay_prices ADD COLUMN IF NOT EXISTS fetched_at TIMESTAMPTZ DEFAULT NOW();
       CREATE UNIQUE INDEX IF NOT EXISTS idx_ebay_prices_variant_id ON ebay_prices(variant_id) WHERE variant_id IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS card_price_history (
+        id SERIAL PRIMARY KEY,
+        variant_id TEXT NOT NULL REFERENCES pokemon_card_variants(id) ON DELETE CASCADE,
+        source TEXT NOT NULL,
+        price REAL,
+        currency TEXT DEFAULT 'GBP',
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_card_price_history_variant_id ON card_price_history(variant_id);
     `);
     console.log("[Migration] Schema migrations applied");
   } catch (err) {
