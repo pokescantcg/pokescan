@@ -118,48 +118,33 @@ export const pokemonCards = pgTable("pokemon_cards", {
 export const cardPricing = pgTable("card_pricing", {
   id: serial("id").primaryKey(),
 
-  variantId: varchar("variant_id")
-    .notNull()
-    .references(() => pokemonCardVariants.id),
+  variantId: text("variant_id").notNull().unique(),
 
-  source: text("source")
-    .notNull()
-    .default("tcgplayer"),
-
-  currency: text("currency")
-    .notNull()
-    .default("GBP"),
+  source: text("source").default("scrydex"),
+  currency: text("currency").default("GBP"),
 
   tcgLow: real("tcg_low"),
-
   tcgMid: real("tcg_mid"),
-
   tcgHigh: real("tcg_high"),
-
   tcgMarket: real("tcg_market"),
-
   tcgDirectLow: real("tcg_direct_low"),
 
   cardmarketAvg: real("cardmarket_avg"),
-
   cardmarketLow: real("cardmarket_low"),
-
   cardmarketTrend: real("cardmarket_trend"),
 
   ebaySoldAverage: real("ebay_sold_average"),
 
   psa10Price: real("psa10_price"),
-
   psa9Price: real("psa9_price"),
 
   rawPrice: real("raw_price"),
 
   priceGBP: real("price_gbp"),
 
-  confidenceScore: real("confidence_score"),
+  confidenceScore: real("confidence_score").default(1),
 
-  updatedAt: timestamp("updated_at")
-    .default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const ebayPrices = pgTable("ebay_prices", {
