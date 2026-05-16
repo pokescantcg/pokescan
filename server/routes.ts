@@ -41,6 +41,15 @@ import {
 import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt, inArray, isNull, isNotNull } from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
 import { runFullResync } from "./full-resync";
+import type { ScrydexSyncProgress } from "./scrydex-scraper";
+
+let resyncState: {
+  running: boolean;
+  progress: ScrydexSyncProgress | null;
+  error: string | null;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+} = { running: false, progress: null, error: null, startedAt: null, finishedAt: null };
 
 async function cleanupOldChatroomMessages() {
   try {
@@ -453,6 +462,10 @@ async function runSchemaMigrations(): Promise<void> {
       );
       CREATE INDEX IF NOT EXISTS idx_blocked_creds_email ON pokescan_blocked_credentials(LOWER(email));
       CREATE INDEX IF NOT EXISTS idx_blocked_creds_mobile ON pokescan_blocked_credentials(mobile_number);
+      ALTER TABLE card_pricing ADD COLUMN IF NOT EXISTS variant_id TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_card_pricing_variant_id ON card_pricing(variant_id) WHERE variant_id IS NOT NULL;
+      ALTER TABLE ebay_prices ADD COLUMN IF NOT EXISTS variant_id TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ebay_prices_variant_id ON ebay_prices(variant_id) WHERE variant_id IS NOT NULL;
     `);
     console.log("[Migration] Schema migrations applied");
   } catch (err) {
@@ -5543,22 +5556,28 @@ Return ONLY valid JSON in exactly this format with no markdown:
   const httpServer = createServer(app);
 
 
+  app.get("/api/admin/resync-progress", (_req: Request, res: Response) => {
+    res.json(resyncState);
+  });
+
   app.post("/api/admin/full-resync", async (_req: Request, res: Response) => {
-    try {
-      const result = await runFullResync();
-
-      return res.json({
-        success: true,
-        result,
-      });
-    } catch (err: any) {
-      console.error("[FullResync] failed:", err);
-
-      return res.status(500).json({
-        success: false,
-        error: err?.message || "Full resync failed",
-      });
+    if (resyncState.running) {
+      return res.status(409).json({ success: false, error: "Resync already running" });
     }
+    resyncState = { running: true, progress: null, error: null, startedAt: new Date(), finishedAt: null };
+    res.json({ success: true, message: "Resync started" });
+
+    runFullResync((p) => { resyncState.progress = p; })
+      .then(() => {
+        resyncState.running = false;
+        resyncState.finishedAt = new Date();
+      })
+      .catch((err: any) => {
+        console.error("[FullResync] failed:", err);
+        resyncState.running = false;
+        resyncState.error = err?.message || "Full resync failed";
+        resyncState.finishedAt = new Date();
+      });
   });
 
 return httpServer;

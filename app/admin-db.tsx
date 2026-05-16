@@ -14,6 +14,7 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   StyleSheet,
+  Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -352,7 +353,48 @@ export default function AdminDbScreen() {
     setTableRowCounts(prev => ({ ...prev, [selectedTable]: Math.max(0, (prev[selectedTable] ?? 1) - 1) }));
   };
 
-  const handleFullResync = async () => {
+  const [resyncVisible, setResyncVisible] = useState(false);
+  const [resyncState, setResyncState] = useState<{
+    running: boolean;
+    phase: string;
+    setsProcessed: number;
+    setsTotal: number;
+    cardsProcessed: number;
+    message: string;
+    error: string | null;
+    done: boolean;
+  }>({ running: false, phase: "", setsProcessed: 0, setsTotal: 0, cardsProcessed: 0, message: "", error: null, done: false });
+  const resyncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progressAnim = useRef(new Animated.Value(0)).current;
+
+  const stopResyncPoll = useCallback(() => {
+    if (resyncPollRef.current) { clearInterval(resyncPollRef.current); resyncPollRef.current = null; }
+  }, []);
+
+  const pollResync = useCallback(async () => {
+    try {
+      const d = await adminFetch("/api/admin/resync-progress");
+      const p = d.progress;
+      const running = d.running as boolean;
+      const error = d.error as string | null;
+      const done = !running && d.finishedAt != null;
+
+      const setsProcessed = p?.setsProcessed ?? 0;
+      const setsTotal = p?.setsTotal ?? 0;
+      const cardsProcessed = p?.cardsProcessed ?? 0;
+      const phase = p?.phase ?? (running ? "starting" : "");
+      const message = p?.message ?? "";
+
+      const pct = setsTotal > 0 ? Math.min(setsProcessed / setsTotal, 1) : (running ? 0.02 : (done ? 1 : 0));
+      Animated.timing(progressAnim, { toValue: pct, duration: 300, useNativeDriver: false }).start();
+
+      setResyncState({ running, phase, setsProcessed, setsTotal, cardsProcessed, message, error, done });
+
+      if (!running) { stopResyncPoll(); }
+    } catch { stopResyncPoll(); }
+  }, [progressAnim, stopResyncPoll]);
+
+  const handleFullResync = () => {
     Alert.alert(
       "Full Resync",
       "This will clear and rebuild card variants and pricing data. Continue?",
@@ -364,7 +406,11 @@ export default function AdminDbScreen() {
           onPress: async () => {
             try {
               await adminFetch("/api/admin/full-resync", { method: "POST" });
-              Alert.alert("Done", "Full resync started successfully.");
+              progressAnim.setValue(0);
+              setResyncState({ running: true, phase: "starting", setsProcessed: 0, setsTotal: 0, cardsProcessed: 0, message: "Initialising…", error: null, done: false });
+              setResyncVisible(true);
+              stopResyncPoll();
+              resyncPollRef.current = setInterval(pollResync, 1500);
             } catch (e: any) {
               Alert.alert("Resync Failed", e.message || "Full resync failed");
             }
@@ -373,6 +419,8 @@ export default function AdminDbScreen() {
       ]
     );
   };
+
+  useEffect(() => () => stopResyncPoll(), [stopResyncPoll]);
 
   const displayCols = getPrimaryDisplayCols(columns, pk);
   const tableInfo = TABLES.find(t => t.name === selectedTable);
@@ -524,6 +572,79 @@ export default function AdminDbScreen() {
         onSaved={handleSaved}
         onDeleted={handleDeleted}
       />
+
+      {/* ── Full Resync Progress Modal ── */}
+      <Modal visible={resyncVisible} transparent animationType="fade" onRequestClose={() => { if (!resyncState.running) setResyncVisible(false); }}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.7)", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <View style={{ width: "100%", maxWidth: 360, backgroundColor: colors.card, borderRadius: 20, padding: 24, gap: 16 }}>
+            {/* Header */}
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              {resyncState.running
+                ? <ActivityIndicator color={colors.accent} size="small" />
+                : resyncState.error
+                  ? <Ionicons name="close-circle" size={20} color={colors.error} />
+                  : <Ionicons name="checkmark-circle" size={20} color="#2ECC71" />
+              }
+              <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 17, color: colors.text, flex: 1 }}>
+                {resyncState.running ? "Full Resync Running" : resyncState.error ? "Resync Failed" : "Resync Complete"}
+              </Text>
+            </View>
+
+            {/* Progress bar */}
+            <View style={{ height: 8, backgroundColor: colors.surface, borderRadius: 4, overflow: "hidden" }}>
+              <Animated.View style={{
+                height: "100%",
+                borderRadius: 4,
+                backgroundColor: resyncState.error ? colors.error : resyncState.done ? "#2ECC71" : colors.accent,
+                width: progressAnim.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] }),
+              }} />
+            </View>
+
+            {/* Stats */}
+            <View style={{ gap: 6 }}>
+              {resyncState.setsTotal > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 13, color: colors.textMuted }}>Sets</Text>
+                  <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.text }}>
+                    {resyncState.setsProcessed.toLocaleString()} / {resyncState.setsTotal.toLocaleString()}
+                  </Text>
+                </View>
+              )}
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 13, color: colors.textMuted }}>Cards processed</Text>
+                <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.text }}>{resyncState.cardsProcessed.toLocaleString()}</Text>
+              </View>
+              {resyncState.phase !== "" && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 13, color: colors.textMuted }}>Phase</Text>
+                  <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.text, textTransform: "capitalize" }}>{resyncState.phase}</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Status message */}
+            {(resyncState.message || resyncState.error) && (
+              <View style={{ backgroundColor: resyncState.error ? "rgba(231,76,60,0.1)" : colors.surface, borderRadius: 10, padding: 10 }}>
+                <Text style={{ fontFamily: "Outfit_400Regular", fontSize: 12, color: resyncState.error ? colors.error : colors.textSecondary }} numberOfLines={3}>
+                  {resyncState.error || resyncState.message}
+                </Text>
+              </View>
+            )}
+
+            {/* Close button — only shown when not running */}
+            {!resyncState.running && (
+              <Pressable
+                onPress={() => setResyncVisible(false)}
+                style={{ paddingVertical: 12, borderRadius: 12, backgroundColor: resyncState.error ? colors.error : colors.accent, alignItems: "center" }}
+              >
+                <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 15, color: "#FFF" }}>
+                  {resyncState.error ? "Dismiss" : "Done"}
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
