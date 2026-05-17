@@ -689,7 +689,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const dbCards = await db
         .select()
-        .from(pokemonCardVariants)
+          .from(pokemonCardVariants)
+          .leftJoin(
+            pokemonCards,
+            eq(pokemonCardVariants.cardId, pokemonCards.id)
+          )
         .where(eq(pokemonCardVariants.setId, setId))
         .orderBy(pokemonCardVariants.number)
         .limit(pageSize)
@@ -898,6 +902,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const dbCards = await db
           .select()
           .from(pokemonCardVariants)
+          .leftJoin(
+            pokemonCards,
+            eq(pokemonCardVariants.cardId, pokemonCards.id)
+          )
           .where(eq(pokemonCardVariants.setId, setId))
           .orderBy(pokemonCardVariants.number)
           .limit(pageSize)
