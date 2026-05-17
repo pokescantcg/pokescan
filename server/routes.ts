@@ -24,6 +24,7 @@ import {
 import { randomBytes } from "crypto";
 import { db, pool } from "./db";
 import {
+  pokemonCardVariants,
   pokemonSets,
   pokemonCards,
   cardPricing,
@@ -238,7 +239,7 @@ interface FormattedCard {
   }>;
 }
 
-function dbCardToApiFormat(
+function dbVariantToApiFormat(
   card: typeof pokemonCards.$inferSelect,
   pricing?: typeof cardPricing.$inferSelect | null,
   ebay?: Array<typeof ebayPrices.$inferSelect>
@@ -686,14 +687,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const hasCards = totalCount > 0;
         const fullySeeded = hasCards && (isNonEnglish || expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
 
-        if (fullySeeded) {
-          const dbCards = await db
-            .select()
-            .from(pokemonCards)
-            .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)))
-            .orderBy(pokemonCards.number)
-            .limit(pageSize)
-            .offset(offset);
+        const dbCards = await db
+        .select()
+        .from(pokemonCardVariants)
+        .where(eq(pokemonCardVariants.setId, setId))
+        .orderBy(pokemonCardVariants.number)
+        .limit(pageSize)
+        .offset(offset);
 
           const formattedCards = dbCards.map((card) => {
             const f = dbCardToApiFormat(card, null);
@@ -708,7 +708,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           res.json(payload);
           return;
         }
-      } catch (dbErr) {
+       catch (dbErr) {
         console.error("DB query failed for set cards:", dbErr);
       }
 
@@ -895,15 +895,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const fullySeeded = dbCards.length > 0 && (expectedTotal === 0 || dbCards.length >= Math.floor(expectedTotal * 0.9));
 
       if (fullySeeded) {
-        const pricingRows = await Promise.all(
-          dbCards.map((c) =>
-            db.select().from(cardPricing).where(eq(cardPricing.cardId, c.id)).limit(1)
-          )
-        );
-        const formattedCards = dbCards.map((card, i) =>
-          dbCardToApiFormat(card, pricingRows[i][0] ?? null)
-        );
-        res.json({ data: formattedCards, count: formattedCards.length, source: "db" });
+        const dbCards = await db
+          .select()
+          .from(pokemonCardVariants)
+          .where(eq(pokemonCardVariants.setId, setId))
+          .orderBy(pokemonCardVariants.number)
+          .limit(pageSize)
+          .offset(offset);
+
+        const formattedCards = dbCards.map((card) => {
+          const f = dbCardToApiFormat(card, null);
+
+          if (setRow) {
+            f.set = dbSetToApiFormat(setRow);
+          }
+
+          return f;
+        });
+
+        const payload = {
+          data: formattedCards,
+          count: formattedCards.length,
+          totalCount,
+          page,
+          source: "db",
+        };
+
+        setMemCache(cacheKey, payload);
+        warmCardCache(formattedCards);
+
+        res.json(payload);
         return;
       }
 
