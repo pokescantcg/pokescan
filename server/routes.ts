@@ -5602,18 +5602,37 @@ Return ONLY valid JSON in exactly this format with no markdown:
     resyncState = { running: true, progress: null, error: null, startedAt: new Date(), finishedAt: null };
     res.json({ success: true, message: "Resync started" });
 
-    runFullResync((p) => { resyncState.progress = p; })
-      .then(() => {
-        resyncState.running = false;
-        resyncState.finishedAt = new Date();
-      })
-      .catch((err: any) => {
-        console.error("[FullResync] failed:", err);
-        resyncState.running = false;
-        resyncState.error = err?.message || "Full resync failed";
-        resyncState.finishedAt = new Date();
+    if (resyncState.running) {
+      return res.status(400).json({
+        error: "Full resync already running",
       });
-  });
+    }
 
-return httpServer;
-}
+    resyncState.running = true;
+    resyncState.error = null;
+    resyncState.startedAt = new Date();
+    resyncState.finishedAt = null;
+
+    res.json({
+      success: true,
+      message: "Full resync started in background",
+    });
+
+    // Run async in background
+    (async () => {
+      try {
+        await runFullResync((progress) => {
+          resyncState.progress = progress;
+        });
+
+        resyncState.finishedAt = new Date();
+      } catch (err: any) {
+        console.error("[FullResync]", err);
+
+        resyncState.error = err?.message || "Unknown error";
+      } finally {
+        resyncState.running = false;
+      }
+    })();
+
+return httpServer;}

@@ -159,7 +159,9 @@ async function syncAllSets(): Promise<void> {
 
   await updateSyncStatus({ totalSets: sets.length });
 
-  for (const set of sets) {
+    for (const set of sets) {
+    await new Promise(r => setTimeout(r, 10));
+ {
     try {
       await db
         .insert(pokemonSets)
@@ -474,6 +476,8 @@ export async function runFullSync(force = false): Promise<void> {
     let syncedSetsCount = 0;
 
     for (const set of sets) {
+    await new Promise(r => setTimeout(r, 10));
+ {
       try {
         const count = await syncCardsForSet(set.id, set.name, force);
         totalSynced += count;
@@ -575,6 +579,8 @@ async function runFastCardSeed(): Promise<void> {
     id.startsWith("mengka-");
 
   for (const set of sets) {
+  await new Promise(r => setTimeout(r, 10));
+{
     // Instantly skip non-English sets that are handled by other seeders
     if (isNonTcgApiSet(set.id)) {
       // no log noise — these are silently handled by Scrydex / KoZhSeed
