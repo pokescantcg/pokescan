@@ -14,11 +14,7 @@ import { sql } from "drizzle-orm";
 export async function runFullResync(onProgress?: (p: ScrydexSyncProgress) => void) {
   console.log("Starting full resync...");
 
-  console.log("Clearing variants...");
-  await db.delete(pokemonCardVariants);
 
-  console.log("Clearing pricing...");
-  await db.delete(cardPricing);
 
   await db.execute(sql`
     UPDATE pokemon_cards
