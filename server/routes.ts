@@ -5617,7 +5617,6 @@ Return ONLY valid JSON in exactly this format with no markdown:
       success: true,
       message: "Full resync started in background",
     });
-
     // Run async in background
     (async () => {
       try {
@@ -5634,5 +5633,7 @@ Return ONLY valid JSON in exactly this format with no markdown:
         resyncState.running = false;
       }
     })();
+    });
 
-return httpServer;}
+    return httpServer;
+    }
