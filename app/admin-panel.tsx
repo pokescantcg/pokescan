@@ -2818,19 +2818,58 @@ export default function AdminPanelScreen() {
   }, []);
 
 
+  const [fullResyncProgress, setFullResyncProgress] =
+    useState<any>(null);
+
+  React.useEffect(() => {
+    let interval: any;
+
+    async function pollFullResync() {
+      try {
+        const url = new URL(
+          "/api/admin/resync-progress",
+          getApiUrl()
+        );
+
+        const response = await fetch(url.toString(), {
+          headers: await requireAdminAuthHeader(),
+        });
+
+        const data = await response.json();
+
+        setFullResyncProgress(data);
+
+        if (data.running) {
+          setFullResyncRunning(true);
+        } else {
+          setFullResyncRunning(false);
+        }
+      } catch (e) {
+        console.error("[FullResyncPolling]", e);
+      }
+    }
+
+    pollFullResync();
+
+    interval = setInterval(pollFullResync, 3000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const handleFullResync = useCallback(() => {
     Alert.alert(
       "Run Full Resync",
-      "This will rebuild card variants, pricing, holo/reverse holo data, editions, and refresh all Scrydex card data. Continue?",
+      "This will rebuild card variants, pricing, holo/reverse holo data, editions, and refresh all Scrydex card data.\n\nThe sync will continue in the background even if you leave this page.",
       [
-        { text: "Cancel", style: "cancel" },
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
         {
           text: "Run Full Resync",
           style: "destructive",
           onPress: async () => {
             try {
-              setFullResyncRunning(true);
-
               const url = new URL(
                 "/api/admin/full-resync",
                 getApiUrl()
@@ -2841,13 +2880,25 @@ export default function AdminPanelScreen() {
                 headers: await requireAdminAuthHeader(),
               });
 
-              const data = await response.json();
+              const text = await response.text();
+
+              let data: any = {};
+
+              try {
+                data = JSON.parse(text);
+              } catch {
+                throw new Error(
+                  text || "Server returned invalid response"
+                );
+              }
 
               if (!response.ok) {
                 throw new Error(
-                  data?.error || "Failed to start resync"
+                  data?.error || "Failed to start full resync"
                 );
               }
+
+              setFullResyncRunning(true);
 
               Haptics.notificationAsync(
                 Haptics.NotificationFeedbackType.Success
@@ -2855,26 +2906,23 @@ export default function AdminPanelScreen() {
 
               Alert.alert(
                 "Background Sync Started",
-                "Full resync is now running in the background. You can safely leave this page."
+                "Full Resync is now running in the background.\n\nYou can safely leave this page while it continues."
               );
             } catch (e: any) {
-              console.error(e);
+              console.error("[FullResync]", e);
+
+              setFullResyncRunning(false);
 
               Alert.alert(
                 "Full Resync Failed",
                 e?.message || "Unknown error"
               );
-
-              setFullResyncRunning(false);
             }
           },
         },
       ]
     );
   }, []);
-
-  const [fullResyncRunning, setFullResyncRunning]
-
 
   const [asianSyncRunning, setAsianSyncRunning] = useState(false);
   const [asianSyncLog, setAsianSyncLog] = useState<string[]>([]);

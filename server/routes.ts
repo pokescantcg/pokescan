@@ -5591,6 +5591,10 @@ Return ONLY valid JSON in exactly this format with no markdown:
   const httpServer = createServer(app);
 
 
+  app.get("/api/admin/resync-progress", (_req: Request, res: Response) => {
+    res.json(resyncState);
+  });
+
   app.post("/api/admin/full-resync", async (_req: Request, res: Response) => {
     if (resyncState.running) {
       return res.status(409).json({
@@ -5609,25 +5613,25 @@ Return ONLY valid JSON in exactly this format with no markdown:
 
     res.json({
       success: true,
-      message: "Full resync started in background",
+      message: "Full resync started",
     });
 
-    // Run async in background
-    (async () => {
-      try {
-        await runFullResync((progress) => {
-          resyncState.progress = progress;
-        });
+    runFullResync((p) => {
+      resyncState.progress = p;
+    })
+      .then(() => {
+        resyncState.running = false;
+        resyncState.finishedAt = new Date();
+      })
+      .catch((err: any) => {
+        console.error("[FullResync] failed:", err);
+
+        resyncState.running = false;
+        resyncState.error =
+          err?.message || "Full resync failed";
 
         resyncState.finishedAt = new Date();
-      } catch (err: any) {
-        console.error("[FullResync]", err);
-
-        resyncState.error = err?.message || "Unknown error";
-      } finally {
-        resyncState.running = false;
-      }
-    })();
+      });
   });
 
     return httpServer;
