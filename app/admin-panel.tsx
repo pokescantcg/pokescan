@@ -2821,7 +2821,7 @@ export default function AdminPanelScreen() {
   const handleFullResync = useCallback(() => {
     Alert.alert(
       "Run Full Resync",
-      "This will rebuild card variants, pricing, holo/reverse holo data, editions, and refresh all Scrydex card data. This may take a long time. Continue?",
+      "This will rebuild card variants, pricing, holo/reverse holo data, editions, and refresh all Scrydex card data. Continue?",
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -2831,23 +2831,22 @@ export default function AdminPanelScreen() {
             try {
               setFullResyncRunning(true);
 
-              const url = new URL("/api/admin/full-resync", getApiUrl());
+              const url = new URL(
+                "/api/admin/full-resync",
+                getApiUrl()
+              );
 
               const response = await fetch(url.toString(), {
                 method: "POST",
                 headers: await requireAdminAuthHeader(),
               });
 
-              const text = await response.text();
+              const data = await response.json();
 
-              let data: any = {};
-
-              try {
-                data = JSON.parse(text);
-              } catch {
-                console.error("Non-JSON response:", text);
-
-                throw new Error(text || "Server returned invalid response");
+              if (!response.ok) {
+                throw new Error(
+                  data?.error || "Failed to start resync"
+                );
               }
 
               Haptics.notificationAsync(
@@ -2855,17 +2854,17 @@ export default function AdminPanelScreen() {
               );
 
               Alert.alert(
-                "Full Resync Complete",
-                "Variants, pricing, holo types, editions, and card data were rebuilt successfully."
+                "Background Sync Started",
+                "Full resync is now running in the background. You can safely leave this page."
               );
             } catch (e: any) {
               console.error(e);
 
               Alert.alert(
                 "Full Resync Failed",
-                e?.message || "An unknown error occurred."
+                e?.message || "Unknown error"
               );
-            } finally {
+
               setFullResyncRunning(false);
             }
           },
@@ -2873,6 +2872,8 @@ export default function AdminPanelScreen() {
       ]
     );
   }, []);
+
+  const [fullResyncRunning, setFullResyncRunning]
 
 
   const [asianSyncRunning, setAsianSyncRunning] = useState(false);
