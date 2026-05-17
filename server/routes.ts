@@ -5591,32 +5591,27 @@ Return ONLY valid JSON in exactly this format with no markdown:
   const httpServer = createServer(app);
 
 
-  app.get("/api/admin/resync-progress", (_req: Request, res: Response) => {
-    res.json(resyncState);
-  });
-
   app.post("/api/admin/full-resync", async (_req: Request, res: Response) => {
     if (resyncState.running) {
-      return res.status(409).json({ success: false, error: "Resync already running" });
-    }
-    resyncState = { running: true, progress: null, error: null, startedAt: new Date(), finishedAt: null };
-    res.json({ success: true, message: "Resync started" });
-
-    if (resyncState.running) {
-      return res.status(400).json({
-        error: "Full resync already running",
+      return res.status(409).json({
+        success: false,
+        error: "Resync already running",
       });
     }
 
-    resyncState.running = true;
-    resyncState.error = null;
-    resyncState.startedAt = new Date();
-    resyncState.finishedAt = null;
+    resyncState = {
+      running: true,
+      progress: null,
+      error: null,
+      startedAt: new Date(),
+      finishedAt: null,
+    };
 
     res.json({
       success: true,
       message: "Full resync started in background",
     });
+
     // Run async in background
     (async () => {
       try {
@@ -5633,7 +5628,7 @@ Return ONLY valid JSON in exactly this format with no markdown:
         resyncState.running = false;
       }
     })();
-    });
+  });
 
     return httpServer;
     }
