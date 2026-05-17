@@ -265,6 +265,26 @@ async function syncCardsForSet(setId: string, setName: string, force = false): P
 
       if (!alreadySynced || force) {
         await syncPricingForCard(card);
+        const existingPricing = await db
+          .select()
+          .from(cardPricing)
+          .where(eq(cardPricing.cardId, card.id))
+          .limit(1);
+
+        const hasAnyPrice =
+          existingPricing[0]?.tcgMarket ||
+          existingPricing[0]?.priceGBP ||
+          existingPricing[0]?.cardmarketAvg;
+
+        if (!hasAnyPrice) {
+          console.log(`[PricingFallback] Using PokecardValues for ${card.name}`);
+
+          await syncGbpPricingForCard(
+            card.id,
+            card.name,
+            card.number
+          );
+        }
 
         await sleep(GBP_THROTTLE_MS);
         await syncGbpPricingForCard(card.id, card.name, card.number);
@@ -342,21 +362,42 @@ async function syncGbpPricingForCard(cardId: string, cardName: string, cardNumbe
     const results = await scrapeCardSearch(cardName);
     if (!results || results.length === 0) return;
 
-    const numOnly = String(cardNumber).split("/")[0].replace(/^0+/, "");
-    const match =
-      results.find((c) => {
-        const cNum = String(c.number).split("/")[0].replace(/^0+/, "");
-        return cNum === numOnly;
-      }) ?? results[0];
+    const numOnly = String(cardNumber)
+      .split("/")[0]
+      .replace(/^0+/, "");
 
-    if (!match || match.priceGBP === null) return;
+    const exactMatch = results.find((c) => {
+      const cNum = String(c.number || "")
+        .split("/")[0]
+        .replace(/^0+/, "");
+
+      return cNum === numOnly;
+    });
+
+    const fuzzyMatch = results.find((c) =>
+      c.name?.toLowerCase().includes(cardName.toLowerCase())
+    );
+
+    const match =
+      exactMatch ||
+      fuzzyMatch ||
+      results[0];
+
+    if (!match) return;
+
+    const fallbackPrice =
+      match.priceGBP ??
+      match.price ??
+      null;
+
+    if (fallbackPrice === null) return;
 
     await db
       .insert(cardPricing)
       .values({ cardId, priceGBP: match.priceGBP, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: cardPricing.cardId,
-        set: { priceGBP: match.priceGBP, updatedAt: new Date() },
+        set: { priceGBP: fallbackPrice, updatedAt: new Date() },
       });
   } catch (err) {
     console.error(`[CardSync] GBP price sync failed for card ${cardId}:`, err);
