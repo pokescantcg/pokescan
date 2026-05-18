@@ -3294,7 +3294,7 @@ export default function AdminPanelScreen() {
               </View>
             );
           }}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: any) => item.renderId || item.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
@@ -3487,7 +3487,7 @@ export default function AdminPanelScreen() {
       {activeTab === "reports" && (
         <FlatList
           data={reportFilter === "all" ? reports : reports.filter(r => r.status === reportFilter)}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: any) => item.renderId || item.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
           onRefresh={loadReports}
@@ -3678,7 +3678,7 @@ export default function AdminPanelScreen() {
           {logsSubTab === "activity" && (
             <FlatList
               data={activityLogs}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item: any) => item.renderId || item.id}
               refreshing={activityLogsLoading && activityLogsPage === 1}
               onRefresh={() => loadActivityLogs(1)}
               onEndReached={() => { if (activityLogsHasMore && !activityLogsLoading) loadActivityLogs(activityLogsPage + 1, true); }}
@@ -3824,7 +3824,7 @@ export default function AdminPanelScreen() {
           {logsSubTab === "allReports" && (
             <FlatList
               data={allReports}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item: any) => item.renderId || item.id}
               refreshing={allReportsLoading && allReportsPage === 1}
               onRefresh={() => loadAllReports(1)}
               onEndReached={() => { if (allReportsHasMore && !allReportsLoading) loadAllReports(allReportsPage + 1, true); }}

@@ -1,4 +1,9 @@
 import { getSessionToken } from "./storage";
+import { eq } from "drizzle-orm";
+import {
+  pokemonCardVariants,
+  cardPriceHistory,
+} from "../db/schema";
 
 const API_URL = "https://pokemon-card-scan.replit.app";
 
@@ -280,31 +285,118 @@ export function generateEbaySoldUrl(cardName: string, setName?: string, number?:
 }
 
 export function getUKPrice(card: PokemonCard): { price: number | null; source: string } {
+  /**
+   * eBay sold listings (BEST SOURCE)
+   */
   if (card.ebayListings && card.ebayListings.length > 0) {
     const soldPrices = card.ebayListings
-      .filter((l) => l.isSold && l.price !== null && l.price !== undefined && l.price > 0 && (l.currency === "GBP" || !l.currency))
+      .filter(
+        (l) =>
+          l.isSold &&
+          l.price !== null &&
+          l.price !== undefined &&
+          l.price > 0 &&
+          (l.currency === "GBP" || !l.currency)
+      )
       .map((l) => l.price as number);
+
     if (soldPrices.length > 0) {
       const sorted = [...soldPrices].sort((a, b) => a - b);
+
       const mid = Math.floor(sorted.length / 2);
-      const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-      return { price: Math.round(median * 100) / 100, source: "eBay UK (Sold)" };
+
+      const median =
+        sorted.length % 2 === 0
+          ? (sorted[mid - 1] + sorted[mid]) / 2
+          : sorted[mid];
+
+      return {
+        price: Math.round(median * 100) / 100,
+        source: "eBay UK (Sold)",
+      };
     }
   }
+
+  /**
+   * Cardmarket fallback
+   */
   if (card.cardmarket?.prices) {
     const p = card.cardmarket.prices;
-    const price = p.trendPrice ?? p.averageSellPrice ?? p.lowPrice;
-    if (price) return { price, source: "Cardmarket" };
-  }
-  if (card.tcgplayer?.prices) {
-    const prices = card.tcgplayer.prices;
-    const variant = prices.holofoil || prices.normal || prices.reverseHolofoil;
-    if (variant?.market) {
-      const gbpPrice = variant.market * 0.79;
-      return { price: Math.round(gbpPrice * 100) / 100, source: "TCGPlayer (est.)" };
+
+    const price =
+      p.trendPrice ??
+      p.averageSellPrice ??
+      p.lowPrice;
+
+    if (price) {
+      return {
+        price,
+        source: "Cardmarket",
+      };
     }
   }
-  return { price: null, source: "" };
+
+  /**
+   * TCGPlayer variant-aware pricing
+   */
+  if (card.tcgplayer?.prices) {
+    const prices = card.tcgplayer.prices;
+
+    /**
+     * Priority order:
+     * 1. Reverse Holo
+     * 2. Holo
+     * 3. Normal
+     * 4. 1st Edition Holo
+     */
+
+    const variantPriority = [
+      {
+        key: "reverseHolofoil",
+        label: "Reverse Holo",
+      },
+      {
+        key: "holofoil",
+        label: "Holo",
+      },
+      {
+        key: "normal",
+        label: "Normal",
+      },
+      {
+        key: "1stEditionHolofoil",
+        label: "1st Edition Holo",
+      },
+    ] as const;
+
+    for (const variant of variantPriority) {
+      const variantData =
+        prices[
+          variant.key as keyof typeof prices
+        ] as any;
+
+      if (
+        variantData &&
+        variantData.market &&
+        variantData.market > 0
+      ) {
+        const gbpPrice =
+          variantData.market * 0.79;
+
+        return {
+          price:
+            Math.round(gbpPrice * 100) / 100,
+
+          source: `TCGPlayer (${variant.label})`,
+        };
+      }
+    }
+  }
+
+  return {
+    price: null,
+    source: "",
+  };
 }
 
 export interface CardIdentification {
@@ -327,40 +419,78 @@ export interface IdentifyCardResult {
   tcgApiResults: PokemonCard[];
 }
 
-export async function identifyCard(imageBase64: string): Promise<IdentifyCardResult> {
+export async function identifyCard(
+  imageBase64: string
+): Promise<IdentifyCardResult> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
+
+  const timeout = setTimeout(
+    () => controller.abort(),
+    45000
+  );
+
   try {
     const token = await getSessionToken();
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${API_URL}/api/identify-card`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ imageBase64 }),
-      signal: controller.signal,
-    });
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(
+      `${API_URL}/api/identify-card`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          imageBase64,
+        }),
+        signal: controller.signal,
+      }
+    );
+
     clearTimeout(timeout);
+
     if (!res.ok) {
       let errMsg = "Failed to identify card";
+
       let errBody: any = {};
+
       try {
         errBody = await res.json();
-        errMsg = errBody.error || errMsg;
+
+        errMsg =
+          errBody.error || errMsg;
       } catch {
-        const errText = await res.text().catch(() => "");
+        const errText = await res
+          .text()
+          .catch(() => "");
+
         errMsg = errText || errMsg;
       }
+
       const err: any = new Error(errMsg);
-      if (res.status === 429) err.isQuotaExceeded = true;
+
+      if (res.status === 429) {
+        err.isQuotaExceeded = true;
+      }
+
       throw err;
     }
+
     return res.json();
   } catch (e: any) {
     clearTimeout(timeout);
+
     if (e.name === "AbortError") {
-      throw new Error("Connection timed out. Please check your signal and try again.");
+      throw new Error(
+        "Connection timed out. Please check your signal and try again."
+      );
     }
+
     throw e;
   }
 }
@@ -373,42 +503,84 @@ export interface NumberStripResult {
   notes?: string;
 }
 
-export async function scanNumberStrip(imageBase64: string): Promise<NumberStripResult> {
+export async function scanNumberStrip(
+  imageBase64: string
+): Promise<NumberStripResult> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
+
+  const timeout = setTimeout(
+    () => controller.abort(),
+    45000
+  );
+
   try {
     const token = await getSessionToken();
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${API_URL}/api/identify-card`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ imageBase64, mode: "number-strip" }),
-      signal: controller.signal,
-    });
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(
+      `${API_URL}/api/identify-card`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          imageBase64,
+          mode: "number-strip",
+        }),
+        signal: controller.signal,
+      }
+    );
+
     clearTimeout(timeout);
+
     if (!res.ok) {
       let errMsg = "Failed to read card number";
+
       try {
         const errBody = await res.json();
-        errMsg = errBody.error || errMsg;
+
+        errMsg =
+          errBody.error || errMsg;
       } catch {
-        const errText = await res.text().catch(() => "");
+        const errText = await res
+          .text()
+          .catch(() => "");
+
         errMsg = errText || errMsg;
       }
+
       throw new Error(errMsg);
     }
+
     return res.json();
   } catch (e: any) {
     clearTimeout(timeout);
+
     if (e.name === "AbortError") {
-      throw new Error("Connection timed out. Please check your signal and try again.");
+      throw new Error(
+        "Connection timed out. Please check your signal and try again."
+      );
     }
+
     throw e;
   }
 }
 
-export function formatGBP(price: number | null): string {
-  if (price === null || price === undefined) return "N/A";
-  return `\u00A3${price.toFixed(2)}`;
+export function formatGBP(
+  price: number | null
+): string {
+  if (
+    price === null ||
+    price === undefined
+  ) {
+    return "N/A";
+  }
+
+  return `£${price.toFixed(2)}`;
 }

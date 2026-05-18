@@ -37,31 +37,12 @@ function sortCardsByNumber(cards: PokemonCard[]): PokemonCard[] {
   });
 }
 
-// Preferred rarity order (most common → rarest)
 const RARITY_ORDER = [
-  "Common",
-  "Uncommon",
-  "Rare",
-  "Rare Holo",
-  "Double Rare",
-  "Amazing Rare",
-  "Rare Holo V",
-  "Rare Holo VMAX",
-  "Rare Holo VSTAR",
-  "Rare Holo EX",
-  "Rare Holo GX",
-  "Trainer Gallery Rare Holo",
-  "ACE SPEC Rare",
-  "Rare Ultra",
-  "Illustration Rare",
-  "Rare Rainbow",
-  "Special Illustration Rare",
-  "Hyper Rare",
-  "Rare Secret",
-  "Rare Shiny",
-  "Rare Shiny GX",
-  "Rare Shining",
-  "Promo",
+  "Common", "Uncommon", "Rare", "Rare Holo", "Double Rare", "Amazing Rare",
+  "Rare Holo V", "Rare Holo VMAX", "Rare Holo VSTAR", "Rare Holo EX", "Rare Holo GX",
+  "Trainer Gallery Rare Holo", "ACE SPEC Rare", "Rare Ultra", "Illustration Rare",
+  "Rare Rainbow", "Special Illustration Rare", "Hyper Rare", "Rare Secret",
+  "Rare Shiny", "Rare Shiny GX", "Rare Shining", "Promo",
 ];
 
 function rarityRank(r: string): number {
@@ -99,7 +80,6 @@ const H_PAD = 12;
 const GAP = 6;
 const CARD_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - GAP * (NUM_COLS - 1)) / NUM_COLS;
 const CARD_IMG_HEIGHT = CARD_WIDTH * 1.4;
-
 const POKEBALL_GOLD = "#FFD700";
 
 type CardCollectionData = { total: number; variants: Record<string, number> };
@@ -140,7 +120,7 @@ function CardGridItem({
   colors,
   collectionData,
 }: {
-  card: PokemonCard;
+  card: any;
   colors: ReturnType<typeof useThemeColors>;
   collectionData: CardCollectionData | null;
 }) {
@@ -158,18 +138,20 @@ function CardGridItem({
           opacity: pressed ? 0.8 : 1,
         },
       ]}
-      onPress={() => router.push({ pathname: "/card/[id]", params: { id: card.id } })}
+      onPress={() =>
+        router.push({
+          pathname: "/card/[id]",
+          params: {
+            id: card.id,
+            variant: card.finishType || "Non-Holo",
+          },
+        })
+      }
     >
       <View style={{ width: CARD_WIDTH, height: CARD_IMG_HEIGHT }}>
         <Image
           source={{ uri: card.images?.small || "" }}
-          style={[
-            styles.gridImage,
-            {
-              height: CARD_IMG_HEIGHT,
-              width: CARD_WIDTH,
-            },
-          ]}
+          style={[styles.gridImage, { height: CARD_IMG_HEIGHT, width: CARD_WIDTH }]}
           contentFit="contain"
           placeholder={{ color: colors.surface }}
           transition={200}
@@ -177,46 +159,46 @@ function CardGridItem({
 
         {card.finishType === "Reverse Holo" && (
           <LinearGradient
-            colors={[
-              "rgba(255,255,255,0.03)",
-              "rgba(0,191,255,0.16)",
-              "rgba(255,255,255,0.03)",
-            ]}
+            colors={["rgba(255,255,255,0.03)", "rgba(0,191,255,0.16)", "rgba(255,255,255,0.03)"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: 10,
-              opacity: 0.9,
-            }}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 10, opacity: 0.9 }}
             pointerEvents="none"
           />
         )}
 
         {card.finishType === "Holo" && (
           <LinearGradient
-            colors={[
-              "rgba(255,0,255,0.08)",
-              "rgba(0,255,255,0.15)",
-              "rgba(255,255,0,0.08)",
-            ]}
+            colors={["rgba(255,0,255,0.08)", "rgba(0,255,255,0.15)", "rgba(255,255,0,0.08)"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: 10,
-              opacity: 0.85,
-            }}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 10, opacity: 0.85 }}
             pointerEvents="none"
           />
+        )}
+
+        {card.variantLabel && (
+          <View
+            style={{
+              position: "absolute",
+              bottom: 6,
+              left: 6,
+              backgroundColor: "rgba(0,0,0,0.72)",
+              borderRadius: 8,
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+            }}
+          >
+            <Text
+              style={{
+                color: card.finishType === "Holo" ? "#FFD700" : card.finishType === "Reverse Holo" ? "#00BFFF" : "#FFFFFF",
+                fontSize: 9,
+                fontFamily: "Outfit_700Bold",
+              }}
+            >
+              {card.variantLabel}
+            </Text>
+          </View>
         )}
 
         {card.isStamped && (
@@ -231,13 +213,7 @@ function CardGridItem({
               paddingVertical: 2,
             }}
           >
-            <Text
-              style={{
-                color: "#FFD700",
-                fontSize: 9,
-                fontFamily: "Outfit_700Bold",
-              }}
-            >
+            <Text style={{ color: "#FFD700", fontSize: 9, fontFamily: "Outfit_700Bold" }}>
               STAMP
             </Text>
           </View>
@@ -249,26 +225,14 @@ function CardGridItem({
       </View>
 
       <View style={styles.gridInfo}>
-        <Text
-          style={[styles.gridName, { color: colors.text }]}
-          numberOfLines={2}
-        >
+        <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={2}>
           {card.name}
         </Text>
-
-        <Text
-          style={[styles.gridNumber, { color: colors.textMuted }]}
-        >
+        <Text style={[styles.gridNumber, { color: colors.textMuted }]}>
           #{card.number}
         </Text>
-
         {priceData.price ? (
-          <Text
-            style={[
-              styles.gridPrice,
-              { color: colors.success },
-            ]}
-          >
+          <Text style={[styles.gridPrice, { color: colors.success }]}>
             {formatGBP(priceData.price)}
           </Text>
         ) : null}
@@ -336,7 +300,6 @@ export default function SetDetailScreen() {
     setHasError(false);
 
     const load = async () => {
-      // On mobile, check the local device cache first — instant if already downloaded
       if (Platform.OS !== "web" && !isRefreshing) {
         try {
           const { getSetCardsFromCache } = await import("@/lib/card-cache");
@@ -352,7 +315,6 @@ export default function SetDetailScreen() {
         } catch {}
       }
 
-      // Fetch page 1, then auto-load all remaining pages in background
       try {
         const result = await fetchSetCards(id as string, 1);
         if (cancelled) return;
@@ -361,7 +323,6 @@ export default function SetDetailScreen() {
         setIsLoading(false);
         setIsRefreshing(false);
 
-        // Auto-load all remaining pages silently in the background
         if (result.cards.length < result.totalCount) {
           setIsLoadingMore(true);
           let pg = 2;
@@ -394,29 +355,53 @@ export default function SetDetailScreen() {
     return () => { cancelled = true; };
   }, [id, loadKey]);
 
-  // Derive unique rarities present in this set, sorted by rarity order
   const availableRarities = useMemo(() => {
     const seen = new Set<string>();
     allCards.forEach((c) => { if (c.rarity) seen.add(c.rarity); });
     return Array.from(seen).sort((a, b) => rarityRank(a) - rarityRank(b));
   }, [allCards]);
 
-  // Apply active filter
+  const expandedCards = useMemo(() => {
+    return allCards.flatMap((card: any) => {
+      if (!card?.variants || card.variants.length === 0) {
+        return [{
+          ...card,
+          renderId: card.id,
+          cardId: card.id,
+          finishType: card.finishType || "Non-Holo",
+          variantLabel: card.variantLabel || null,
+          isStamped: card.isStamped || false,
+        }];
+      }
+      return card.variants.map((variant: any) => ({
+        ...card,
+        renderId: variant?.id || `${card.id}-${variant?.finishType || "variant"}`,
+        cardId: card.id,
+        finishType: variant?.finishType || "Non-Holo",
+        variantLabel: variant?.variantLabel || variant?.finishType || null,
+        isStamped: variant?.isStamped || false,
+        images: variant?.imageUrl
+          ? { small: variant.imageUrl, large: variant.imageUrl }
+          : card.images,
+      }));
+    });
+  }, [allCards]);
+
   const filteredCards = useMemo(() => {
-    if (!activeFilter) return allCards;
-    return allCards.filter((c) => c.rarity === activeFilter);
-  }, [allCards, activeFilter]);
+    if (!activeFilter) return expandedCards;
+    return expandedCards.filter((c: any) => c?.rarity === activeFilter);
+  }, [expandedCards, activeFilter]);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const loaded = allCards.length;
   const filteredCount = filteredCards.length;
 
   const renderItem = useCallback(
-    ({ item }: { item: PokemonCard }) => (
+    ({ item }: { item: any }) => (
       <CardGridItem
         card={item}
         colors={colors}
-        collectionData={collectionMap.get(item.id) ?? null}
+        collectionData={collectionMap.get(item.cardId ?? item.id) ?? null}
       />
     ),
     [colors, collectionMap]
@@ -447,11 +432,7 @@ export default function SetDetailScreen() {
               </View>
             </View>
           </View>
-          <Pressable
-            onPress={handleRefresh}
-            style={styles.refreshBtn}
-            disabled={isLoading || isRefreshing}
-          >
+          <Pressable onPress={handleRefresh} style={styles.refreshBtn} disabled={isLoading || isRefreshing}>
             <Ionicons
               name="refresh"
               size={20}
@@ -460,7 +441,6 @@ export default function SetDetailScreen() {
           </Pressable>
         </View>
 
-        {/* Filter chips — only show once we have rarities */}
         {!isLoading && availableRarities.length > 1 && (
           <ScrollView
             horizontal
@@ -516,7 +496,7 @@ export default function SetDetailScreen() {
         <FlatList
           data={filteredCards}
           renderItem={renderItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: any) => item.renderId || item.id}
           numColumns={NUM_COLS}
           columnWrapperStyle={styles.gridRow}
           contentContainerStyle={[styles.listContent, { paddingBottom: 40 }]}
@@ -547,10 +527,7 @@ export default function SetDetailScreen() {
                 <Text style={[styles.emptySubText, { color: colors.textSecondary }]}>
                   This set may be unavailable. Pull down or tap refresh to try again.
                 </Text>
-                <Pressable
-                  onPress={handleRefresh}
-                  style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}
-                >
+                <Pressable onPress={handleRefresh} style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}>
                   <Ionicons name="refresh" size={16} color="#FFF" />
                   <Text style={styles.retryBtnText}>Retry</Text>
                 </Pressable>
@@ -612,80 +589,34 @@ const styles = StyleSheet.create({
   headerCount: { fontSize: 13, fontFamily: "Outfit_500Medium" },
   filterScroll: { marginTop: 10, marginHorizontal: -16 },
   filterContent: { paddingHorizontal: 16, paddingBottom: 6, gap: 8, flexDirection: "row" },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
   filterChipText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
   listContent: { paddingHorizontal: H_PAD, paddingTop: 10 },
   gridRow: { gap: GAP, marginBottom: GAP },
-  gridItem: {
-    borderRadius: 10,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  gridImage: {
-    borderTopLeftRadius: 9,
-    borderTopRightRadius: 9,
-  },
-  gridInfo: {
-    padding: 6,
-    gap: 1,
-  },
-  gridName: {
-    fontSize: 11,
-    fontFamily: "Outfit_600SemiBold",
-    lineHeight: 14,
-  },
-  gridNumber: {
-    fontSize: 10,
-    fontFamily: "Outfit_400Regular",
-  },
-  gridPrice: {
-    fontSize: 11,
-    fontFamily: "Outfit_700Bold",
-    marginTop: 2,
-  },
+  gridItem: { borderRadius: 10, borderWidth: 1, overflow: "hidden" },
+  gridImage: { borderTopLeftRadius: 9, borderTopRightRadius: 9 },
+  gridInfo: { padding: 6, gap: 1 },
+  gridName: { fontSize: 11, fontFamily: "Outfit_600SemiBold", lineHeight: 14 },
+  gridNumber: { fontSize: 10, fontFamily: "Outfit_400Regular" },
+  gridPrice: { fontSize: 11, fontFamily: "Outfit_700Bold", marginTop: 2 },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
   loadingText: { fontSize: 14, fontFamily: "Outfit_500Medium" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 80, gap: 12 },
   emptyText: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
   emptySubText: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 32 },
   refreshBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  retryBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 24, marginTop: 4 },
-  retryBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
-  footerLoader: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 16 },
-  footerText: { fontSize: 13, fontFamily: "Outfit_400Regular" },
-  loadMoreBtn: {
-    margin: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    alignItems: "center",
-  },
-  loadMoreText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
-  collectionBadge: {
-    position: "absolute",
-    top: 5,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
-  collectionBadgeInner: {
+  retryBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 2,
-    backgroundColor: "rgba(0,0,0,0.55)",
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 10,
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    marginTop: 8,
   },
-  collectionBadgeExtra: {
-    fontSize: 9,
-    fontFamily: "Outfit_700Bold",
-    color: POKEBALL_GOLD,
-    marginLeft: 1,
-  },
+  retryBtnText: { color: "#FFF", fontSize: 14, fontFamily: "Outfit_600SemiBold" },
+  footerLoader: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16 },
+  footerText: { fontSize: 13, fontFamily: "Outfit_400Regular" },
+  collectionBadge: { position: "absolute", bottom: 4, right: 4 },
+  collectionBadgeInner: { flexDirection: "row", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" },
 });

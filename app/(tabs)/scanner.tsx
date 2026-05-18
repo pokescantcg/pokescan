@@ -2392,7 +2392,7 @@ export default function ScannerScreen() {
           ) : (
             <FlatList
               data={scanHistory}
-              keyExtractor={(item) => item.id}
+              keyExtractor={(item: any) => item.renderId || item.id}
               contentContainerStyle={histStyles.historyList}
               showsVerticalScrollIndicator={false}
               renderItem={({ item }) => {
@@ -2875,7 +2875,7 @@ export default function ScannerScreen() {
       ) : hasIdentifiedResults ? (
         <FlatList
           data={scanListData}
-          keyExtractor={(item) => item.key}
+          keyExtractor={(item: any) => item.renderId || item.id}
           contentContainerStyle={[styles.resultsList, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={renderHeader}
@@ -2894,7 +2894,7 @@ export default function ScannerScreen() {
         <FlatList
           data={results}
           renderItem={({ item }) => <SearchResultCard card={item} colors={colors} />}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: any) => item.renderId || item.id}
           contentContainerStyle={[styles.resultsList, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
         />

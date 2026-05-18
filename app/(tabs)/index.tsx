@@ -403,7 +403,7 @@ export default function BrowseScreen() {
         <FlatList
           data={filteredSets}
           renderItem={renderItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: any) => item.renderId || item.id}
           contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
           showsVerticalScrollIndicator={false}
           refreshControl={

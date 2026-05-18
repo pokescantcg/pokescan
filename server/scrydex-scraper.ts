@@ -598,7 +598,7 @@ export async function runScrydexSync(
     try {
       await db.insert(pokemonCardVariants)
         .values({
-          id: card.variantId,
+          id: `${card.id}-holo`,
 
           cardId: card.id,
 

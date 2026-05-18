@@ -1104,7 +1104,7 @@ export default function MarketScreen() {
             onPress={() => setSelectedListing(item)}
           />
         )}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item: any) => item.renderId || item.id}
         contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={

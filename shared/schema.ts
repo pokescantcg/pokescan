@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, real, timestamp, boolean, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, serial, integer, real, timestamp, boolean, unique, uuid, decimal } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { pokemonCards } from "./pokemonCards";
 
 export const pokescanUsers = pgTable("pokescan_users", {
   id: varchar("id", { length: 36 })
