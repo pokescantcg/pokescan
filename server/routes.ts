@@ -702,28 +702,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .limit(pageSize)
         .offset(offset);
 
-            const formattedCards = dbCards.map(({ variant, card }) => {
-              const f = dbCardToApiFormat(card, null);
+        const formattedCards = dbCards.map(({ variant, card }) => {
+          const f = dbCardToApiFormat(card, null);
 
-              f.id = variant.id;
-              f.variantId = variant.id;
-              f.finishType = variant.finishType;
-              f.editionType = variant.editionType;
-              f.variantLabel = variant.variantLabel;
-              f.isStamped = variant.isStamped;
-              f.language = variant.language;
+          f.id = variant.id;
+          f.variantId = variant.id;
+          f.finishType = variant.finishType;
+          f.editionType = variant.editionType;
+          f.variantLabel = variant.variantLabel;
+          f.isStamped = variant.isStamped;
+          f.language = variant.language;
 
-              if (variant.imageUrl) {
-                f.images = {
-                  small: variant.imageUrl,
-                  large: variant.imageUrl,
-                };
-              }
-            if (setRow) {
-              f.set = dbSetToApiFormat(setRow);
-            }
-            return f;
-          });
+          if (variant.imageUrl) {
+            f.images = {
+              small: variant.imageUrl,
+              large: variant.imageUrl,
+            };
+          }
+
+          if (setRow) {
+            f.set = dbSetToApiFormat(setRow);
+          }
+
+          return f;
+        });
           const payload = { data: formattedCards, count: formattedCards.length, totalCount, page, source: "db" };
           setMemCache(cacheKey, payload);
           warmCardCache(formattedCards);
@@ -925,7 +927,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       .offset(offset);
       const fullySeeded = dbCards.length > 0 && (expectedTotal === 0 || dbCards.length >= Math.floor(expectedTotal * 0.9));
 
-      if (fullySeeded) {
+      if (fullySeeded && dbCards.length > 0) {
         const dbCards = await db
         .select({
           variant: pokemonCardVariants,
@@ -941,23 +943,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .limit(pageSize)
         .offset(offset);
 
-          const formattedCards = dbCards.map(({ variant, card }) => {
-            const f = dbCardToApiFormat(card, null);
+        const formattedCards = dbCards.map(({ variant, card }) => {
+          const f = dbCardToApiFormat(card, null);
 
-            f.id = variant.id;
-            f.variantId = variant.id;
-            f.finishType = variant.finishType;
-            f.editionType = variant.editionType;
-            f.variantLabel = variant.variantLabel;
-            f.isStamped = variant.isStamped;
-            f.language = variant.language;
+          f.id = variant.id;
+          f.variantId = variant.id;
+          f.finishType = variant.finishType;
+          f.editionType = variant.editionType;
+          f.variantLabel = variant.variantLabel;
+          f.isStamped = variant.isStamped;
+          f.language = variant.language;
 
-            if (variant.imageUrl) {
-              f.images = {
-                small: variant.imageUrl,
-                large: variant.imageUrl,
-              };
-            }
+          if (variant.imageUrl) {
+            f.images = {
+              small: variant.imageUrl,
+              large: variant.imageUrl,
+            };
+          }
 
           if (setRow) {
             f.set = dbSetToApiFormat(setRow);
