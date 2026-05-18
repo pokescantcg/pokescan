@@ -1,0 +1,105 @@
+We introduced a regression after adding card variants and resync logic.
+
+Current issues:
+1. Some Pokémon sets no longer load all cards
+2. Card details fail to open and show "Card unavailable"
+3. Older sets are most affected
+4. Variant support may be overwriting cards
+5. Navigation to CardDetails is unreliable
+
+Fix the entire card loading pipeline safely.
+
+REQUIRED FIXES:
+
+1. REMOVE ALL DEDUPE BY CARD NUMBER
+Search entire project for:
+- uniqBy(cards, "number")
+- map[card.number]
+- existing.number === card.number
+- reduce() using card.number as key
+- ON CONFLICT(number)
+
+Replace ALL card uniqueness logic to use:
+card.id
+
+2. FIX PAGINATION
+Any set sync/fetch logic must fetch ALL pages from the Pokémon API.
+
+Use:
+- pageSize=250
+- loop until returned batch < 250
+
+Correct pattern:
+
+let page = 1;
+let allCards = [];
+let hasMore = true;
+
+while (hasMore) {
+  const response = await fetch(
+    `${API_BASE_URL}/api/pokemon/cards?q=set.id:${setId}&page=${page}&pageSize=250`
+  );
+
+  const json = await response.json();
+  const batch = json.data || [];
+
+  allCards.push(...batch);
+
+  hasMore = batch.length === 250;
+  page++;
+}
+
+3. FIX CARD DETAIL SCREEN
+CardDetails must NEVER rely on a preloaded set.
+
+Required logic order:
+- use passed route.params.card first
+- fallback to local cache by id
+- fallback to API fetch by id
+- never fail simply because set not loaded
+
+4. FIX NAVIGATION
+ALL navigation to CardDetails must pass BOTH:
+{
+  card,
+  cardId: card.id
+}
+
+not just cardId.
+
+5. FIX DATABASE UPSERTS
+Ensure ALL DB upserts/conflicts use:
+id
+
+NOT:
+number
+
+6. ADD DEBUG LOGGING
+Add logs:
+- raw API card count
+- processed card count
+- DB saved count
+- DB returned count
+- missing card IDs
+
+7. VERIFY COUNTS
+On every set load log:
+{
+  expected: set.total,
+  actual: cards.length
+}
+
+8. DO NOT FILTER OUT OLDER CARDS
+Remove accidental filters like:
+.filter(card => card.tcgplayer)
+.filter(card => card.images)
+
+Older cards may not contain these fields.
+
+After fixing:
+- verify older sets load complete counts
+- verify variants still work
+- verify card details open directly
+- verify app no longer shows "Card unavailable"
+
+Apply fixes directly to production code safely without breaking current UI.

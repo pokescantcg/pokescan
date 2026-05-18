@@ -687,38 +687,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const hasCards = totalCount > 0;
         const fullySeeded = hasCards && (isNonEnglish || expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
 
+        // LEFT JOIN so cards without any variant row are still included (older sets).
+        // Without this, only cards that have a pokemonCardVariants row would appear.
         const dbCards = await db
           .select({
-            variant: pokemonCardVariants,
             card: pokemonCards,
+            variant: pokemonCardVariants,
           })
-          .from(pokemonCardVariants)
-          .innerJoin(
-            pokemonCards,
+          .from(pokemonCards)
+          .leftJoin(
+            pokemonCardVariants,
             eq(pokemonCardVariants.cardId, pokemonCards.id)
           )
           .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)))
-          .orderBy(pokemonCards.number)
-          .limit(pageSize)
-          .offset(offset);
+          .orderBy(pokemonCards.number);
+
+        console.log(`[SetCards] ${setId}: dbCards=${totalCount} expected=${expectedTotal} rows=${dbCards.length} fullySeeded=${fullySeeded}`);
 
         if (fullySeeded && dbCards.length > 0) {
-          const formattedCards = dbCards.map(({ variant, card }) => {
-            const f = dbCardToApiFormat(card, null);
+          const formattedCards = dbCards.map(({ card, variant }) => {
+            const f = dbVariantToApiFormat(card, null);
 
-            f.id = variant.id;
-            f.variantId = variant.id;
-            f.finishType = variant.finishType;
-            f.editionType = variant.editionType;
-            f.variantLabel = variant.variantLabel;
-            f.isStamped = variant.isStamped;
-            f.language = variant.language;
-
-            if (variant.imageUrl) {
-              f.images = {
-                small: variant.imageUrl,
-                large: variant.imageUrl,
-              };
+            // IMPORTANT: keep card.id as the canonical ID so CardDetail navigation
+            // always resolves. Variant info is stored separately in variantId.
+            f.cardId = card.id;
+            if (variant) {
+              f.variantId = variant.id;
+              f.finishType = variant.finishType;
+              f.editionType = variant.editionType;
+              f.variantLabel = variant.variantLabel;
+              f.isStamped = variant.isStamped;
+              f.language = variant.language;
+              if (variant.imageUrl) {
+                f.images = { small: variant.imageUrl, large: variant.imageUrl };
+              }
+            } else {
+              // Card exists but has no variant row — serve with a sensible default
+              f.finishType = "Non-Holo";
+              f.variantLabel = "Standard";
             }
 
             if (setRow) {
@@ -728,10 +734,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return f;
           });
 
+          console.log(`[SetCards] ${setId}: serving ${formattedCards.length} formatted cards from DB`);
+
           const payload = {
             data: formattedCards,
             count: formattedCards.length,
-            totalCount,
+            // totalCount = actual row count the client will receive so pagination stops correctly
+            totalCount: formattedCards.length,
             page,
             source: "db-variants",
           };
@@ -852,7 +861,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (dbResults.length > 0) {
           const formatted = dbResults.map(({ card, set }) => {
-            const base = dbCardToApiFormat(card, null);
+            const base = dbVariantToApiFormat(card, null);
             if (set) {
               base.set = {
                 id: set.id,
@@ -933,30 +942,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const fullySeeded = expectedTotal > 0 && dbCount >= Math.floor(expectedTotal * 0.9);
 
       if (fullySeeded) {
+        // LEFT JOIN so cards without a variant row still appear (older/incompletely seeded sets)
         const dbCards = await db
           .select({
-            variant: pokemonCardVariants,
             card: pokemonCards,
+            variant: pokemonCardVariants,
           })
-          .from(pokemonCardVariants)
-          .innerJoin(pokemonCards, eq(pokemonCardVariants.cardId, pokemonCards.id))
+          .from(pokemonCards)
+          .leftJoin(pokemonCardVariants, eq(pokemonCardVariants.cardId, pokemonCards.id))
           .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)))
           .orderBy(pokemonCards.number);
 
-        const formattedCards = dbCards.map(({ variant, card }) => {
-          const f = dbCardToApiFormat(card, null);
-          f.id = variant.id;
-          f.variantId = variant.id;
-          f.finishType = variant.finishType;
-          f.editionType = variant.editionType;
-          f.variantLabel = variant.variantLabel;
-          f.isStamped = variant.isStamped;
-          f.language = variant.language;
-          if (variant.imageUrl) {
-            f.images = {
-              small: variant.imageUrl,
-              large: variant.imageUrl,
-            };
+        const formattedCards = dbCards.map(({ card, variant }) => {
+          const f = dbVariantToApiFormat(card, null);
+          // Keep card.id — do NOT overwrite with variant.id
+          f.cardId = card.id;
+          if (variant) {
+            f.variantId = variant.id;
+            f.finishType = variant.finishType;
+            f.editionType = variant.editionType;
+            f.variantLabel = variant.variantLabel;
+            f.isStamped = variant.isStamped;
+            f.language = variant.language;
+            if (variant.imageUrl) {
+              f.images = { small: variant.imageUrl, large: variant.imageUrl };
+            }
+          } else {
+            f.finishType = "Non-Holo";
+            f.variantLabel = "Standard";
           }
           return f;
         });
@@ -1056,27 +1069,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
+      // Strip variant suffixes for backward-compat (e.g. "xy1-1-normal" → "xy1-1").
+      // The set-cards endpoint previously overwrote card.id with variant.id, so any
+      // collection items or cached navigation params may hold a variant ID.
+      const resolvedCardId = cardId.replace(
+        /-(normal|holo|holofoil|reverse|reverseHolofoil|default|non-holo|1stEditionHolofoil|1stEditionNormal)$/i,
+        ""
+      );
+
       const dbCard = await db
         .select()
         .from(pokemonCards)
-        .where(and(eq(pokemonCards.id, cardId), isNull(pokemonCards.deletedAt)))
+        .where(and(eq(pokemonCards.id, resolvedCardId), isNull(pokemonCards.deletedAt)))
         .limit(1);
 
       if (dbCard.length > 0) {
         const pricing = await db
           .select()
           .from(cardPricing)
-          .where(eq(cardPricing.cardId, cardId))
+          .where(eq(cardPricing.variantId, resolvedCardId))
           .limit(1);
 
         const ebayData = await db
           .select()
           .from(ebayPrices)
-          .where(eq(ebayPrices.cardId, cardId))
+          .where(eq(ebayPrices.cardId, resolvedCardId))
           .orderBy(desc(ebayPrices.fetchedAt))
           .limit(10);
 
-        const formattedCard = dbCardToApiFormat(dbCard[0], pricing[0] ?? null, ebayData);
+        const formattedCard = dbVariantToApiFormat(dbCard[0], pricing[0] ?? null, ebayData);
 
         const setData = await db
           .select()
@@ -1096,7 +1117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cardTimeout = setTimeout(() => cardAbort.abort(), 15000);
       let response: globalThis.Response;
       try {
-        response = await fetch(`${POKEMON_API}/cards/${cardId}`, { signal: cardAbort.signal });
+        response = await fetch(`${POKEMON_API}/cards/${resolvedCardId}`, { signal: cardAbort.signal });
       } finally {
         clearTimeout(cardTimeout);
       }
@@ -1712,14 +1733,14 @@ ${setReference}`
             .select({ card: pokemonCards, set: pokemonSets, pricing: cardPricing })
             .from(pokemonCards)
             .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
-            .leftJoin(cardPricing, eq(cardPricing.cardId, pokemonCards.id))
+            .leftJoin(cardPricing, eq(cardPricing.variantId, pokemonCards.id))
             .where(and(or(...nameConditions), isNull(pokemonCards.deletedAt)))
             .orderBy(desc(pokemonSets.releaseDate))
             .limit(20);
 
           if (dbMatches.length > 0) {
             let formatted = dbMatches.map(({ card, set, pricing }) => {
-              const base = dbCardToApiFormat(card, pricing ?? null);
+              const base = dbVariantToApiFormat(card, pricing ?? null);
               if (set) {
                 base.set = {
                   id: set.id,

@@ -160,7 +160,15 @@ export default function CardDetailScreen() {
   const insets = useSafeAreaInsets();
   const { user, addCard, createListing, collection } = useUser();
   const [selectedCondition, setSelectedCondition] = useState("Near Mint");
-  const [selectedVariant, setSelectedVariant] = useState<CardVariant>("Non-Holo");
+  const [selectedVariant, setSelectedVariant] = useState<CardVariant>(
+    (
+      card?.variant ||
+      card?.variantLabel ||
+      card?.variantType ||
+      card?.finishType ||
+      "Non-Holo"
+    ) as CardVariant
+  );
   const [gradingCompany, setGradingCompany] = useState("");
   const [grade, setGrade] = useState("");
 

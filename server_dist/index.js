@@ -2936,7 +2936,7 @@ async function syncCardsForSet(setId, setName, force = false) {
       });
       if (!alreadySynced || force) {
         await syncPricingForCard(card2);
-        const existingPricing = await db.select().from(cardPricing).where(eq2(cardPricing.cardId, card2.id)).limit(1);
+        const existingPricing = await db.select().from(cardPricing).where(eq2(cardPricing.variantId, card2.id)).limit(1);
         const hasAnyPrice = existingPricing[0]?.tcgMarket || existingPricing[0]?.priceGBP || existingPricing[0]?.cardmarketAvg;
         if (!hasAnyPrice) {
           console.log(`[PricingFallback] Using PokecardValues for ${card2.name}`);
@@ -2972,7 +2972,7 @@ async function syncPricingForCard(card2) {
   const cardmarketTrend = cm?.trendPrice ?? null;
   try {
     await db.insert(cardPricing).values({
-      cardId: card2.id,
+      variantId: card2.id,
       tcgLow,
       tcgMid,
       tcgHigh,
@@ -2983,7 +2983,7 @@ async function syncPricingForCard(card2) {
       cardmarketTrend,
       updatedAt: /* @__PURE__ */ new Date()
     }).onConflictDoUpdate({
-      target: cardPricing.cardId,
+      target: cardPricing.variantId,
       set: {
         tcgLow,
         tcgMid,
@@ -3016,8 +3016,8 @@ async function syncGbpPricingForCard(cardId, cardName, cardNumber) {
     if (!match) return;
     const fallbackPrice = match.priceGBP ?? match.price ?? null;
     if (fallbackPrice === null) return;
-    await db.insert(cardPricing).values({ cardId, priceGBP: match.priceGBP, updatedAt: /* @__PURE__ */ new Date() }).onConflictDoUpdate({
-      target: cardPricing.cardId,
+    await db.insert(cardPricing).values({ variantId: cardId, priceGBP: match.priceGBP, updatedAt: /* @__PURE__ */ new Date() }).onConflictDoUpdate({
+      target: cardPricing.variantId,
       set: { priceGBP: fallbackPrice, updatedAt: /* @__PURE__ */ new Date() }
     });
   } catch (err) {
@@ -3555,6 +3555,55 @@ function dbSetToApiFormat(set) {
     }
   };
 }
+function dbVariantToApiFormat(card2, pricing, ebay) {
+  const base = {
+    id: card2.id,
+    name: card2.name,
+    number: card2.number,
+    rarity: card2.rarity,
+    supertype: card2.supertype,
+    subtypes: card2.subtypes ? card2.subtypes.split(",") : [],
+    images: {
+      small: card2.imageSmall,
+      large: card2.imageLarge
+    },
+    artist: card2.artist,
+    hp: card2.hp,
+    set: { id: card2.setId }
+  };
+  if (pricing) {
+    base.tcgplayer = {
+      prices: {
+        normal: {
+          low: pricing.tcgLow,
+          mid: pricing.tcgMid,
+          high: pricing.tcgHigh,
+          market: pricing.tcgMarket,
+          directLow: pricing.tcgDirectLow
+        }
+      }
+    };
+    base.cardmarket = {
+      prices: {
+        averageSellPrice: pricing.cardmarketAvg,
+        lowPrice: pricing.cardmarketLow,
+        trendPrice: pricing.cardmarketTrend
+      }
+    };
+    base.priceGBP = pricing.priceGBP;
+  }
+  if (ebay && ebay.length > 0) {
+    base.ebayListings = ebay.map((e) => ({
+      title: e.title,
+      price: e.price,
+      currency: e.currency,
+      soldDate: e.soldDate,
+      listingUrl: e.listingUrl,
+      isSold: e.isSold
+    }));
+  }
+  return base;
+}
 function getSuperadminEmail() {
   const email = process.env.SUPERADMIN_EMAIL;
   if (!email) {
@@ -3894,37 +3943,42 @@ async function registerRoutes(app2) {
         const hasCards = totalCount > 0;
         const fullySeeded = hasCards && (isNonEnglish || expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
         const dbCards = await db.select({
-          variant: pokemonCardVariants,
-          card: pokemonCards
-        }).from(pokemonCardVariants).innerJoin(
-          pokemonCards,
+          card: pokemonCards,
+          variant: pokemonCardVariants
+        }).from(pokemonCards).leftJoin(
+          pokemonCardVariants,
           eq3(pokemonCardVariants.cardId, pokemonCards.id)
-        ).where(and3(eq3(pokemonCards.setId, setId), isNull2(pokemonCards.deletedAt))).orderBy(pokemonCards.number).limit(pageSize).offset(offset);
+        ).where(and3(eq3(pokemonCards.setId, setId), isNull2(pokemonCards.deletedAt))).orderBy(pokemonCards.number);
+        console.log(`[SetCards] ${setId}: dbCards=${totalCount} expected=${expectedTotal} rows=${dbCards.length} fullySeeded=${fullySeeded}`);
         if (fullySeeded && dbCards.length > 0) {
-          const formattedCards = dbCards.map(({ variant, card: card2 }) => {
-            const f = dbCardToApiFormat(card2, null);
-            f.id = variant.id;
-            f.variantId = variant.id;
-            f.finishType = variant.finishType;
-            f.editionType = variant.editionType;
-            f.variantLabel = variant.variantLabel;
-            f.isStamped = variant.isStamped;
-            f.language = variant.language;
-            if (variant.imageUrl) {
-              f.images = {
-                small: variant.imageUrl,
-                large: variant.imageUrl
-              };
+          const formattedCards = dbCards.map(({ card: card2, variant }) => {
+            const f = dbVariantToApiFormat(card2, null);
+            f.cardId = card2.id;
+            if (variant) {
+              f.variantId = variant.id;
+              f.finishType = variant.finishType;
+              f.editionType = variant.editionType;
+              f.variantLabel = variant.variantLabel;
+              f.isStamped = variant.isStamped;
+              f.language = variant.language;
+              if (variant.imageUrl) {
+                f.images = { small: variant.imageUrl, large: variant.imageUrl };
+              }
+            } else {
+              f.finishType = "Non-Holo";
+              f.variantLabel = "Standard";
             }
             if (setRow) {
               f.set = dbSetToApiFormat(setRow);
             }
             return f;
           });
+          console.log(`[SetCards] ${setId}: serving ${formattedCards.length} formatted cards from DB`);
           const payload = {
             data: formattedCards,
             count: formattedCards.length,
-            totalCount,
+            // totalCount = actual row count the client will receive so pagination stops correctly
+            totalCount: formattedCards.length,
             page,
             source: "db-variants"
           };
@@ -4023,7 +4077,7 @@ async function registerRoutes(app2) {
         const dbResults = await db.select({ card: pokemonCards, set: pokemonSets }).from(pokemonCards).leftJoin(pokemonSets, eq3(pokemonCards.setId, pokemonSets.id)).where(and3(ilike(pokemonCards.name, `%${query.trim()}%`), isNull2(pokemonCards.deletedAt))).orderBy(desc(pokemonSets.releaseDate)).limit(pageSize).offset(offset);
         if (dbResults.length > 0) {
           const formatted = dbResults.map(({ card: card2, set }) => {
-            const base = dbCardToApiFormat(card2, null);
+            const base = dbVariantToApiFormat(card2, null);
             if (set) {
               base.set = {
                 id: set.id,
@@ -4086,23 +4140,25 @@ async function registerRoutes(app2) {
       const fullySeeded = expectedTotal > 0 && dbCount >= Math.floor(expectedTotal * 0.9);
       if (fullySeeded) {
         const dbCards = await db.select({
-          variant: pokemonCardVariants,
-          card: pokemonCards
-        }).from(pokemonCardVariants).innerJoin(pokemonCards, eq3(pokemonCardVariants.cardId, pokemonCards.id)).where(and3(eq3(pokemonCards.setId, setId), isNull2(pokemonCards.deletedAt))).orderBy(pokemonCards.number);
-        const formattedCards = dbCards.map(({ variant, card: card2 }) => {
-          const f = dbCardToApiFormat(card2, null);
-          f.id = variant.id;
-          f.variantId = variant.id;
-          f.finishType = variant.finishType;
-          f.editionType = variant.editionType;
-          f.variantLabel = variant.variantLabel;
-          f.isStamped = variant.isStamped;
-          f.language = variant.language;
-          if (variant.imageUrl) {
-            f.images = {
-              small: variant.imageUrl,
-              large: variant.imageUrl
-            };
+          card: pokemonCards,
+          variant: pokemonCardVariants
+        }).from(pokemonCards).leftJoin(pokemonCardVariants, eq3(pokemonCardVariants.cardId, pokemonCards.id)).where(and3(eq3(pokemonCards.setId, setId), isNull2(pokemonCards.deletedAt))).orderBy(pokemonCards.number);
+        const formattedCards = dbCards.map(({ card: card2, variant }) => {
+          const f = dbVariantToApiFormat(card2, null);
+          f.cardId = card2.id;
+          if (variant) {
+            f.variantId = variant.id;
+            f.finishType = variant.finishType;
+            f.editionType = variant.editionType;
+            f.variantLabel = variant.variantLabel;
+            f.isStamped = variant.isStamped;
+            f.language = variant.language;
+            if (variant.imageUrl) {
+              f.images = { small: variant.imageUrl, large: variant.imageUrl };
+            }
+          } else {
+            f.finishType = "Non-Holo";
+            f.variantLabel = "Standard";
           }
           return f;
         });
@@ -4189,11 +4245,15 @@ async function registerRoutes(app2) {
         res.json(cached);
         return;
       }
-      const dbCard = await db.select().from(pokemonCards).where(and3(eq3(pokemonCards.id, cardId), isNull2(pokemonCards.deletedAt))).limit(1);
+      const resolvedCardId = cardId.replace(
+        /-(normal|holo|holofoil|reverse|reverseHolofoil|default|non-holo|1stEditionHolofoil|1stEditionNormal)$/i,
+        ""
+      );
+      const dbCard = await db.select().from(pokemonCards).where(and3(eq3(pokemonCards.id, resolvedCardId), isNull2(pokemonCards.deletedAt))).limit(1);
       if (dbCard.length > 0) {
-        const pricing = await db.select().from(cardPricing).where(eq3(cardPricing.cardId, cardId)).limit(1);
-        const ebayData = await db.select().from(ebayPrices).where(eq3(ebayPrices.cardId, cardId)).orderBy(desc(ebayPrices.fetchedAt)).limit(10);
-        const formattedCard = dbCardToApiFormat(dbCard[0], pricing[0] ?? null, ebayData);
+        const pricing = await db.select().from(cardPricing).where(eq3(cardPricing.variantId, resolvedCardId)).limit(1);
+        const ebayData = await db.select().from(ebayPrices).where(eq3(ebayPrices.cardId, resolvedCardId)).orderBy(desc(ebayPrices.fetchedAt)).limit(10);
+        const formattedCard = dbVariantToApiFormat(dbCard[0], pricing[0] ?? null, ebayData);
         const setData = await db.select().from(pokemonSets).where(eq3(pokemonSets.id, dbCard[0].setId)).limit(1);
         if (setData.length > 0) {
           formattedCard.set = dbSetToApiFormat(setData[0]);
@@ -4205,7 +4265,7 @@ async function registerRoutes(app2) {
       const cardTimeout = setTimeout(() => cardAbort.abort(), 15e3);
       let response;
       try {
-        response = await fetch(`${POKEMON_API2}/cards/${cardId}`, { signal: cardAbort.signal });
+        response = await fetch(`${POKEMON_API2}/cards/${resolvedCardId}`, { signal: cardAbort.signal });
       } finally {
         clearTimeout(cardTimeout);
       }
@@ -4764,10 +4824,10 @@ ${setReference}`
           if (origName && origName !== cardName) {
             nameConditions.push(ilike(pokemonCards.name, `%${origName}%`));
           }
-          const dbMatches = await db.select({ card: pokemonCards, set: pokemonSets, pricing: cardPricing }).from(pokemonCards).leftJoin(pokemonSets, eq3(pokemonCards.setId, pokemonSets.id)).leftJoin(cardPricing, eq3(cardPricing.cardId, pokemonCards.id)).where(and3(or2(...nameConditions), isNull2(pokemonCards.deletedAt))).orderBy(desc(pokemonSets.releaseDate)).limit(20);
+          const dbMatches = await db.select({ card: pokemonCards, set: pokemonSets, pricing: cardPricing }).from(pokemonCards).leftJoin(pokemonSets, eq3(pokemonCards.setId, pokemonSets.id)).leftJoin(cardPricing, eq3(cardPricing.variantId, pokemonCards.id)).where(and3(or2(...nameConditions), isNull2(pokemonCards.deletedAt))).orderBy(desc(pokemonSets.releaseDate)).limit(20);
           if (dbMatches.length > 0) {
             let formatted = dbMatches.map(({ card: card2, set, pricing }) => {
-              const base = dbCardToApiFormat(card2, pricing ?? null);
+              const base = dbVariantToApiFormat(card2, pricing ?? null);
               if (set) {
                 base.set = {
                   id: set.id,

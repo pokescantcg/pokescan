@@ -142,13 +142,14 @@ export async function fetchSetCards(setId: string, page: number = 1): Promise<{ 
   const res = await fetch(`${API_URL}/api/pokemon/sets/${setId}/cards?page=${page}`);
   if (!res.ok) throw new Error("Failed to fetch cards");
   const json: ApiResponse<PokemonCard[]> = await res.json();
-const expandedCards =
-  expandCardVariants(json.data);
-
-return {
-  cards: expandedCards,
-  totalCount: expandedCards.length,
-};
+  const expandedCards = expandCardVariants(json.data ?? []);
+  // Use the server's totalCount so pagination knows when all cards are loaded.
+  // Fall back to expanded length only if the server didn't supply one.
+  const totalCount = (json.totalCount != null && json.totalCount > 0)
+    ? json.totalCount
+    : expandedCards.length;
+  console.log(`[fetchSetCards] ${setId} page=${page}: raw=${json.data?.length ?? 0} expanded=${expandedCards.length} totalCount=${totalCount}`);
+  return { cards: expandedCards, totalCount };
 }
 
 export async function searchCards(query: string, page: number = 1): Promise<{ cards: PokemonCard[]; totalCount: number }> {
@@ -685,7 +686,10 @@ export function expandCardVariants(
       expanded.push({
         ...card,
 
-        id: `${card.id}-${variant.key}`,
+        // Keep the real card ID so CardDetail can always look it up.
+        // The variant is tracked separately via variantId.
+        id: card.id,
+        variantId: `${card.id}-${variant.key}`,
 
         variant: variant.label,
         variantType: variant.label,

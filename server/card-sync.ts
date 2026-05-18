@@ -269,7 +269,7 @@ async function syncCardsForSet(setId: string, setName: string, force = false): P
         const existingPricing = await db
           .select()
           .from(cardPricing)
-          .where(eq(cardPricing.cardId, card.id))
+          .where(eq(cardPricing.variantId, card.id))
           .limit(1);
 
         const hasAnyPrice =
@@ -328,7 +328,7 @@ async function syncPricingForCard(card: PokemonTcgCard): Promise<void> {
     await db
       .insert(cardPricing)
       .values({
-        cardId: card.id,
+        variantId: card.id,
         tcgLow,
         tcgMid,
         tcgHigh,
@@ -340,7 +340,7 @@ async function syncPricingForCard(card: PokemonTcgCard): Promise<void> {
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: cardPricing.cardId,
+        target: cardPricing.variantId,
         set: {
           tcgLow,
           tcgMid,
@@ -395,9 +395,9 @@ async function syncGbpPricingForCard(cardId: string, cardName: string, cardNumbe
 
     await db
       .insert(cardPricing)
-      .values({ cardId, priceGBP: match.priceGBP, updatedAt: new Date() })
+      .values({ variantId: cardId, priceGBP: match.priceGBP, updatedAt: new Date() })
       .onConflictDoUpdate({
-        target: cardPricing.cardId,
+        target: cardPricing.variantId,
         set: { priceGBP: fallbackPrice, updatedAt: new Date() },
       });
   } catch (err) {
