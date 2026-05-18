@@ -564,29 +564,6 @@ export async function runScrydexSync(
                 }
               }
 
-              try {
-                await db.insert(pokemonCardVariants)
-                  .values({
-                    id: card.variantId,
-
-                    cardId: card.id,
-
-                    finishType: card.finishType,
-
-                    editionType: card.editionType,
-
-                    language: card.language,
-
-                    imageUrl: card.imageLarge,
-
-                    variantLabel:
-                      `${card.finishType} ${card.editionType}`,
-                  })
-                  .onConflictDoNothing();
-              } catch (err) {
-                console.error("Variant insert failed", err);
-              }
-
               progress.cardsAdded++;
             } catch (err: any) {
               // ignore FK violations etc.
@@ -618,7 +595,28 @@ export async function runScrydexSync(
         report({ setsProcessed: progress.setsProcessed + 1 });
       }
     }
+    try {
+      await db.insert(pokemonCardVariants)
+        .values({
+          id: card.variantId,
 
+          cardId: card.id,
+
+          finishType: card.finishType,
+
+          editionType: card.editionType,
+
+          language: card.language,
+
+          imageUrl: card.imageLarge,
+
+          variantLabel:
+            `${card.finishType} ${card.editionType}`,
+        })
+        .onConflictDoNothing();
+    } catch (err) {
+      console.error("Variant insert failed", err);
+    }
     report({
       phase: "done",
       message: `Sync complete. ${progress.setsAdded} sets added, ${progress.cardsAdded} cards added, ${progress.cardsUpdated} card images updated.`,
