@@ -688,19 +688,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const fullySeeded = hasCards && (isNonEnglish || expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
 
         const dbCards = await db
-        .select()
-          .from(pokemonCardVariants)
-          .leftJoin(
-            pokemonCards,
-            eq(pokemonCardVariants.cardId, pokemonCards.id)
-          )
-        .where(eq(pokemonCardVariants.setId, setId))
-        .orderBy(pokemonCardVariants.number)
+        .select({
+          variant: pokemonCardVariants,
+          card: pokemonCards,
+        })
+        .from(pokemonCardVariants)
+        .leftJoin(
+          pokemonCards,
+          eq(pokemonCardVariants.cardId, pokemonCards.id)
+        )
+        .where(eq(pokemonCards.setId, setId))
+        .orderBy(pokemonCards.number)
         .limit(pageSize)
         .offset(offset);
 
-          const formattedCards = dbCards.map((card) => {
-            const f = dbCardToApiFormat(card, null);
+            const formattedCards = dbCards.map(({ variant, card }) => {
+              const f = dbCardToApiFormat(card, null);
+
+              f.id = variant.id;
+              f.variantId = variant.id;
+              f.finishType = variant.finishType;
+              f.editionType = variant.editionType;
+              f.variantLabel = variant.variantLabel;
+              f.isStamped = variant.isStamped;
+              f.language = variant.language;
+
+              if (variant.imageUrl) {
+                f.images = {
+                  small: variant.imageUrl,
+                  large: variant.imageUrl,
+                };
+              }
             if (setRow) {
               f.set = dbSetToApiFormat(setRow);
             }
@@ -892,27 +910,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const setInfoResult = await db.select({ total: pokemonSets.total }).from(pokemonSets).where(and(eq(pokemonSets.id, setId), isNull(pokemonSets.deletedAt))).limit(1);
       const expectedTotal = setInfoResult[0]?.total ?? 0;
       const dbCards = await db
-        .select()
-        .from(pokemonCards)
-        .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)))
-        .orderBy(pokemonCards.number);
+      .select({
+        variant: pokemonCardVariants,
+        card: pokemonCards,
+      })
+      .from(pokemonCardVariants)
+      .leftJoin(
+        pokemonCards,
+        eq(pokemonCardVariants.cardId, pokemonCards.id)
+      )
+      .where(eq(pokemonCards.setId, setId))
+      .orderBy(pokemonCards.number)
+      .limit(pageSize)
+      .offset(offset);
       const fullySeeded = dbCards.length > 0 && (expectedTotal === 0 || dbCards.length >= Math.floor(expectedTotal * 0.9));
 
       if (fullySeeded) {
         const dbCards = await db
-          .select()
-          .from(pokemonCardVariants)
-          .leftJoin(
-            pokemonCards,
-            eq(pokemonCardVariants.cardId, pokemonCards.id)
-          )
-          .where(eq(pokemonCardVariants.setId, setId))
-          .orderBy(pokemonCardVariants.number)
-          .limit(pageSize)
-          .offset(offset);
+        .select({
+          variant: pokemonCardVariants,
+          card: pokemonCards,
+        })
+        .from(pokemonCardVariants)
+        .leftJoin(
+          pokemonCards,
+          eq(pokemonCardVariants.cardId, pokemonCards.id)
+        )
+        .where(eq(pokemonCards.setId, setId))
+        .orderBy(pokemonCards.number)
+        .limit(pageSize)
+        .offset(offset);
 
-        const formattedCards = dbCards.map((card) => {
-          const f = dbCardToApiFormat(card, null);
+          const formattedCards = dbCards.map(({ variant, card }) => {
+            const f = dbCardToApiFormat(card, null);
+
+            f.id = variant.id;
+            f.variantId = variant.id;
+            f.finishType = variant.finishType;
+            f.editionType = variant.editionType;
+            f.variantLabel = variant.variantLabel;
+            f.isStamped = variant.isStamped;
+            f.language = variant.language;
+
+            if (variant.imageUrl) {
+              f.images = {
+                small: variant.imageUrl,
+                large: variant.imageUrl,
+              };
+            }
 
           if (setRow) {
             f.set = dbSetToApiFormat(setRow);
