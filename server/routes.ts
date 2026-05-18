@@ -688,44 +688,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const fullySeeded = hasCards && (isNonEnglish || expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
 
         const dbCards = await db
-        .select({
-          variant: pokemonCardVariants,
-          card: pokemonCards,
-        })
-        .from(pokemonCardVariants)
-        .leftJoin(
-          pokemonCards,
-          eq(pokemonCardVariants.cardId, pokemonCards.id)
-        )
-        .where(eq(pokemonCards.setId, setId))
-        .orderBy(pokemonCards.number)
-        .limit(pageSize)
-        .offset(offset);
+          .select({
+            variant: pokemonCardVariants,
+            card: pokemonCards,
+          })
+          .from(pokemonCardVariants)
+          .leftJoin(
+            pokemonCards,
+            eq(pokemonCardVariants.cardId, pokemonCards.id)
+          )
+          .where(eq(pokemonCards.setId, setId))
+          .orderBy(pokemonCards.number)
+          .limit(pageSize)
+          .offset(offset);
 
-        const formattedCards = dbCards.map(({ variant, card }) => {
-          const f = dbCardToApiFormat(card, null);
+        if (fullySeeded && dbCards.length > 0) {
+          const formattedCards = dbCards.map(({ variant, card }) => {
+            const f = dbCardToApiFormat(card, null);
 
-          f.id = variant.id;
-          f.variantId = variant.id;
-          f.finishType = variant.finishType;
-          f.editionType = variant.editionType;
-          f.variantLabel = variant.variantLabel;
-          f.isStamped = variant.isStamped;
-          f.language = variant.language;
+            f.id = variant.id;
+            f.variantId = variant.id;
+            f.finishType = variant.finishType;
+            f.editionType = variant.editionType;
+            f.variantLabel = variant.variantLabel;
+            f.isStamped = variant.isStamped;
+            f.language = variant.language;
 
-          if (variant.imageUrl) {
-            f.images = {
-              small: variant.imageUrl,
-              large: variant.imageUrl,
-            };
-          }
+            if (variant.imageUrl) {
+              f.images = {
+                small: variant.imageUrl,
+                large: variant.imageUrl,
+              };
+            }
 
-          if (setRow) {
-            f.set = dbSetToApiFormat(setRow);
-          }
+            if (setRow) {
+              f.set = dbSetToApiFormat(setRow);
+            }
 
-          return f;
-        });
+            return f;
+          });
+
+          const payload = {
+            data: formattedCards,
+            count: formattedCards.length,
+            totalCount,
+            page,
+            source: "db-variants",
+          };
+
+          setMemCache(cacheKey, payload);
+          warmCardCache(formattedCards);
+
+          res.json(payload);
+          return;
+        }
           const payload = { data: formattedCards, count: formattedCards.length, totalCount, page, source: "db" };
           setMemCache(cacheKey, payload);
           warmCardCache(formattedCards);
@@ -911,62 +927,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Only serve from DB if the set is fully seeded (≥90% of expected cards)
       const setInfoResult = await db.select({ total: pokemonSets.total }).from(pokemonSets).where(and(eq(pokemonSets.id, setId), isNull(pokemonSets.deletedAt))).limit(1);
       const expectedTotal = setInfoResult[0]?.total ?? 0;
-      const dbCards = await db
-      .select({
-        variant: pokemonCardVariants,
-        card: pokemonCards,
-      })
-      .from(pokemonCardVariants)
-      .leftJoin(
-        pokemonCards,
-        eq(pokemonCardVariants.cardId, pokemonCards.id)
-      )
-      .where(eq(pokemonCards.setId, setId))
-      .orderBy(pokemonCards.number)
-      .limit(pageSize)
-      .offset(offset);
-      const fullySeeded = dbCards.length > 0 && (expectedTotal === 0 || dbCards.length >= Math.floor(expectedTotal * 0.9));
-
-      if (fullySeeded && dbCards.length > 0) {
         const dbCards = await db
-        .select({
-          variant: pokemonCardVariants,
-          card: pokemonCards,
-        })
-        .from(pokemonCardVariants)
-        .leftJoin(
-          pokemonCards,
-          eq(pokemonCardVariants.cardId, pokemonCards.id)
-        )
-        .where(eq(pokemonCards.setId, setId))
-        .orderBy(pokemonCards.number)
-        .limit(pageSize)
-        .offset(offset);
+          .select({
+            variant: pokemonCardVariants,
+            card: pokemonCards,
+          })
+          .from(pokemonCardVariants)
+          .leftJoin(
+            pokemonCards,
+            eq(pokemonCardVariants.cardId, pokemonCards.id)
+          )
+          .where(eq(pokemonCards.setId, setId))
+          .orderBy(pokemonCards.number)
+          .limit(pageSize)
+          .offset(offset);
 
-        const formattedCards = dbCards.map(({ variant, card }) => {
-          const f = dbCardToApiFormat(card, null);
+        if (fullySeeded && dbCards.length > 0) {
+          const formattedCards = dbCards.map(({ variant, card }) => {
+            const f = dbCardToApiFormat(card, null);
 
-          f.id = variant.id;
-          f.variantId = variant.id;
-          f.finishType = variant.finishType;
-          f.editionType = variant.editionType;
-          f.variantLabel = variant.variantLabel;
-          f.isStamped = variant.isStamped;
-          f.language = variant.language;
+            f.id = variant.id;
+            f.variantId = variant.id;
+            f.finishType = variant.finishType;
+            f.editionType = variant.editionType;
+            f.variantLabel = variant.variantLabel;
+            f.isStamped = variant.isStamped;
+            f.language = variant.language;
 
-          if (variant.imageUrl) {
-            f.images = {
-              small: variant.imageUrl,
-              large: variant.imageUrl,
-            };
-          }
+            if (variant.imageUrl) {
+              f.images = {
+                small: variant.imageUrl,
+                large: variant.imageUrl,
+              };
+            }
 
-          if (setRow) {
-            f.set = dbSetToApiFormat(setRow);
-          }
+            if (setRow) {
+              f.set = dbSetToApiFormat(setRow);
+            }
 
-          return f;
-        });
+            return f;
+          });
+
+          const payload = {
+            data: formattedCards,
+            count: formattedCards.length,
+            totalCount,
+            page,
+            source: "db-variants",
+          };
+
+          setMemCache(cacheKey, payload);
+          warmCardCache(formattedCards);
+
+          res.json(payload);
+          return;
+        }
 
         const payload = {
           data: formattedCards,
@@ -982,7 +997,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json(payload);
         return;
       }
-
       let allCards: any[] = [];
       let page = 1;
       let hasMore = true;

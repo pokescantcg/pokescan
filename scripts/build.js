@@ -503,10 +503,7 @@ async function main() {
 
   console.log("Building server bundle...");
   const { execSync } = require("child_process");
-  execSync(
-    "node_modules/tsx/node_modules/.bin/esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=server_dist",
-    { stdio: "inherit" }
-  );
+  execSync("npm run server:build", { stdio: "inherit" });
   console.log("Server bundle built successfully.");
 
   const domain = getDeploymentDomain();
