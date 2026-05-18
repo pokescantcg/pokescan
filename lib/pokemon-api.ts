@@ -142,7 +142,13 @@ export async function fetchSetCards(setId: string, page: number = 1): Promise<{ 
   const res = await fetch(`${API_URL}/api/pokemon/sets/${setId}/cards?page=${page}`);
   if (!res.ok) throw new Error("Failed to fetch cards");
   const json: ApiResponse<PokemonCard[]> = await res.json();
-  return { cards: json.data, totalCount: json.totalCount };
+const expandedCards =
+  expandCardVariants(json.data);
+
+return {
+  cards: expandedCards,
+  totalCount: expandedCards.length,
+};
 }
 
 export async function searchCards(query: string, page: number = 1): Promise<{ cards: PokemonCard[]; totalCount: number }> {
@@ -185,9 +191,14 @@ export async function searchCards(query: string, page: number = 1): Promise<{ ca
   const res = await fetch(`${API_URL}/api/pokemon/cards/search?q=${encodeURIComponent(query)}&page=${page}`);
   if (!res.ok) throw new Error("Failed to search cards");
   const json: ApiResponse<PokemonCard[]> = await res.json();
-  return { cards: json.data, totalCount: json.totalCount };
-}
+  const expandedCards =
+    expandCardVariants(json.data);
 
+  return {
+    cards: expandedCards,
+    totalCount: expandedCards.length,
+  };
+}
 export async function fetchCard(cardId: string): Promise<PokemonCard> {
   const res = await fetch(`${API_URL}/api/pokemon/cards/${cardId}`);
   if (!res.ok) throw new Error("Failed to fetch card");
@@ -626,4 +637,75 @@ export function formatGBP(
   }
 
   return `£${price.toFixed(2)}`;
+}
+export function expandCardVariants(
+  cards: PokemonCard[]
+): PokemonCard[] {
+  const expanded: PokemonCard[] = [];
+
+  for (const card of cards) {
+    const prices = card.tcgplayer?.prices;
+
+    if (!prices) {
+      expanded.push(card);
+      continue;
+    }
+
+    const variants = [
+      {
+        key: "normal",
+        label: "Non-Holo",
+        data: prices.normal,
+      },
+      {
+        key: "holofoil",
+        label: "Holo",
+        data: prices.holofoil,
+      },
+      {
+        key: "reverseHolofoil",
+        label: "Reverse Holo",
+        data: prices.reverseHolofoil,
+      },
+      {
+        key: "1stEditionHolofoil",
+        label: "1st Ed Holo",
+        data: prices["1stEditionHolofoil"],
+      },
+      {
+        key: "1stEditionNormal",
+        label: "1st Ed",
+        data: prices["1stEditionNormal"],
+      },
+    ];
+
+    for (const variant of variants) {
+      if (!variant.data) continue;
+
+      expanded.push({
+        ...card,
+
+        id: `${card.id}-${variant.key}`,
+
+        rarity:
+          `${card.rarity || ""} • ${variant.label}`,
+
+        tcgplayer: {
+          ...card.tcgplayer,
+
+          prices: {
+            [variant.key]: variant.data,
+          },
+        },
+
+        priceGBP:
+          variant.data.market ||
+          variant.data.mid ||
+          variant.data.low ||
+          null,
+      });
+    }
+  }
+
+  return expanded;
 }
