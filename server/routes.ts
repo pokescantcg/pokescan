@@ -736,8 +736,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             source: "db-variants",
           };
 
-          setMemCache(cacheKey, payload);
-          warmCardCache(formattedCards);
+          
 
           res.json(payload);
           return;
@@ -925,27 +924,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { setId } = req.params;
 
       // Only serve from DB if the set is fully seeded (≥90% of expected cards)
-      const setInfoResult = await db.select({ total: pokemonSets.total }).from(pokemonSets).where(and(eq(pokemonSets.id, setId), isNull(pokemonSets.deletedAt))).limit(1);
+      const setInfoResult = await db
+        .select({ total: pokemonSets.total })
+        .from(pokemonSets)
+        .where(and(eq(pokemonSets.id, setId), isNull(pokemonSets.deletedAt)))
+        .limit(1);
       const expectedTotal = setInfoResult[0]?.total ?? 0;
 
       const dbCountResult = await db
         .select({ count: sql<number>`count(*)::int` })
-        .from(pokemonCardVariants)
-        .leftJoin(pokemonCards, eq(pokemonCardVariants.cardId, pokemonCards.id))
+        .from(pokemonCards)
         .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)));
       const dbCount = dbCountResult[0]?.count ?? 0;
       const fullySeeded = expectedTotal > 0 && dbCount >= Math.floor(expectedTotal * 0.9);
 
-      if (fullySeeded && dbCount > 0) {
+      if (fullySeeded) {
         const dbCards = await db
-          .select({ variant: pokemonCardVariants, card: pokemonCards })
+          .select({
+            variant: pokemonCardVariants,
+            card: pokemonCards,
+          })
           .from(pokemonCardVariants)
-          .leftJoin(pokemonCards, eq(pokemonCardVariants.cardId, pokemonCards.id))
+          .innerJoin(pokemonCards, eq(pokemonCardVariants.cardId, pokemonCards.id))
           .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)))
           .orderBy(pokemonCards.number);
-
-        const setRows = await db.select().from(pokemonSets).where(eq(pokemonSets.id, setId)).limit(1);
-        const setRow = setRows[0] ?? null;
 
         const formattedCards = dbCards.map(({ variant, card }) => {
           const f = dbCardToApiFormat(card, null);
@@ -957,37 +959,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
           f.isStamped = variant.isStamped;
           f.language = variant.language;
           if (variant.imageUrl) {
-            f.images = { small: variant.imageUrl, large: variant.imageUrl };
-          }
-          if (setRow) {
-            f.set = dbSetToApiFormat(setRow);
+            f.images = {
+              small: variant.imageUrl,
+              large: variant.imageUrl,
+            };
           }
           return f;
         });
 
-        res.json({ data: formattedCards, count: formattedCards.length, source: "db" });
+        res.json({
+          data: formattedCards,
+          count: formattedCards.length,
+        });
         return;
       }
+
       let allCards: any[] = [];
       let page = 1;
       let hasMore = true;
+
       while (hasMore) {
         const response = await fetch(
           `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=250`
         );
+
         const text = await response.text();
         if (!response.ok) break;
+
         try {
           const data = JSON.parse(text);
           const cards = data.data || [];
           allCards = allCards.concat(cards);
-          hasMore = allCards.length < (data.totalCount || 0) && cards.length === 250;
+          hasMore =
+            allCards.length < (data.totalCount || 0) &&
+            cards.length === 250;
           page++;
         } catch {
           break;
         }
       }
-      res.json({ data: allCards, count: allCards.length });
+
+      res.json({
+        data: allCards,
+        count: allCards.length,
+      });
     } catch (error) {
       console.error("Failed to fetch all set cards:", error);
       res.status(500).json({ error: "Failed to fetch cards" });
@@ -5677,7 +5692,7 @@ Return ONLY valid JSON in exactly this format with no markdown:
       message: "Full resync started",
     });
 
-    runFullResync((p) => {
+    void runFullResync((p) => {
       resyncState.progress = p;
     })
       .then(() => {
@@ -5686,14 +5701,11 @@ Return ONLY valid JSON in exactly this format with no markdown:
       })
       .catch((err: any) => {
         console.error("[FullResync] failed:", err);
-
         resyncState.running = false;
-        resyncState.error =
-          err?.message || "Full resync failed";
-
+        resyncState.error = err?.message || "Full resync failed";
         resyncState.finishedAt = new Date();
       });
   });
 
-    return httpServer;
-    }
+  return httpServer;
+}
