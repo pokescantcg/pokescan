@@ -33,7 +33,12 @@ export interface UserProfile {
   emailVerified?: boolean;
 }
 
-export type CardVariant = "Non-Holo" | "Holo" | "Reverse Holo";
+export type CardVariant =
+  | "Non-Holo"
+  | "Holo"
+  | "Reverse Holo"
+  | "1st Ed"
+  | "1st Ed Holo";
 
 export interface CollectionItem {
   id?: string;

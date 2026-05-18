@@ -1,8 +1,8 @@
-const fs = require("fs");
-const path = require("path");
-const { spawn } = require("child_process");
-const { Readable } = require("stream");
-const { pipeline } = require("stream/promises");
+import fs from "fs";
+import path from "path";
+import { spawn, execSync } from "child_process";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 
 let metroProcess = null;
 
@@ -502,7 +502,6 @@ async function main() {
   setupSignalHandlers();
 
   console.log("Building server bundle...");
-  const { execSync } = require("child_process");
   execSync("npm run server:build", { stdio: "inherit" });
   console.log("Server bundle built successfully.");
 

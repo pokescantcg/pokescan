@@ -647,72 +647,44 @@ export function expandCardVariants(
   for (const card of cards) {
     const prices = card.tcgplayer?.prices;
 
-    if (!prices) {
+    if (!prices || typeof prices !== "object") {
       expanded.push(card);
       continue;
     }
 
     const variants = [
-      {
-        key: "normal",
-        label: "Non-Holo",
-        data: prices.normal,
-      },
-      {
-        key: "holofoil",
-        label: "Holo",
-        data: prices.holofoil,
-      },
-      {
-        key: "reverseHolofoil",
-        label: "Reverse Holo",
-        data: prices.reverseHolofoil,
-      },
-      {
-        key: "1stEditionHolofoil",
-        label: "1st Ed Holo",
-        data: prices["1stEditionHolofoil"],
-      },
-      {
-        key: "1stEditionNormal",
-        label: "1st Ed",
-        data: prices["1stEditionNormal"],
-      },
+      { key: "normal", label: "Non-Holo", data: prices.normal },
+      { key: "holofoil", label: "Holo", data: prices.holofoil },
+      { key: "reverseHolofoil", label: "Reverse Holo", data: prices.reverseHolofoil },
+      { key: "1stEditionHolofoil", label: "1st Ed Holo", data: prices["1stEditionHolofoil"] },
+      { key: "1stEditionNormal", label: "1st Ed", data: prices["1stEditionNormal"] },
     ];
 
+    let pushed = false;
     for (const variant of variants) {
       if (!variant.data) continue;
+      if (card.id?.includes(`-${variant.key}`)) continue;
 
       expanded.push({
         ...card,
-
-        // Keep the real card ID so CardDetail can always look it up.
-        // The variant is tracked separately via variantId.
         id: card.id,
         variantId: `${card.id}-${variant.key}`,
-
         variant: variant.label,
         variantType: variant.label,
         variantLabel: variant.label,
         finishType: variant.label,
-
-        rarity:
-          `${card.rarity || ""} • ${variant.label}`,
-
+        rarity: `${card.rarity || ""} • ${variant.label}`,
         tcgplayer: {
           ...card.tcgplayer,
-
-          prices: {
-            [variant.key]: variant.data,
-          },
+          prices: { [variant.key]: variant.data },
         },
-
-        priceGBP:
-          variant.data.market ||
-          variant.data.mid ||
-          variant.data.low ||
-          null,
+        priceGBP: variant.data.market || variant.data.mid || variant.data.low || null,
       });
+      pushed = true;
+    }
+
+    if (!pushed) {
+      expanded.push(card);
     }
   }
 
