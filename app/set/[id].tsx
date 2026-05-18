@@ -163,20 +163,112 @@ function CardGridItem({
       <View style={{ width: CARD_WIDTH, height: CARD_IMG_HEIGHT }}>
         <Image
           source={{ uri: card.images?.small || "" }}
-          style={[styles.gridImage, { height: CARD_IMG_HEIGHT, width: CARD_WIDTH }]}
+          style={[
+            styles.gridImage,
+            {
+              height: CARD_IMG_HEIGHT,
+              width: CARD_WIDTH,
+            },
+          ]}
           contentFit="contain"
           placeholder={{ color: colors.surface }}
           transition={200}
         />
-        {(collectionData?.total ?? 0) > 0 && <CollectionBadge data={collectionData!} />}
+
+        {card.finishType === "Reverse Holo" && (
+          <LinearGradient
+            colors={[
+              "rgba(255,255,255,0.03)",
+              "rgba(0,191,255,0.16)",
+              "rgba(255,255,255,0.03)",
+            ]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              borderRadius: 10,
+              opacity: 0.9,
+            }}
+            pointerEvents="none"
+          />
+        )}
+
+        {card.finishType === "Holo" && (
+          <LinearGradient
+            colors={[
+              "rgba(255,0,255,0.08)",
+              "rgba(0,255,255,0.15)",
+              "rgba(255,255,0,0.08)",
+            ]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              borderRadius: 10,
+              opacity: 0.85,
+            }}
+            pointerEvents="none"
+          />
+        )}
+
+        {card.isStamped && (
+          <View
+            style={{
+              position: "absolute",
+              top: 6,
+              right: 6,
+              backgroundColor: "rgba(255,215,0,0.22)",
+              borderRadius: 8,
+              paddingHorizontal: 6,
+              paddingVertical: 2,
+            }}
+          >
+            <Text
+              style={{
+                color: "#FFD700",
+                fontSize: 9,
+                fontFamily: "Outfit_700Bold",
+              }}
+            >
+              STAMP
+            </Text>
+          </View>
+        )}
+
+        {(collectionData?.total ?? 0) > 0 && (
+          <CollectionBadge data={collectionData!} />
+        )}
       </View>
+
       <View style={styles.gridInfo}>
-        <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={2}>
+        <Text
+          style={[styles.gridName, { color: colors.text }]}
+          numberOfLines={2}
+        >
           {card.name}
         </Text>
-        <Text style={[styles.gridNumber, { color: colors.textMuted }]}>#{card.number}</Text>
+
+        <Text
+          style={[styles.gridNumber, { color: colors.textMuted }]}
+        >
+          #{card.number}
+        </Text>
+
         {priceData.price ? (
-          <Text style={[styles.gridPrice, { color: colors.success }]}>
+          <Text
+            style={[
+              styles.gridPrice,
+              { color: colors.success },
+            ]}
+          >
             {formatGBP(priceData.price)}
           </Text>
         ) : null}
