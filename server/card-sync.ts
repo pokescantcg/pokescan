@@ -5,6 +5,7 @@ import {
   cardPricing,
   ebayPrices,
   syncStatus,
+  pokemonCardVariants,
 } from "@shared/schema";
 import { eq, inArray, sql, and } from "drizzle-orm";
 import { scrapeCardSearch, generateEbaySearchUrl, generateEbaySoldUrl } from "./pokecardvalues-scraper";
@@ -676,25 +677,199 @@ async function runFastCardSeed(): Promise<void> {
 
       for (const card of allCards) {
         try {
+          /* =========================================================
+             INSERT BASE CARD
+             ========================================================= */
+
           await db.insert(pokemonCards).values({
             id: card.id,
-            setId: card.set?.id ?? set.id,
+
+            setId:
+              card.set?.id ?? set.id,
+
             name: card.name,
+
             number: card.number,
-            rarity: card.rarity ?? null,
-            supertype: card.supertype ?? null,
-            subtypes: card.subtypes ? card.subtypes.join(",") : null,
-            imageSmall: card.images?.small ?? null,
-            imageLarge: card.images?.large ?? null,
-            artist: card.artist ?? null,
-            hp: card.hp ?? null,
-            nationalPokedexNumbers: card.nationalPokedexNumbers
-              ? card.nationalPokedexNumbers.join(",")
+
+            rarity:
+              card.rarity ?? null,
+
+            supertype:
+              card.supertype ?? null,
+
+            subtypes: card.subtypes
+              ? card.subtypes.join(",")
               : null,
+
+            imageSmall:
+              card.images?.small ?? null,
+
+            imageLarge:
+              card.images?.large ?? null,
+
+            artist:
+              card.artist ?? null,
+
+            hp:
+              card.hp ?? null,
+
+            nationalPokedexNumbers:
+              card.nationalPokedexNumbers
+                ? card.nationalPokedexNumbers.join(",")
+                : null,
+
             syncedAt: new Date(),
           }).onConflictDoNothing();
+
+          /* =========================================================
+             CREATE VARIANTS
+             ========================================================= */
+
+          const prices =
+            card.tcgplayer?.prices || {};
+
+          const variantsToInsert: any[] = [];
+
+          /**
+           * NORMAL
+           */
+          if (prices.normal) {
+            variantsToInsert.push({
+              id: `${card.id}-normal`,
+
+              cardId: card.id,
+
+              finishType: "Non-Holo",
+
+              editionType: "Unlimited",
+
+              language: "English",
+
+              variantLabel: "Non-Holo",
+
+              imageUrl:
+                card.images?.large ||
+                card.images?.small ||
+                null,
+
+              isPromo:
+                card.rarity === "Promo",
+
+              isStamped: false,
+            });
+          }
+
+          /**
+           * HOLO
+           */
+          if (prices.holofoil) {
+            variantsToInsert.push({
+              id: `${card.id}-holo`,
+
+              cardId: card.id,
+
+              finishType: "Holo",
+
+              editionType: "Unlimited",
+
+              language: "English",
+
+              variantLabel: "Holo",
+
+              imageUrl:
+                card.images?.large ||
+                card.images?.small ||
+                null,
+
+              isPromo:
+                card.rarity === "Promo",
+
+              isStamped: false,
+            });
+          }
+
+          /**
+           * REVERSE HOLO
+           */
+          if (prices.reverseHolofoil) {
+            variantsToInsert.push({
+              id: `${card.id}-reverse`,
+
+              cardId: card.id,
+
+              finishType:
+                "Reverse Holo",
+
+              editionType: "Unlimited",
+
+              language: "English",
+
+              variantLabel:
+                "Reverse Holo",
+
+              imageUrl:
+                card.images?.large ||
+                card.images?.small ||
+                null,
+
+              isPromo:
+                card.rarity === "Promo",
+
+              isStamped: false,
+            });
+          }
+
+          /**
+           * FALLBACK
+           * If no pricing variants exist,
+           * still create a standard variant
+           */
+          if (
+            variantsToInsert.length === 0
+          ) {
+            variantsToInsert.push({
+              id: `${card.id}-default`,
+
+              cardId: card.id,
+
+              finishType: "Non-Holo",
+
+              editionType: "Unlimited",
+
+              language: "English",
+
+              variantLabel: "Standard",
+
+              imageUrl:
+                card.images?.large ||
+                card.images?.small ||
+                null,
+
+              isPromo:
+                card.rarity === "Promo",
+
+              isStamped: false,
+            });
+          }
+
+          /* =========================================================
+             INSERT VARIANTS
+             ========================================================= */
+
+          await db.insert(
+            pokemonCardVariants
+          )
+          .values(variantsToInsert)
+          .onConflictDoNothing();
+
           totalInserted++;
-        } catch {}
+
+        } catch (err) {
+          console.error(
+            `[CardSync] Card insert failed ${card.id}`,
+            err
+          );
+        }
       }
 
       if (allCards.length > 0) {

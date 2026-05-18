@@ -387,10 +387,34 @@ export default function SetDetailScreen() {
     });
   }, [allCards]);
 
+  /* =========================================================
+     SAFE CARD LIST
+     ========================================================= */
+
   const filteredCards = useMemo(() => {
-    if (!activeFilter) return expandedCards;
-    return expandedCards.filter((c: any) => c?.rarity === activeFilter);
-  }, [expandedCards, activeFilter]);
+    const safeCards = allCards.map((card: any) => ({
+      ...card,
+
+      renderId: card.id,
+
+      finishType:
+        card.finishType ||
+        "Non-Holo",
+
+      variantLabel:
+        card.variantLabel ||
+        "Non-Holo",
+    }));
+
+    if (!activeFilter) {
+      return safeCards;
+    }
+
+    return safeCards.filter(
+      (c: any) =>
+        c.rarity === activeFilter
+    );
+  }, [allCards, activeFilter]);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const loaded = allCards.length;

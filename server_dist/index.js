@@ -3237,8 +3237,69 @@ async function runFastCardSeed() {
             nationalPokedexNumbers: card2.nationalPokedexNumbers ? card2.nationalPokedexNumbers.join(",") : null,
             syncedAt: /* @__PURE__ */ new Date()
           }).onConflictDoNothing();
+          const prices = card2.tcgplayer?.prices || {};
+          const variantsToInsert = [];
+          if (prices.normal) {
+            variantsToInsert.push({
+              id: `${card2.id}-normal`,
+              cardId: card2.id,
+              finishType: "Non-Holo",
+              editionType: "Unlimited",
+              language: "English",
+              variantLabel: "Non-Holo",
+              imageUrl: card2.images?.large || card2.images?.small || null,
+              isPromo: card2.rarity === "Promo",
+              isStamped: false
+            });
+          }
+          if (prices.holofoil) {
+            variantsToInsert.push({
+              id: `${card2.id}-holo`,
+              cardId: card2.id,
+              finishType: "Holo",
+              editionType: "Unlimited",
+              language: "English",
+              variantLabel: "Holo",
+              imageUrl: card2.images?.large || card2.images?.small || null,
+              isPromo: card2.rarity === "Promo",
+              isStamped: false
+            });
+          }
+          if (prices.reverseHolofoil) {
+            variantsToInsert.push({
+              id: `${card2.id}-reverse`,
+              cardId: card2.id,
+              finishType: "Reverse Holo",
+              editionType: "Unlimited",
+              language: "English",
+              variantLabel: "Reverse Holo",
+              imageUrl: card2.images?.large || card2.images?.small || null,
+              isPromo: card2.rarity === "Promo",
+              isStamped: false
+            });
+          }
+          if (variantsToInsert.length === 0) {
+            variantsToInsert.push({
+              id: `${card2.id}-default`,
+              cardId: card2.id,
+              finishType: "Non-Holo",
+              editionType: "Unlimited",
+              language: "English",
+              variantLabel: "Standard",
+              imageUrl: card2.images?.large || card2.images?.small || null,
+              isPromo: card2.rarity === "Promo",
+              isStamped: false
+            });
+          }
+          await db.insert(
+            pokemonCardVariants
+          ).values(variantsToInsert).onConflictDoNothing();
           totalInserted++;
-        } catch {
+        } catch (err) {
+          console.error(
+            `[CardSync] Card insert failed ${card2.id}`,
+            err
+          );
         }
       }
       if (allCards.length > 0) {
