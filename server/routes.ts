@@ -589,7 +589,7 @@ async function addBlockedCredential(email: string | null, mobile: string | null,
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  startSyncService();
+  startSyncService().catch((e) => console.error("[CardSync] startSyncService failed:", e));
   seedSuperadmin().catch((e) => console.error("[seedSuperadmin] failed:", e));
   runSchemaMigrations().catch((e) => console.error("[Migration] failed:", e));
 

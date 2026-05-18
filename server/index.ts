@@ -230,6 +230,15 @@ function setupErrorHandler(app: express.Application) {
   });
 }
 
+// Keep the process alive and log unexpected errors instead of crashing silently
+process.on("uncaughtException", (err) => {
+  console.error("[Server] Uncaught exception — keeping process alive:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[Server] Unhandled promise rejection — keeping process alive:", reason);
+});
+
 (async () => {
   setupCors(app);
   setupBodyParsing(app);
@@ -243,6 +252,11 @@ function setupErrorHandler(app: express.Application) {
 
   setupErrorHandler(app);
 
+  // Health check endpoint for uptime monitoring
+  app.get("/health", (_req, res) => {
+    res.status(200).json({ status: "ok", ts: Date.now() });
+  });
+
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(
     {
@@ -254,4 +268,8 @@ function setupErrorHandler(app: express.Application) {
       log(`express server serving on port ${port}`);
     },
   );
-})();
+})().catch((err) => {
+  console.error("[Server] Fatal startup error:", err);
+  // Give logs time to flush before exiting
+  setTimeout(() => process.exit(1), 500);
+});

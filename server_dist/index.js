@@ -3818,7 +3818,7 @@ async function addBlockedCredential(email, mobile, reason, blockedBy) {
   }
 }
 async function registerRoutes(app2) {
-  startSyncService();
+  startSyncService().catch((e) => console.error("[CardSync] startSyncService failed:", e));
   seedSuperadmin().catch((e) => console.error("[seedSuperadmin] failed:", e));
   runSchemaMigrations().catch((e) => console.error("[Migration] failed:", e));
   app2.get("/api/config", (_req, res) => {
@@ -9053,6 +9053,12 @@ function setupErrorHandler(app2) {
     return res.status(status).json({ message });
   });
 }
+process.on("uncaughtException", (err) => {
+  console.error("[Server] Uncaught exception \u2014 keeping process alive:", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[Server] Unhandled promise rejection \u2014 keeping process alive:", reason);
+});
 (async () => {
   setupCors(app);
   setupBodyParsing(app);
@@ -9061,6 +9067,9 @@ function setupErrorHandler(app2) {
   await warmupDb();
   const server = await registerRoutes(app);
   setupErrorHandler(app);
+  app.get("/health", (_req, res) => {
+    res.status(200).json({ status: "ok", ts: Date.now() });
+  });
   const port = parseInt(process.env.PORT || "5000", 10);
   server.listen(
     {
@@ -9072,4 +9081,7 @@ function setupErrorHandler(app2) {
       log(`express server serving on port ${port}`);
     }
   );
-})();
+})().catch((err) => {
+  console.error("[Server] Fatal startup error:", err);
+  setTimeout(() => process.exit(1), 500);
+});
