@@ -1,9 +1,4 @@
 import { getSessionToken } from "./storage";
-import { eq } from "drizzle-orm";
-import {
-  pokemonCardVariants,
-  cardPriceHistory,
-} from "../db/schema";
 
 const API_URL = "https://pokemon-card-scan.replit.app";
 
@@ -42,8 +37,8 @@ export interface PokemonCard {
   rarity?: string;
   set: PokemonSet;
   images: {
-    small: string;
-    large: string;
+    small: string | null;
+    large: string | null;
   };
   priceGBP?: number | null;
   ebayListings?: Array<{
@@ -54,9 +49,19 @@ export interface PokemonCard {
     listingUrl: string | null;
     isSold: boolean | null;
   }>;
+  // Variant fields from DB or API
+  cardId?: string;
+  variantId?: string;
+  finishType?: string | null;
+  variantLabel?: string | null;
+  variantType?: string | null;
+  variant?: string | null;
+  editionType?: string | null;
+  isStamped?: boolean | null;
+  language?: string | null;
   tcgplayer?: {
-    url: string;
-    updatedAt: string;
+    url?: string;
+    updatedAt?: string;
     prices: {
       normal?: PokemonCardPrice;
       holofoil?: PokemonCardPrice;
@@ -66,8 +71,8 @@ export interface PokemonCard {
     };
   };
   cardmarket?: {
-    url: string;
-    updatedAt: string;
+    url?: string;
+    updatedAt?: string;
     prices: {
       averageSellPrice: number | null;
       lowPrice: number | null;
@@ -148,7 +153,6 @@ export async function fetchSetCards(setId: string, page: number = 1): Promise<{ 
   const totalCount = (json.totalCount != null && json.totalCount > 0)
     ? json.totalCount
     : expandedCards.length;
-  console.log(`[fetchSetCards] ${setId} page=${page}: raw=${json.data?.length ?? 0} expanded=${expandedCards.length} totalCount=${totalCount}`);
   return { cards: expandedCards, totalCount };
 }
 

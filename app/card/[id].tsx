@@ -154,20 +154,14 @@ function SoldPriceBreakdown({ ext, loading, colors }: {
 }
 
 export default function CardDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, variant: routeVariant } = useLocalSearchParams<{ id: string; variant?: string }>();
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
   const { user, addCard, createListing, collection } = useUser();
   const [selectedCondition, setSelectedCondition] = useState("Near Mint");
   const [selectedVariant, setSelectedVariant] = useState<CardVariant>(
-    (
-      card?.variant ||
-      card?.variantLabel ||
-      card?.variantType ||
-      card?.finishType ||
-      "Non-Holo"
-    ) as CardVariant
+    (routeVariant || "Non-Holo") as CardVariant
   );
   const [gradingCompany, setGradingCompany] = useState("");
   const [grade, setGrade] = useState("");
@@ -196,6 +190,21 @@ export default function CardDetailScreen() {
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   const inCollection = collection.some((c) => c.cardId === id);
+
+  // Sync the selected variant once card data arrives (the URL param is used as
+  // the initial value, but this ensures the card's own finishType takes precedence
+  // when no param was passed or when the card is loaded directly by ID).
+  React.useEffect(() => {
+    if (!card) return;
+    const v =
+      card.finishType ||
+      card.variantLabel ||
+      card.variant ||
+      card.variantType ||
+      routeVariant ||
+      "Non-Holo";
+    setSelectedVariant(v as CardVariant);
+  }, [card?.id]);
 
   React.useEffect(() => {
     if (!card) return;
@@ -251,9 +260,9 @@ export default function CardDetailScreen() {
     addCard({
       cardId: card.id,
       cardName: card.name,
-      cardImage: card.images.small,
-      setName: card.set.name,
-      setId: card.set.id,
+      cardImage: card.images?.small ?? "",
+      setName: card.set?.name ?? "",
+      setId: card.set?.id ?? "",
       rarity: card.rarity || "Unknown",
       quantity: 1,
       condition: selectedCondition,
@@ -340,8 +349,8 @@ export default function CardDetailScreen() {
         userName: user.displayName,
         cardId: card.id,
         cardName: card.name,
-        cardImage: card.images.small,
-        setName: card.set.name,
+        cardImage: card.images?.small ?? "",
+        setName: card.set?.name ?? "",
         rarity: card.rarity || "Unknown",
         type: listingType,
         priceGBP: priceVal,
@@ -365,13 +374,13 @@ export default function CardDetailScreen() {
 
   const openEbayListings = () => {
     if (!card) return;
-    const url = generateEbaySearchUrl(card.name, card.set.name, card.number);
+    const url = generateEbaySearchUrl(card.name, card.set?.name, card.number);
     Linking.openURL(url);
   };
 
   const openEbaySold = () => {
     if (!card) return;
-    const url = generateEbaySoldUrl(card.name, card.set.name, card.number);
+    const url = generateEbaySoldUrl(card.name, card.set?.name, card.number);
     Linking.openURL(url);
   };
 
@@ -436,7 +445,7 @@ export default function CardDetailScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.imageContainer}>
           <Image
-            source={{ uri: card.images.large }}
+            source={{ uri: card.images?.large ?? undefined }}
             style={styles.cardImage}
             contentFit="contain"
           />
@@ -447,7 +456,7 @@ export default function CardDetailScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.cardName, { color: colors.text }]}>{card.name}</Text>
               <Text style={[styles.cardSetName, { color: colors.textSecondary }]}>
-                {card.set.name} #{card.number}
+                {card.set?.name ?? ""} #{card.number}
               </Text>
             </View>
             {card.rarity && (

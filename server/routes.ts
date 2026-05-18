@@ -212,7 +212,21 @@ interface FormattedCard {
   set: { id: string; name?: string; series?: string; printedTotal?: number | null; total?: number | null; releaseDate?: string | null; images?: { symbol: string | null; logo: string | null } };
   tcgplayer?: {
     prices: {
-      normal: {
+      normal?: {
+        low: number | null;
+        mid: number | null;
+        high: number | null;
+        market: number | null;
+        directLow: number | null;
+      };
+      holofoil?: {
+        low: number | null;
+        mid: number | null;
+        high: number | null;
+        market: number | null;
+        directLow: number | null;
+      };
+      reverseHolofoil?: {
         low: number | null;
         mid: number | null;
         high: number | null;
@@ -237,6 +251,14 @@ interface FormattedCard {
     listingUrl: string | null;
     isSold: boolean | null;
   }>;
+  // Variant fields — populated by the set-cards and all-cards routes
+  cardId?: string;
+  variantId?: string;
+  finishType?: string | null;
+  variantLabel?: string | null;
+  editionType?: string | null;
+  isStamped?: boolean | null;
+  language?: string | null;
 }
 
 function dbVariantToApiFormat(
