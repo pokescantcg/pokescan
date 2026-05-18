@@ -337,59 +337,102 @@ export function getUKPrice(card: PokemonCard): { price: number | null; source: s
   }
 
   /**
-   * TCGPlayer variant-aware pricing
+   * ================================
+   * VARIANT-AWARE TCGPLAYER PRICING
+   * FIXED PRODUCTION VERSION
+   * ================================
+   *
+   * Fixes:
+   * - Non-Holo always showing
+   * - Wrong variant pricing
+   * - £140 incorrect pulls
+   * - Bad priority ordering
    */
+
   if (card.tcgplayer?.prices) {
-    const prices = card.tcgplayer.prices;
+    const prices = card.tcgplayer.prices || {};
 
     /**
-     * Priority order:
-     * 1. Reverse Holo
-     * 2. Holo
-     * 3. Normal
+     * Production variant priority:
+     *
+     * 1. Holo
+     * 2. Reverse Holo
+     * 3. Non-Holo
      * 4. 1st Edition Holo
+     * 5. 1st Edition Normal
      */
 
-    const variantPriority = [
-      {
-        key: "reverseHolofoil",
-        label: "Reverse Holo",
-      },
+    const availableVariants = [
       {
         key: "holofoil",
         label: "Holo",
+        data: prices.holofoil,
+      },
+      {
+        key: "reverseHolofoil",
+        label: "Reverse Holo",
+        data: prices.reverseHolofoil,
       },
       {
         key: "normal",
-        label: "Normal",
+        label: "Non-Holo",
+        data: prices.normal,
       },
       {
         key: "1stEditionHolofoil",
-        label: "1st Edition Holo",
+        label: "1st Ed Holo",
+        data: prices["1stEditionHolofoil"],
       },
-    ] as const;
+      {
+        key: "1stEditionNormal",
+        label: "1st Ed",
+        data: prices["1stEditionNormal"],
+      },
+    ].filter((v) => v.data);
 
-    for (const variant of variantPriority) {
-      const variantData =
-        prices[
-          variant.key as keyof typeof prices
-        ] as any;
+    /**
+     * Select best available variant
+     */
 
-      if (
-        variantData &&
-        variantData.market &&
-        variantData.market > 0
-      ) {
-        const gbpPrice =
-          variantData.market * 0.79;
+    const selectedVariant =
+      availableVariants.find(
+        (v) => v.key === "holofoil"
+      ) ||
+      availableVariants.find(
+        (v) => v.key === "reverseHolofoil"
+      ) ||
+      availableVariants.find(
+        (v) => v.key === "normal"
+      ) ||
+      availableVariants[0];
 
-        return {
-          price:
-            Math.round(gbpPrice * 100) / 100,
+    const priceData = selectedVariant?.data as any;
 
-          source: `TCGPlayer (${variant.label})`,
-        };
-      }
+    /**
+     * Prefer market -> mid -> low
+     */
+
+    const usdPrice =
+      priceData?.market ||
+      priceData?.mid ||
+      priceData?.low ||
+      0;
+
+    if (usdPrice > 0) {
+      const gbpPrice = usdPrice * 0.79;
+
+      return {
+        price:
+          Math.round(gbpPrice * 100) / 100,
+
+        /**
+         * IMPORTANT:
+         * This is what the UI should display
+         * instead of hardcoded "Non-Holo"
+         */
+
+        source: `TCGPlayer (${selectedVariant?.label || "Unknown"})`,
+      };
     }
   }
 
