@@ -687,6 +687,11 @@ export function expandCardVariants(
 
         id: `${card.id}-${variant.key}`,
 
+        variant: variant.label,
+        variantType: variant.label,
+        variantLabel: variant.label,
+        finishType: variant.label,
+
         rarity:
           `${card.rarity || ""} • ${variant.label}`,
 

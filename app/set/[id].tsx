@@ -394,22 +394,9 @@ export default function SetDetailScreen() {
   const filteredCards = useMemo(() => {
     const safeCards = allCards.map((card: any) => ({
       ...card,
-
-      renderId:
-        `${card.id}-${card.variant || card.variantType || card.finishType || "Non-Holo"}`,
-
-      finishType:
-        card.finishType ||
-        card.variant ||
-        card.variantType ||
-        "Non-Holo",
-
-      variantLabel:
-        card.variantLabel ||
-        card.variant ||
-        card.variantType ||
-        card.finishType ||
-        "Non-Holo",
+      renderId: `${card.id}-${card.variant || card.variantType || card.finishType || "Non-Holo"}`,
+      finishType: card.finishType || card.variant || card.variantType || "Non-Holo",
+      variantLabel: card.variantLabel || card.variant || card.variantType || card.finishType || "Non-Holo",
     }));
     if (!activeFilter) return safeCards;
     return safeCards.filter((c: any) => c.rarity === activeFilter);
