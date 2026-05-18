@@ -669,7 +669,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Non-English set IDs (JP/KO/ZH suffixes or non-TCG patterns) are not in the
       // TCG API — only serve from DB, never fall through to TCG API.
-      const nonEnglishPatterns = ["_ja", "_ko", "_zh", "_cn", "topsun", "babanuki", "mengka", "oldmaid", "hanafuda"];
+      const nonEnglishPatterns = ["_ja", "_ko", "_zh", "_cn", "topsun", "babanuki", "mengka",  "oldmaid","hanafuda","_pocket"];
       const isNonEnglish = nonEnglishPatterns.some((p) => setId.toLowerCase().includes(p));
 
       // 2. Check DB
