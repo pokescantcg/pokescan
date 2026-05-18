@@ -693,11 +693,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             card: pokemonCards,
           })
           .from(pokemonCardVariants)
-          .leftJoin(
+          .innerJoin(
             pokemonCards,
             eq(pokemonCardVariants.cardId, pokemonCards.id)
           )
-          .where(eq(pokemonCards.setId, setId))
+          .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)))
           .orderBy(pokemonCards.number)
           .limit(pageSize)
           .offset(offset);
@@ -736,18 +736,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             source: "db-variants",
           };
 
-          
-
-          res.json(payload);
-          return;
-        }
-          const payload = { data: formattedCards, count: formattedCards.length, totalCount, page, source: "db" };
           setMemCache(cacheKey, payload);
           warmCardCache(formattedCards);
           res.json(payload);
           return;
         }
-       catch (dbErr) {
+      } catch (dbErr) {
         console.error("DB query failed for set cards:", dbErr);
       }
 

@@ -158,7 +158,7 @@ function CardGridItem({
           opacity: pressed ? 0.8 : 1,
         },
       ]}
-      onPress={() => router.push({ pathname: "variant.id", params: { id: card.id } })}
+      onPress={() => router.push({ pathname: "/card/[id]", params: { id: card.id } })}
     >
       <View style={{ width: CARD_WIDTH, height: CARD_IMG_HEIGHT }}>
         <Image
@@ -516,7 +516,7 @@ export default function SetDetailScreen() {
         <FlatList
           data={filteredCards}
           renderItem={renderItem}
-          keyExtractor={(item) => item.id = variant.id}
+          keyExtractor={(item) => item.id}
           numColumns={NUM_COLS}
           columnWrapperStyle={styles.gridRow}
           contentContainerStyle={[styles.listContent, { paddingBottom: 40 }]}
