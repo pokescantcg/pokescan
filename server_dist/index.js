@@ -3951,33 +3951,40 @@ async function registerRoutes(app2) {
         ).where(and3(eq3(pokemonCards.setId, setId), isNull2(pokemonCards.deletedAt))).orderBy(pokemonCards.number);
         console.log(`[SetCards] ${setId}: dbCards=${totalCount} expected=${expectedTotal} rows=${dbCards.length} fullySeeded=${fullySeeded}`);
         if (fullySeeded && dbCards.length > 0) {
-          const formattedCards = dbCards.map(({ card: card2, variant }) => {
-            const f = dbVariantToApiFormat(card2, null);
-            f.cardId = card2.id;
-            if (variant) {
-              f.variantId = variant.id;
-              f.finishType = variant.finishType;
-              f.editionType = variant.editionType;
-              f.variantLabel = variant.variantLabel;
-              f.isStamped = variant.isStamped;
-              f.language = variant.language;
-              if (variant.imageUrl) {
-                f.images = { small: variant.imageUrl, large: variant.imageUrl };
+          const cardMap = /* @__PURE__ */ new Map();
+          for (const { card: card2, variant } of dbCards) {
+            let existing = cardMap.get(card2.id);
+            if (!existing) {
+              existing = {
+                ...dbVariantToApiFormat(card2, null),
+                cardId: card2.id,
+                variants: []
+              };
+              if (setRow) {
+                existing.set = dbSetToApiFormat(setRow);
               }
-            } else {
-              f.finishType = "Non-Holo";
-              f.variantLabel = "Standard";
+              cardMap.set(card2.id, existing);
             }
-            if (setRow) {
-              f.set = dbSetToApiFormat(setRow);
-            }
-            return f;
-          });
-          console.log(`[SetCards] ${setId}: serving ${formattedCards.length} formatted cards from DB`);
+            existing.variants.push({
+              variantId: variant?.id || `${card2.id}-standard`,
+              finishType: variant?.finishType || "Non-Holo",
+              editionType: variant?.editionType || "Standard",
+              variantLabel: variant?.variantLabel || "Standard",
+              isStamped: variant?.isStamped || false,
+              language: variant?.language || "EN",
+              images: variant?.imageUrl ? {
+                small: variant.imageUrl,
+                large: variant.imageUrl
+              } : existing.images
+            });
+          }
+          const formattedCards = Array.from(cardMap.values());
+          console.log(
+            `[SetCards] ${setId}: serving ${formattedCards.length} grouped cards from DB`
+          );
           const payload = {
             data: formattedCards,
             count: formattedCards.length,
-            // totalCount = actual row count the client will receive so pagination stops correctly
             totalCount: formattedCards.length,
             page,
             source: "db-variants"
@@ -3986,80 +3993,83 @@ async function registerRoutes(app2) {
           warmCardCache(formattedCards);
           res.json(payload);
           return;
-        }
-      } catch (dbErr) {
-        console.error("DB query failed for set cards:", dbErr);
-      }
-      if (isNonEnglish) {
-        const emptyPayload = { data: [], count: 0, totalCount: 0, page, source: "no-data" };
-        res.json(emptyPayload);
-        return;
-      }
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3e4);
-      const response = await fetch(
-        `${POKEMON_API2}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`,
-        { signal: controller.signal, headers: tcgHeaders() }
-      );
-      clearTimeout(timeout);
-      if (!response.ok) throw new Error(`TCG API ${response.status}`);
-      const data = await response.json();
-      setMemCache(cacheKey, data);
-      warmCardCache(data.data || []);
-      res.json(data);
-      (async () => {
-        try {
-          let bgPage = 1;
-          let seeded = 0;
-          while (true) {
-            const ctrl2 = new AbortController();
-            const t2 = setTimeout(() => ctrl2.abort(), 3e4);
-            const r2 = await fetch(
-              `${POKEMON_API2}/cards?q=set.id:${setId}&orderBy=number&page=${bgPage}&pageSize=250`,
-              { signal: ctrl2.signal }
-            );
-            clearTimeout(t2);
-            if (!r2.ok) break;
-            const d2 = await r2.json();
-            const cards2 = d2.data || [];
-            if (cards2.length === 0) break;
-            for (const card2 of cards2) {
-              try {
-                await db.insert(pokemonCards).values({
-                  id: card2.id,
-                  setId: card2.set?.id || setId,
-                  name: card2.name,
-                  number: card2.number,
-                  rarity: card2.rarity || null,
-                  supertype: card2.supertype || null,
-                  subtypes: Array.isArray(card2.subtypes) ? card2.subtypes.join(",") : null,
-                  hp: card2.hp || null,
-                  artist: card2.artist || null,
-                  imageSmall: card2.images?.small || null,
-                  imageLarge: card2.images?.large || null
-                }).onConflictDoNothing();
-              } catch {
+        } else {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3e4);
+          const response = await fetch(
+            `${POKEMON_API2}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`,
+            { signal: controller.signal, headers: tcgHeaders() }
+          );
+          clearTimeout(timeout);
+          if (!response.ok) throw new Error(`TCG API ${response.status}`);
+          const data = await response.json();
+          setMemCache(cacheKey, data);
+          warmCardCache(data.data || []);
+          res.json(data);
+          (async () => {
+            try {
+              let bgPage = 1;
+              let seeded = 0;
+              while (true) {
+                const ctrl2 = new AbortController();
+                const t2 = setTimeout(() => ctrl2.abort(), 3e4);
+                const r2 = await fetch(
+                  `${POKEMON_API2}/cards?q=set.id:${setId}&orderBy=number&page=${bgPage}&pageSize=250`,
+                  { signal: ctrl2.signal }
+                );
+                clearTimeout(t2);
+                if (!r2.ok) break;
+                const d2 = await r2.json();
+                const cards2 = d2.data || [];
+                if (cards2.length === 0) break;
+                for (const card2 of cards2) {
+                  try {
+                    await db.insert(pokemonCards).values({
+                      id: card2.id,
+                      setId: card2.set?.id || setId,
+                      name: card2.name,
+                      number: card2.number,
+                      rarity: card2.rarity || null,
+                      supertype: card2.supertype || null,
+                      subtypes: Array.isArray(card2.subtypes) ? card2.subtypes.join(",") : null,
+                      hp: card2.hp || null,
+                      artist: card2.artist || null,
+                      imageSmall: card2.images?.small || null,
+                      imageLarge: card2.images?.large || null
+                    }).onConflictDoNothing();
+                  } catch {
+                  }
+                }
+                seeded += cards2.length;
+                if (cards2.length < 250) break;
+                bgPage++;
               }
+              if (seeded > 0) {
+                console.log(`[BgSeed] Seeded ${seeded} cards for set ${setId}`);
+                for (const k of setCardsMemCache.keys()) {
+                  if (k.startsWith(`${setId}:`)) setCardsMemCache.delete(k);
+                }
+              }
+            } catch (bgErr) {
             }
-            seeded += cards2.length;
-            if (cards2.length < 250) break;
-            bgPage++;
-          }
-          if (seeded > 0) {
-            console.log(`[BgSeed] Seeded ${seeded} cards for set ${setId}`);
-            for (const k of setCardsMemCache.keys()) {
-              if (k.startsWith(`${setId}:`)) setCardsMemCache.delete(k);
-            }
-          }
-        } catch (bgErr) {
+          });
         }
-      })();
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        res.status(504).json({ error: "Cards took too long to load. Please try again." });
-      } else {
-        console.error("Failed to fetch set cards:", error);
-        res.status(500).json({ error: "Failed to fetch cards. Please try again." });
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          res.status(504).json({ error: "Cards took too long to load. Please try again." });
+        } else {
+          console.error("Failed to fetch set cards:", error);
+          res.status(500).json({ error: "Failed to fetch cards. Please try again." });
+        }
+      }
+    } catch (err) {
+      if (!res.headersSent) {
+        if (err?.name === "AbortError") {
+          res.status(504).json({ error: "Cards took too long to load. Please try again." });
+        } else {
+          console.error("Failed to fetch set cards (outer):", err);
+          res.status(500).json({ error: "Failed to fetch cards. Please try again." });
+        }
       }
     }
   });
@@ -8782,139 +8792,109 @@ Return ONLY valid JSON in exactly this format with no markdown:
     users: { pk: "id", searchCols: ["username"] }
   };
   app2.get("/api/admin/db/table/:tableName/schema", async (req, res) => {
-    if (!await isSuperadminSessionOnly(req)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
+    try {
+      if (!await isSuperadminSessionOnly(req)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const { tableName } = req.params;
+      if (!ADMIN_DB_TABLES[tableName]) {
+        return res.status(400).json({ error: "Unknown table" });
+      }
+      const result = await pool3.query(
+        `
+                     SELECT column_name, data_type, is_nullable, column_default
+                     FROM information_schema.columns
+                     WHERE table_name = $1
+                     AND table_schema = 'public'
+                     ORDER BY ordinal_position
+                     `,
+        [tableName]
+      );
+      return res.json({
+        columns: result.rows,
+        pk: ADMIN_DB_TABLES[tableName].pk
+      });
+    } catch (err) {
+      console.error("[ADMIN_DB_SCHEMA]", err);
+      return res.status(500).json({ error: "Internal server error" });
     }
-    const { tableName } = req.params;
-    if (!ADMIN_DB_TABLES[tableName]) {
-      res.status(400).json({ error: "Unknown table" });
-      return;
-    }
-    const result = await pool3.query(
-      `SELECT column_name, data_type, is_nullable, column_default
-       FROM information_schema.columns
-       WHERE table_name = $1 AND table_schema = 'public'
-       ORDER BY ordinal_position`,
-      [tableName]
-    );
-    res.json({ columns: result.rows, pk: ADMIN_DB_TABLES[tableName].pk });
   });
   app2.get("/api/admin/db/table/:tableName", async (req, res) => {
-    if (!await isSuperadminSessionOnly(req)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
+    try {
+      if (!await isSuperadminSessionOnly(req)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const { tableName } = req.params;
+      const tbl = ADMIN_DB_TABLES[tableName];
+      if (!tbl) {
+        return res.status(400).json({ error: "Unknown table" });
+      }
+      const page = Math.max(1, parseInt(req.query.page || "1", 10));
+      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || "50", 10)));
+      const search = (req.query.search || "").trim();
+      const offset = (page - 1) * pageSize;
+      const values = [];
+      let whereClause = "";
+      if (search && tbl.searchCols.length > 0) {
+        const conditions = tbl.searchCols.map(
+          (col, i) => `"${col}"::text ILIKE $${i + 1}`
+        );
+        whereClause = `WHERE (${conditions.join(" OR ")})`;
+        values.push(
+          ...tbl.searchCols.map(() => `%${search}%`)
+        );
+      }
+      const countResult = await pool3.query(
+        `SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`,
+        values
+      );
+      const dataResult = await pool3.query(
+        `
+                     SELECT *
+                     FROM "${tableName}"
+                     ${whereClause}
+                     ORDER BY "${tbl.pk}" DESC
+                     LIMIT $${values.length + 1}
+                     OFFSET $${values.length + 2}
+                     `,
+        [...values, pageSize, offset]
+      );
+      return res.json({
+        rows: dataResult.rows,
+        total: parseInt(countResult.rows[0].count, 10),
+        page,
+        pageSize
+      });
+    } catch (err) {
+      console.error("[ADMIN_DB_TABLE]", err);
+      return res.status(500).json({ error: "Internal server error" });
     }
-    const { tableName } = req.params;
-    const tbl = ADMIN_DB_TABLES[tableName];
-    if (!tbl) {
-      res.status(400).json({ error: "Unknown table" });
-      return;
-    }
-    const page = Math.max(1, parseInt(req.query.page || "1", 10));
-    const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || "50", 10)));
-    const search = (req.query.search || "").trim();
-    const offset = (page - 1) * pageSize;
-    const values = [];
-    let whereClause = "";
-    if (search && tbl.searchCols.length > 0) {
-      const conditions = tbl.searchCols.map((col, i) => `"${col}"::text ILIKE $${i + 1}`);
-      whereClause = `WHERE (${conditions.join(" OR ")})`;
-      values.push(...tbl.searchCols.map(() => `%${search}%`));
-    }
-    const countResult = await pool3.query(`SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`, values);
-    const dataResult = await pool3.query(
-      `SELECT * FROM "${tableName}" ${whereClause} ORDER BY "${tbl.pk}" DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
-      [...values, pageSize, offset]
-    );
-    res.json({ rows: dataResult.rows, total: parseInt(countResult.rows[0].count, 10), page, pageSize });
   });
   app2.get("/api/admin/db/tables", async (req, res) => {
-    if (!await isSuperadminSessionOnly(req)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
+    try {
+      if (!await isSuperadminSessionOnly(req)) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const tables = await Promise.all(
+        Object.keys(ADMIN_DB_TABLES).map(async (t) => {
+          const r = await pool3.query(
+            `SELECT COUNT(*) as count FROM "${t}"`
+          );
+          return {
+            name: t,
+            rowCount: parseInt(r.rows[0].count, 10)
+          };
+        })
+      );
+      return res.json({ tables });
+    } catch (err) {
+      console.error("[ADMIN_DB_TABLES]", err);
+      return res.status(500).json({ error: "Internal server error" });
     }
-    const tables = await Promise.all(
-      Object.keys(ADMIN_DB_TABLES).map(async (t) => {
-        const r = await pool3.query(`SELECT COUNT(*) as count FROM "${t}"`);
-        return { name: t, rowCount: parseInt(r.rows[0].count, 10) };
-      })
-    );
-    res.json({ tables });
-  });
-  app2.patch("/api/admin/db/table/:tableName/:id", express.json({ limit: "2mb" }), async (req, res) => {
-    if (!await isSuperadminSessionOnly(req)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-    const { tableName, id } = req.params;
-    const tbl = ADMIN_DB_TABLES[tableName];
-    if (!tbl) {
-      res.status(400).json({ error: "Unknown table" });
-      return;
-    }
-    const body = req.body;
-    const schemaResult = await pool3.query(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
-      [tableName]
-    );
-    const validCols = new Set(schemaResult.rows.map((r) => r.column_name));
-    const updates = Object.entries(body).filter(([k]) => k !== tbl.pk && validCols.has(k));
-    if (updates.length === 0) {
-      res.status(400).json({ error: "No valid fields to update" });
-      return;
-    }
-    const setClauses = updates.map(([col], i) => `"${col}" = $${i + 1}`);
-    const values = [...updates.map(([, v]) => v === "" ? null : v), id];
-    await pool3.query(`UPDATE "${tableName}" SET ${setClauses.join(", ")} WHERE "${tbl.pk}" = $${values.length}`, values);
-    const updated = await pool3.query(`SELECT * FROM "${tableName}" WHERE "${tbl.pk}" = $1`, [id]);
-    res.json({ row: updated.rows[0] || null });
-  });
-  app2.delete("/api/admin/db/table/:tableName/:id", async (req, res) => {
-    if (!await isSuperadminSessionOnly(req)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-    const { tableName, id } = req.params;
-    const tbl = ADMIN_DB_TABLES[tableName];
-    if (!tbl) {
-      res.status(400).json({ error: "Unknown table" });
-      return;
-    }
-    await pool3.query(`DELETE FROM "${tableName}" WHERE "${tbl.pk}" = $1`, [id]);
-    res.json({ success: true });
-  });
-  app2.post("/api/admin/db/table/:tableName", express.json({ limit: "2mb" }), async (req, res) => {
-    if (!await isSuperadminSessionOnly(req)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
-    }
-    const { tableName } = req.params;
-    const tbl = ADMIN_DB_TABLES[tableName];
-    if (!tbl) {
-      res.status(400).json({ error: "Unknown table" });
-      return;
-    }
-    const body = req.body;
-    const schemaResult = await pool3.query(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
-      [tableName]
-    );
-    const validCols = new Set(schemaResult.rows.map((r) => r.column_name));
-    const entries = Object.entries(body).filter(([k]) => validCols.has(k) && body[k] !== "" && body[k] !== null && body[k] !== void 0);
-    if (entries.length === 0) {
-      res.status(400).json({ error: "No valid fields provided" });
-      return;
-    }
-    const cols = entries.map(([k]) => `"${k}"`).join(", ");
-    const placeholders = entries.map((_, i) => `$${i + 1}`).join(", ");
-    const values = entries.map(([, v]) => v);
-    const result = await pool3.query(`INSERT INTO "${tableName}" (${cols}) VALUES (${placeholders}) RETURNING *`, values);
-    res.json({ row: result.rows[0] });
   });
   const httpServer = createServer(app2);
   app2.get("/api/admin/resync-progress", (_req, res) => {
-    res.json(resyncState);
+    return res.json(resyncState);
   });
   app2.post("/api/admin/full-resync", async (_req, res) => {
     if (resyncState.running) {

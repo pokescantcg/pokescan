@@ -366,7 +366,7 @@ export default function SetDetailScreen() {
       if (!card?.variants || card.variants.length === 0) {
         return [{
           ...card,
-          renderId: card.id,
+          renderId: `${card.id}-standard`,
           cardId: card.id,
           finishType: card.finishType || "Non-Holo",
           variantLabel: card.variantLabel || null,
@@ -375,14 +375,25 @@ export default function SetDetailScreen() {
       }
       return card.variants.map((variant: any) => ({
         ...card,
-        renderId: variant?.id || `${card.id}-${variant?.finishType || "variant"}`,
-        cardId: card.id,
-        finishType: variant?.finishType || "Non-Holo",
-        variantLabel: variant?.variantLabel || variant?.finishType || null,
-        isStamped: variant?.isStamped || false,
-        images: variant?.imageUrl
-          ? { small: variant.imageUrl, large: variant.imageUrl }
-          : card.images,
+
+        renderId: `${card.id}-${variant.variantId}`,
+
+        variantId: variant.variantId,
+
+        finishType: variant.finishType || "Non-Holo",
+
+        editionType: variant.editionType || "Standard",
+
+        variantLabel:
+          variant.variantLabel ||
+          variant.finishType ||
+          "Standard",
+
+        isStamped: variant.isStamped || false,
+
+        language: variant.language || "EN",
+
+        images: variant.images || card.images,
       }));
     });
   }, [allCards]);

@@ -726,62 +726,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         console.log(`[SetCards] ${setId}: dbCards=${totalCount} expected=${expectedTotal} rows=${dbCards.length} fullySeeded=${fullySeeded}`);
 
-        if (fullySeeded && dbCards.length > 0) {
-          const formattedCards = dbCards.map(({ card, variant }) => {
-            const f = dbVariantToApiFormat(card, null);
+                 if (fullySeeded && dbCards.length > 0) {
+            const cardMap = new Map();
 
-            // IMPORTANT: keep card.id as the canonical ID so CardDetail navigation
-            // always resolves. Variant info is stored separately in variantId.
-            f.cardId = card.id;
-            if (variant) {
-              f.variantId = variant.id;
-              f.finishType = variant.finishType;
-              f.editionType = variant.editionType;
-              f.variantLabel = variant.variantLabel;
-              f.isStamped = variant.isStamped;
-              f.language = variant.language;
-              if (variant.imageUrl) {
-                f.images = { small: variant.imageUrl, large: variant.imageUrl };
+            for (const { card, variant } of dbCards) {
+              let existing = cardMap.get(card.id);
+
+              if (!existing) {
+                existing = {
+                  ...dbVariantToApiFormat(card, null),
+                  cardId: card.id,
+                  variants: [],
+                };
+
+                if (setRow) {
+                  existing.set = dbSetToApiFormat(setRow);
+                }
+
+                cardMap.set(card.id, existing);
               }
-            } else {
-              // Card exists but has no variant row — serve with a sensible default
-              f.finishType = "Non-Holo";
-              f.variantLabel = "Standard";
+
+              // Push variant data
+              existing.variants.push({
+                variantId: variant?.id || `${card.id}-standard`,
+                finishType: variant?.finishType || "Non-Holo",
+                editionType: variant?.editionType || "Standard",
+                variantLabel: variant?.variantLabel || "Standard",
+                isStamped: variant?.isStamped || false,
+                language: variant?.language || "EN",
+                images: variant?.imageUrl
+                  ? {
+                      small: variant.imageUrl,
+                      large: variant.imageUrl,
+                    }
+                  : existing.images,
+              });
             }
 
-            if (setRow) {
-              f.set = dbSetToApiFormat(setRow);
-            }
+            const formattedCards = Array.from(cardMap.values());
 
-            return f;
-          });
+            console.log(
+              `[SetCards] ${setId}: serving ${formattedCards.length} grouped cards from DB`
+            );
 
-          console.log(`[SetCards] ${setId}: serving ${formattedCards.length} formatted cards from DB`);
+            const payload = {
+              data: formattedCards,
+              count: formattedCards.length,
+              totalCount: formattedCards.length,
+              page,
+              source: "db-variants",
+            };
 
-          const payload = {
-            data: formattedCards,
-            count: formattedCards.length,
-            // totalCount = actual row count the client will receive so pagination stops correctly
-            totalCount: formattedCards.length,
-            page,
-            source: "db-variants",
-          };
+            setMemCache(cacheKey, payload);
+            warmCardCache(formattedCards);
 
-          setMemCache(cacheKey, payload);
-          warmCardCache(formattedCards);
-          res.json(payload);
-          return;
-        }
-      } catch (dbErr) {
-        console.error("DB query failed for set cards:", dbErr);
-      }
-
-      // Non-English sets with no DB cards → return empty data gracefully (no TCG API call)
-      if (isNonEnglish) {
-        const emptyPayload = { data: [], count: 0, totalCount: 0, page, source: "no-data" };
-        res.json(emptyPayload);
-        return;
-      }
+            res.json(payload);
+            return;
+          } else {
 
       // 3. Fetch from TCG API for English sets (30s timeout)
       const controller = new AbortController();
@@ -848,7 +849,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (bgErr) {
           // Silent — background seed failure is non-critical
         }
-      })();
+      });
+  }                 
     } catch (error: any) {
       if (error?.name === "AbortError") {
         res.status(504).json({ error: "Cards took too long to load. Please try again." });
@@ -857,6 +859,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(500).json({ error: "Failed to fetch cards. Please try again." });
       }
     }
+  } catch (err: any) {
+    if (!res.headersSent) {
+      if (err?.name === "AbortError") {
+        res.status(504).json({ error: "Cards took too long to load. Please try again." });
+      } else {
+        console.error("Failed to fetch set cards (outer):", err);
+        res.status(500).json({ error: "Failed to fetch cards. Please try again." });
+      }
+    }
+  }
   });
 
   app.get("/api/pokemon/cards/search", async (req: Request, res: Response) => {
@@ -3296,7 +3308,7 @@ ${setReference}`
       res.status(500).json({ error: error.message || "Failed to delete scan history entry" });
     }
   });
-
+      
   // ─── Collection CRUD ─────────────────────────────────────────────────────────
 
   app.get("/api/collection", async (req: Request, res: Response) => {
@@ -5581,168 +5593,228 @@ Return ONLY valid JSON in exactly this format with no markdown:
     res.json({ success: true });
   });
 
-  // ── Generic Database Admin Endpoints (superadmin only) ───────────────────────
-  const ADMIN_DB_TABLES: Record<string, { pk: string; searchCols: string[] }> = {
-    pokescan_users:                   { pk: "id",    searchCols: ["username", "email", "display_name"] },
-    pokescan_blocked_credentials:     { pk: "id",    searchCols: ["email", "mobile_number", "reason"] },
-    pokescan_sessions:                { pk: "token", searchCols: ["user_id"] },
-    pokemon_sets:                     { pk: "id",    searchCols: ["name", "series"] },
-    pokemon_cards:                    { pk: "id",    searchCols: ["name", "set_id"] },
-    card_pricing:                     { pk: "id",    searchCols: ["card_id"] },
-    ebay_prices:                      { pk: "id",    searchCols: ["card_id", "title"] },
-    pokescan_friendships:             { pk: "id",    searchCols: ["requester_id", "addressee_id", "status"] },
-    pokescan_messages:                { pk: "id",    searchCols: ["sender_id", "recipient_id", "subject", "body"] },
-    pokescan_reports:                 { pk: "id",    searchCols: ["reason", "content_type", "status"] },
-    pokescan_market_listings:         { pk: "id",    searchCols: ["card_name", "user_name", "status"] },
-    pokescan_collections:             { pk: "id",    searchCols: ["card_name", "user_id", "set_name"] },
-    pokescan_chatroom_messages:       { pk: "id",    searchCols: ["sender_username", "body"] },
-    pokescan_admin_activity_log:      { pk: "id",    searchCols: ["action", "target_username", "listing_name"] },
-    pokescan_collector_verifications: { pk: "id",    searchCols: ["user_id", "card_name", "status"] },
-    pokescan_scan_history:            { pk: "id",    searchCols: ["card_name", "set_name"] },
-    sync_status:                      { pk: "id",    searchCols: [] },
-    users:                            { pk: "id",    searchCols: ["username"] },
-  };
+               // ─────────────────────────────────────────────────────────────────────────────
+               // ADMIN DATABASE ENDPOINTS
+               // MARKER: ADMIN_DB_START
+               // ─────────────────────────────────────────────────────────────────────────────
 
-  app.get("/api/admin/db/table/:tableName/schema", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
-    const { tableName } = req.params;
-    if (!ADMIN_DB_TABLES[tableName]) { res.status(400).json({ error: "Unknown table" }); return; }
-    const result = await pool.query(
-      `SELECT column_name, data_type, is_nullable, column_default
-       FROM information_schema.columns
-       WHERE table_name = $1 AND table_schema = 'public'
-       ORDER BY ordinal_position`,
-      [tableName]
-    );
-    res.json({ columns: result.rows, pk: ADMIN_DB_TABLES[tableName].pk });
-  });
+               const ADMIN_DB_TABLES: Record<string, { pk: string; searchCols: string[] }> = {
+                 pokescan_users:                   { pk: "id",    searchCols: ["username", "email", "display_name"] },
+                 pokescan_blocked_credentials:     { pk: "id",    searchCols: ["email", "mobile_number", "reason"] },
+                 pokescan_sessions:                { pk: "token", searchCols: ["user_id"] },
+                 pokemon_sets:                     { pk: "id",    searchCols: ["name", "series"] },
+                 pokemon_cards:                    { pk: "id",    searchCols: ["name", "set_id"] },
+                 card_pricing:                     { pk: "id",    searchCols: ["card_id"] },
+                 ebay_prices:                      { pk: "id",    searchCols: ["card_id", "title"] },
+                 pokescan_friendships:             { pk: "id",    searchCols: ["requester_id", "addressee_id", "status"] },
+                 pokescan_messages:                { pk: "id",    searchCols: ["sender_id", "recipient_id", "subject", "body"] },
+                 pokescan_reports:                 { pk: "id",    searchCols: ["reason", "content_type", "status"] },
+                 pokescan_market_listings:         { pk: "id",    searchCols: ["card_name", "user_name", "status"] },
+                 pokescan_collections:             { pk: "id",    searchCols: ["card_name", "user_id", "set_name"] },
+                 pokescan_chatroom_messages:       { pk: "id",    searchCols: ["sender_username", "body"] },
+                 pokescan_admin_activity_log:      { pk: "id",    searchCols: ["action", "target_username", "listing_name"] },
+                 pokescan_collector_verifications: { pk: "id",    searchCols: ["user_id", "card_name", "status"] },
+                 pokescan_scan_history:            { pk: "id",    searchCols: ["card_name", "set_name"] },
+                 sync_status:                      { pk: "id",    searchCols: [] },
+                 users:                            { pk: "id",    searchCols: ["username"] },
+               };
 
-  app.get("/api/admin/db/table/:tableName", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
-    const { tableName } = req.params;
-    const tbl = ADMIN_DB_TABLES[tableName];
-    if (!tbl) { res.status(400).json({ error: "Unknown table" }); return; }
-    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
-    const pageSize = Math.min(100, Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)));
-    const search = ((req.query.search as string) || "").trim();
-    const offset = (page - 1) * pageSize;
-    const values: any[] = [];
-    let whereClause = "";
-    if (search && tbl.searchCols.length > 0) {
-      const conditions = tbl.searchCols.map((col, i) => `"${col}"::text ILIKE $${i + 1}`);
-      whereClause = `WHERE (${conditions.join(" OR ")})`;
-      values.push(...tbl.searchCols.map(() => `%${search}%`));
-    }
-    const countResult = await pool.query(`SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`, values);
-    const dataResult = await pool.query(
-      `SELECT * FROM "${tableName}" ${whereClause} ORDER BY "${tbl.pk}" DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
-      [...values, pageSize, offset]
-    );
-    res.json({ rows: dataResult.rows, total: parseInt(countResult.rows[0].count, 10), page, pageSize });
-  });
+               // ─────────────────────────────────────────────────────────────────────────────
+               // TABLE SCHEMA
+               // MARKER: ADMIN_DB_SCHEMA
+               // ─────────────────────────────────────────────────────────────────────────────
 
-  app.get("/api/admin/db/tables", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
-    const tables = await Promise.all(
-      Object.keys(ADMIN_DB_TABLES).map(async (t) => {
-        const r = await pool.query(`SELECT COUNT(*) as count FROM "${t}"`);
-        return { name: t, rowCount: parseInt(r.rows[0].count, 10) };
-      })
-    );
-    res.json({ tables });
-  });
+               app.get("/api/admin/db/table/:tableName/schema", async (req: Request, res: Response) => {
+                 try {
+                   if (!(await isSuperadminSessionOnly(req))) {
+                     return res.status(403).json({ error: "Forbidden" });
+                   }
 
-  app.patch("/api/admin/db/table/:tableName/:id", express.json({ limit: "2mb" }), async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
-    const { tableName, id } = req.params;
-    const tbl = ADMIN_DB_TABLES[tableName];
-    if (!tbl) { res.status(400).json({ error: "Unknown table" }); return; }
-    const body = req.body as Record<string, any>;
-    const schemaResult = await pool.query(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
-      [tableName]
-    );
-    const validCols = new Set<string>(schemaResult.rows.map((r: any) => r.column_name as string));
-    const updates = Object.entries(body).filter(([k]) => k !== tbl.pk && validCols.has(k));
-    if (updates.length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
-    const setClauses = updates.map(([col], i) => `"${col}" = $${i + 1}`);
-    const values: any[] = [...updates.map(([, v]) => (v === "" ? null : v)), id];
-    await pool.query(`UPDATE "${tableName}" SET ${setClauses.join(", ")} WHERE "${tbl.pk}" = $${values.length}`, values);
-    const updated = await pool.query(`SELECT * FROM "${tableName}" WHERE "${tbl.pk}" = $1`, [id]);
-    res.json({ row: updated.rows[0] || null });
-  });
+                   const { tableName } = req.params;
 
-  app.delete("/api/admin/db/table/:tableName/:id", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
-    const { tableName, id } = req.params;
-    const tbl = ADMIN_DB_TABLES[tableName];
-    if (!tbl) { res.status(400).json({ error: "Unknown table" }); return; }
-    await pool.query(`DELETE FROM "${tableName}" WHERE "${tbl.pk}" = $1`, [id]);
-    res.json({ success: true });
-  });
+                   if (!ADMIN_DB_TABLES[tableName]) {
+                     return res.status(400).json({ error: "Unknown table" });
+                   }
 
-  app.post("/api/admin/db/table/:tableName", express.json({ limit: "2mb" }), async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
-    const { tableName } = req.params;
-    const tbl = ADMIN_DB_TABLES[tableName];
-    if (!tbl) { res.status(400).json({ error: "Unknown table" }); return; }
-    const body = req.body as Record<string, any>;
-    const schemaResult = await pool.query(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND table_schema = 'public'`,
-      [tableName]
-    );
-    const validCols = new Set<string>(schemaResult.rows.map((r: any) => r.column_name as string));
-    const entries = Object.entries(body).filter(([k]) => validCols.has(k) && body[k] !== "" && body[k] !== null && body[k] !== undefined);
-    if (entries.length === 0) { res.status(400).json({ error: "No valid fields provided" }); return; }
-    const cols = entries.map(([k]) => `"${k}"`).join(", ");
-    const placeholders = entries.map((_, i) => `$${i + 1}`).join(", ");
-    const values = entries.map(([, v]) => v);
-    const result = await pool.query(`INSERT INTO "${tableName}" (${cols}) VALUES (${placeholders}) RETURNING *`, values);
-    res.json({ row: result.rows[0] });
-  });
+                   const result = await pool.query(
+                     `
+                     SELECT column_name, data_type, is_nullable, column_default
+                     FROM information_schema.columns
+                     WHERE table_name = $1
+                     AND table_schema = 'public'
+                     ORDER BY ordinal_position
+                     `,
+                     [tableName]
+                   );
 
-  const httpServer = createServer(app);
+                   return res.json({
+                     columns: result.rows,
+                     pk: ADMIN_DB_TABLES[tableName].pk,
+                   });
 
+                 } catch (err) {
+                   console.error("[ADMIN_DB_SCHEMA]", err);
+                   return res.status(500).json({ error: "Internal server error" });
+                 }
+               });
 
-  app.get("/api/admin/resync-progress", (_req: Request, res: Response) => {
-    res.json(resyncState);
-  });
+               // ─────────────────────────────────────────────────────────────────────────────
+               // TABLE DATA
+               // MARKER: ADMIN_DB_TABLE_DATA
+               // ─────────────────────────────────────────────────────────────────────────────
 
-  app.post("/api/admin/full-resync", async (_req: Request, res: Response) => {
-    if (resyncState.running) {
-      return res.status(409).json({
-        success: false,
-        error: "Resync already running",
+               app.get("/api/admin/db/table/:tableName", async (req: Request, res: Response) => {
+                 try {
+                   if (!(await isSuperadminSessionOnly(req))) {
+                     return res.status(403).json({ error: "Forbidden" });
+                   }
+
+                   const { tableName } = req.params;
+                   const tbl = ADMIN_DB_TABLES[tableName];
+
+                   if (!tbl) {
+                     return res.status(400).json({ error: "Unknown table" });
+                   }
+
+                   const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+                   const pageSize = Math.min(100, Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)));
+                   const search = ((req.query.search as string) || "").trim();
+                   const offset = (page - 1) * pageSize;
+
+                   const values: any[] = [];
+                   let whereClause = "";
+
+                   if (search && tbl.searchCols.length > 0) {
+                     const conditions = tbl.searchCols.map(
+                       (col, i) => `"${col}"::text ILIKE $${i + 1}`
+                     );
+
+                     whereClause = `WHERE (${conditions.join(" OR ")})`;
+
+                     values.push(
+                       ...tbl.searchCols.map(() => `%${search}%`)
+                     );
+                   }
+
+                   const countResult = await pool.query(
+                     `SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`,
+                     values
+                   );
+
+                   const dataResult = await pool.query(
+                     `
+                     SELECT *
+                     FROM "${tableName}"
+                     ${whereClause}
+                     ORDER BY "${tbl.pk}" DESC
+                     LIMIT $${values.length + 1}
+                     OFFSET $${values.length + 2}
+                     `,
+                     [...values, pageSize, offset]
+                   );
+
+                   return res.json({
+                     rows: dataResult.rows,
+                     total: parseInt(countResult.rows[0].count, 10),
+                     page,
+                     pageSize,
+                   });
+
+                 } catch (err) {
+                   console.error("[ADMIN_DB_TABLE]", err);
+                   return res.status(500).json({ error: "Internal server error" });
+                 }
+               });
+
+               // ─────────────────────────────────────────────────────────────────────────────
+               // TABLE LIST
+               // MARKER: ADMIN_DB_TABLES_LIST
+               // ─────────────────────────────────────────────────────────────────────────────
+
+               app.get("/api/admin/db/tables", async (req: Request, res: Response) => {
+                 try {
+                   if (!(await isSuperadminSessionOnly(req))) {
+                     return res.status(403).json({ error: "Forbidden" });
+                   }
+
+                   const tables = await Promise.all(
+                     Object.keys(ADMIN_DB_TABLES).map(async (t) => {
+                       const r = await pool.query(
+                         `SELECT COUNT(*) as count FROM "${t}"`
+                       );
+
+                       return {
+                         name: t,
+                         rowCount: parseInt(r.rows[0].count, 10),
+                       };
+                     })
+                   );
+
+                   return res.json({ tables });
+
+                 } catch (err) {
+                   console.error("[ADMIN_DB_TABLES]", err);
+                   return res.status(500).json({ error: "Internal server error" });
+                 }
+               });
+
+               // ─────────────────────────────────────────────────────────────────────────────
+               // HTTP SERVER
+               // MARKER: HTTP_SERVER
+               // ─────────────────────────────────────────────────────────────────────────────
+
+               const httpServer = createServer(app);
+
+               // ─────────────────────────────────────────────────────────────────────────────
+               // RESYNC PROGRESS
+               // MARKER: RESYNC_PROGRESS
+               // ─────────────────────────────────────────────────────────────────────────────
+
+               app.get("/api/admin/resync-progress", (_req: Request, res: Response) => {
+                 return res.json(resyncState);
+               });
+
+               // ─────────────────────────────────────────────────────────────────────────────
+               // FULL RESYNC
+               // MARKER: FULL_RESYNC
+               // ─────────────────────────────────────────────────────────────────────────────
+
+      app.post("/api/admin/full-resync", async (_req: Request, res: Response) => {
+      if (resyncState.running) {
+        return res.status(409).json({
+          success: false,
+          error: "Resync already running",
+        });
+      }
+
+      resyncState = {
+        running: true,
+        progress: null,
+        error: null,
+        startedAt: new Date(),
+        finishedAt: null,
+      };
+
+      res.json({
+        success: true,
+        message: "Full resync started",
       });
-    }
 
-    resyncState = {
-      running: true,
-      progress: null,
-      error: null,
-      startedAt: new Date(),
-      finishedAt: null,
-    };
+      void runFullResync((p) => {
+        resyncState.progress = p;
+      })
+        .then(() => {
+          resyncState.running = false;
+          resyncState.finishedAt = new Date();
+        })
+        .catch((err: any) => {
+          console.error("[FullResync] failed:", err);
 
-    res.json({
-      success: true,
-      message: "Full resync started",
+          resyncState.running = false;
+          resyncState.error = err?.message || "Full resync failed";
+          resyncState.finishedAt = new Date();
+        });
     });
-
-    void runFullResync((p) => {
-      resyncState.progress = p;
-    })
-      .then(() => {
-        resyncState.running = false;
-        resyncState.finishedAt = new Date();
-      })
-      .catch((err: any) => {
-        console.error("[FullResync] failed:", err);
-        resyncState.running = false;
-        resyncState.error = err?.message || "Full resync failed";
-        resyncState.finishedAt = new Date();
-      });
-  });
 
   return httpServer;
 }
