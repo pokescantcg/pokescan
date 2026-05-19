@@ -1363,8 +1363,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           pricing[0] ?? null,
           ebayData,
         );
-        
-        console.error("CARD ENDPOINT FAILURE:", error);
+
         formattedCard.variants = (variantRows || []).map((v) => ({
           variantId: v?.id || null,
           finishType: v?.finishType || "normal",
@@ -1379,7 +1378,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             : formattedCard.images || null,
         }));
-
+        setCardCache(cardId, { data: formattedCard, source: "db" });
         const setData = await db
           .select()
           .from(pokemonSets)
