@@ -39,7 +39,21 @@ import {
   pokescanScanHistory,
   pokescanBlockedCredentials,
 } from "@shared/schema";
-import { eq, desc, sql, ilike, or, and, ne, exists, lt, gt, inArray, isNull, isNotNull } from "drizzle-orm";
+import {
+  eq,
+  desc,
+  sql,
+  ilike,
+  or,
+  and,
+  ne,
+  exists,
+  lt,
+  gt,
+  inArray,
+  isNull,
+  isNotNull,
+} from "drizzle-orm";
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
 import { runFullResync } from "./full-resync";
 import type { ScrydexSyncProgress } from "./scrydex-scraper";
@@ -50,12 +64,19 @@ let resyncState: {
   error: string | null;
   startedAt: Date | null;
   finishedAt: Date | null;
-} = { running: false, progress: null, error: null, startedAt: null, finishedAt: null };
+} = {
+  running: false,
+  progress: null,
+  error: null,
+  startedAt: null,
+  finishedAt: null,
+};
 
 async function cleanupOldChatroomMessages() {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const result = await db.delete(pokescanChatroomMessages)
+    const result = await db
+      .delete(pokescanChatroomMessages)
       .where(lt(pokescanChatroomMessages.createdAt, sevenDaysAgo));
     console.log("[Chatroom] Cleaned up old messages");
   } catch (e) {
@@ -72,7 +93,8 @@ const POKEMON_API = "https://api.pokemontcg.io/v2";
 
 function tcgHeaders(): Record<string, string> {
   const h: Record<string, string> = { "User-Agent": "PokeScanTCG/1.0" };
-  if (process.env.POKEMON_TCG_API_KEY) h["X-Api-Key"] = process.env.POKEMON_TCG_API_KEY;
+  if (process.env.POKEMON_TCG_API_KEY)
+    h["X-Api-Key"] = process.env.POKEMON_TCG_API_KEY;
   return h;
 }
 
@@ -106,7 +128,9 @@ function warmCardCache(cards: any[]) {
   }
 }
 
-function detectSetLanguage(setId: string): "english" | "japanese" | "korean" | "chinese" {
+function detectSetLanguage(
+  setId: string,
+): "english" | "japanese" | "korean" | "chinese" {
   const id = setId.toLowerCase();
   if (id.includes("_ja")) return "japanese";
   if (id.includes("_ko")) return "korean";
@@ -122,7 +146,8 @@ const SET_REF_TTL_MS = 60 * 60 * 1000; // rebuild once per hour
 
 async function buildSetReferencePrompt(): Promise<string> {
   const now = Date.now();
-  if (_setRefCache && now - _setRefCacheAt < SET_REF_TTL_MS) return _setRefCache;
+  if (_setRefCache && now - _setRefCacheAt < SET_REF_TTL_MS)
+    return _setRefCache;
 
   try {
     const sets = await db
@@ -137,12 +162,30 @@ async function buildSetReferencePrompt(): Promise<string> {
       .where(isNull(pokemonSets.deletedAt))
       .orderBy(pokemonSets.releaseDate);
 
-    const byLang: Record<string, Array<{ id: string; name: string; printedTotal: number | null; total: number | null; releaseDate: string | null }>> = {
-      english: [], japanese: [], korean: [], chinese: [],
+    const byLang: Record<
+      string,
+      Array<{
+        id: string;
+        name: string;
+        printedTotal: number | null;
+        total: number | null;
+        releaseDate: string | null;
+      }>
+    > = {
+      english: [],
+      japanese: [],
+      korean: [],
+      chinese: [],
     };
     for (const s of sets) byLang[detectSetLanguage(s.id)].push(s);
 
-    const fmt = (s: { id: string; name: string; printedTotal: number | null; total: number | null; releaseDate: string | null }) => {
+    const fmt = (s: {
+      id: string;
+      name: string;
+      printedTotal: number | null;
+      total: number | null;
+      releaseDate: string | null;
+    }) => {
       const year = s.releaseDate?.substring(0, 4) ?? "?";
       const count = s.printedTotal ?? s.total ?? "?";
       return `${s.id}|${s.name}|${count}|${year}`;
@@ -175,7 +218,9 @@ async function buildSetReferencePrompt(): Promise<string> {
 
     _setRefCache = lines.join("\n");
     _setRefCacheAt = now;
-    console.log(`[SetRef] Built set reference prompt: ${sets.length} sets, ${_setRefCache.length} chars`);
+    console.log(
+      `[SetRef] Built set reference prompt: ${sets.length} sets, ${_setRefCache.length} chars`,
+    );
     return _setRefCache;
   } catch (e) {
     console.error("[SetRef] Failed to build set reference:", e);
@@ -209,7 +254,15 @@ interface FormattedCard {
   images: { small: string | null; large: string | null };
   artist: string | null;
   hp: string | null;
-  set: { id: string; name?: string; series?: string; printedTotal?: number | null; total?: number | null; releaseDate?: string | null; images?: { symbol: string | null; logo: string | null } };
+  set: {
+    id: string;
+    name?: string;
+    series?: string;
+    printedTotal?: number | null;
+    total?: number | null;
+    releaseDate?: string | null;
+    images?: { symbol: string | null; logo: string | null };
+  };
   tcgplayer?: {
     prices: {
       normal?: {
@@ -264,7 +317,7 @@ interface FormattedCard {
 function dbVariantToApiFormat(
   card: typeof pokemonCards.$inferSelect,
   pricing?: typeof cardPricing.$inferSelect | null,
-  ebay?: Array<typeof ebayPrices.$inferSelect>
+  ebay?: Array<typeof ebayPrices.$inferSelect>,
 ): FormattedCard {
   const base: FormattedCard = {
     id: card.id,
@@ -322,7 +375,9 @@ function dbVariantToApiFormat(
 function getSuperadminEmail(): string {
   const email = process.env.SUPERADMIN_EMAIL;
   if (!email) {
-    console.warn("[superadmin] SUPERADMIN_EMAIL env var is not set. Superadmin features will be unavailable.");
+    console.warn(
+      "[superadmin] SUPERADMIN_EMAIL env var is not set. Superadmin features will be unavailable.",
+    );
     return "";
   }
   return email.toLowerCase().trim();
@@ -348,7 +403,11 @@ async function isSuperadminSessionOnly(req: Request): Promise<boolean> {
     const user = await storage.validateSession(token);
     const superadminEmail = getSuperadminEmail();
     if (!superadminEmail) return false;
-    return !!(user && user.role === "admin" && user.email?.toLowerCase() === superadminEmail);
+    return !!(
+      user &&
+      user.role === "admin" &&
+      user.email?.toLowerCase() === superadminEmail
+    );
   } catch {
     return false;
   }
@@ -383,11 +442,15 @@ async function isSuperadminAuthorized(req: Request): Promise<boolean> {
 async function seedSuperadmin(): Promise<void> {
   try {
     const email = getSuperadminEmail();
-    const initialPassword = process.env.SUPERADMIN_INITIAL_PASSWORD || process.env.SUPERADMIN_PASSWORD;
+    const initialPassword =
+      process.env.SUPERADMIN_INITIAL_PASSWORD ||
+      process.env.SUPERADMIN_PASSWORD;
     const existing = await storage.getUserByEmail(email);
     if (!existing) {
       if (!initialPassword) {
-        console.warn("[seedSuperadmin] SUPERADMIN_INITIAL_PASSWORD env var not set — cannot create initial superadmin.");
+        console.warn(
+          "[seedSuperadmin] SUPERADMIN_INITIAL_PASSWORD env var not set — cannot create initial superadmin.",
+        );
         return;
       }
       const passwordHash = await bcrypt.hash(initialPassword, 10);
@@ -415,7 +478,11 @@ async function seedSuperadmin(): Promise<void> {
         console.log("[seedSuperadmin] Synced password for superadmin:", email);
       }
       if (Object.keys(updates).length > 0) {
-        console.log("[seedSuperadmin] Updated superadmin user:", email, Object.keys(updates));
+        console.log(
+          "[seedSuperadmin] Updated superadmin user:",
+          email,
+          Object.keys(updates),
+        );
       }
     }
   } catch (err) {
@@ -556,7 +623,10 @@ async function logModAction(opts: {
   }
 }
 
-async function cancelStripeForUser(userId: string, immediate: boolean = true): Promise<void> {
+async function cancelStripeForUser(
+  userId: string,
+  immediate: boolean = true,
+): Promise<void> {
   try {
     const u = await storage.getUserById(userId);
     if (!u) return;
@@ -568,9 +638,13 @@ async function cancelStripeForUser(userId: string, immediate: boolean = true): P
         if (immediate) {
           await stripe.subscriptions.cancel(subId);
         } else {
-          await stripe.subscriptions.update(subId, { cancel_at_period_end: true });
+          await stripe.subscriptions.update(subId, {
+            cancel_at_period_end: true,
+          });
         }
-        console.log(`[Mod] Cancelled Stripe sub ${subId} for user ${userId} (immediate=${immediate})`);
+        console.log(
+          `[Mod] Cancelled Stripe sub ${subId} for user ${userId} (immediate=${immediate})`,
+        );
       } catch (e: any) {
         console.error(`[Mod] Stripe cancel failed for ${userId}:`, e?.message);
       }
@@ -585,25 +659,44 @@ async function cancelStripeForUser(userId: string, immediate: boolean = true): P
   }
 }
 
-async function isCredentialBlocked(email?: string | null, mobile?: string | null): Promise<boolean> {
+async function isCredentialBlocked(
+  email?: string | null,
+  mobile?: string | null,
+): Promise<boolean> {
   if (!email && !mobile) return false;
   const conds: string[] = [];
   const params: any[] = [];
-  if (email) { params.push(email.toLowerCase().trim()); conds.push(`LOWER(email) = $${params.length}`); }
-  if (mobile) { params.push(mobile.trim()); conds.push(`mobile_number = $${params.length}`); }
+  if (email) {
+    params.push(email.toLowerCase().trim());
+    conds.push(`LOWER(email) = $${params.length}`);
+  }
+  if (mobile) {
+    params.push(mobile.trim());
+    conds.push(`mobile_number = $${params.length}`);
+  }
   const r = await pool.query(
     `SELECT 1 FROM pokescan_blocked_credentials WHERE ${conds.join(" OR ")} LIMIT 1`,
-    params
+    params,
   );
   return r.rows.length > 0;
 }
 
-async function addBlockedCredential(email: string | null, mobile: string | null, reason: string, blockedBy: string | null): Promise<void> {
+async function addBlockedCredential(
+  email: string | null,
+  mobile: string | null,
+  reason: string,
+  blockedBy: string | null,
+): Promise<void> {
   if (!email && !mobile) return;
   try {
     await pool.query(
       `INSERT INTO pokescan_blocked_credentials (email, mobile_number, reason, blocked_by) VALUES ($1, $2, $3, $4)`,
-      [email ? email.toLowerCase().trim() : null, mobile ? mobile.trim() : null, reason, blockedBy]
+      [
+        email ? email.toLowerCase().trim() : null,
+        mobile ? mobile.trim() : null,
+        reason,
+        blockedBy,
+      ],
     );
   } catch (e) {
     console.warn("[Mod] addBlockedCredential failed:", (e as any)?.message);
@@ -611,7 +704,9 @@ async function addBlockedCredential(email: string | null, mobile: string | null,
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  startSyncService().catch((e) => console.error("[CardSync] startSyncService failed:", e));
+  startSyncService().catch((e) =>
+    console.error("[CardSync] startSyncService failed:", e),
+  );
   seedSuperadmin().catch((e) => console.error("[seedSuperadmin] failed:", e));
   runSchemaMigrations().catch((e) => console.error("[Migration] failed:", e));
 
@@ -620,7 +715,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.patch("/api/admin/config", async (req: Request, res: Response) => {
-    if (!await isSuperadminAuthorized(req)) {
+    if (!(await isSuperadminAuthorized(req))) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -646,14 +741,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
               db
                 .select({ id: pokemonCards.id })
                 .from(pokemonCards)
-                .where(and(eq(pokemonCards.setId, pokemonSets.id), isNull(pokemonCards.deletedAt)))
+                .where(
+                  and(
+                    eq(pokemonCards.setId, pokemonSets.id),
+                    isNull(pokemonCards.deletedAt),
+                  ),
+                ),
             ),
-            or(eq(pokemonSets.hidden, false), sql`${pokemonSets.hidden} IS NULL`)
-          )
+            or(
+              eq(pokemonSets.hidden, false),
+              sql`${pokemonSets.hidden} IS NULL`,
+            ),
+          ),
         )
         .orderBy(desc(pokemonSets.releaseDate));
       if (dbSets.length > 0) {
-        res.json({ data: dbSets.map(dbSetToApiFormat), count: dbSets.length, source: "db" });
+        res.json({
+          data: dbSets.map(dbSetToApiFormat),
+          count: dbSets.length,
+          source: "db",
+        });
         return;
       }
     } catch (dbError) {
@@ -663,7 +770,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
-      const response = await fetch(`${POKEMON_API}/sets?orderBy=-releaseDate&pageSize=250`, { signal: controller.signal });
+      const response = await fetch(
+        `${POKEMON_API}/sets?orderBy=-releaseDate&pageSize=250`,
+        { signal: controller.signal },
+      );
       clearTimeout(timeout);
       if (!response.ok) throw new Error(`TCG API returned ${response.status}`);
       const data = await response.json();
@@ -674,61 +784,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/pokemon/sets/:setId/cards", async (req: Request, res: Response) => {
-    try {
-      const { setId } = req.params;
-      const page = parseInt((req.query.page as string) || "1", 10);
-      const pageSize = parseInt((req.query.pageSize as string) || "250", 10);
-      const offset = (page - 1) * pageSize;
-      const cacheKey = `${setId}:${page}:${pageSize}`;
-
-      // 1. Check in-memory cache (instant)
-      const memHit = getMemCache(cacheKey);
-      if (memHit) {
-        res.json(memHit);
-        return;
-      }
-
-      // Non-English set IDs (JP/KO/ZH suffixes or non-TCG patterns) are not in the
-      // TCG API — only serve from DB, never fall through to TCG API.
-      const nonEnglishPatterns = ["_ja", "_ko", "_zh", "_cn", "topsun", "babanuki", "mengka",  "oldmaid","hanafuda","_pocket"];
-      const isNonEnglish = nonEnglishPatterns.some((p) => setId.toLowerCase().includes(p));
-
-      // 2. Check DB
+  app.get(
+    "/api/pokemon/sets/:setId/cards",
+    async (req: Request, res: Response) => {
       try {
-        const [totalCountResult, setInfoResult] = await Promise.all([
-          db.select({ count: sql<number>`count(*)::int` }).from(pokemonCards).where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt))),
-          db.select().from(pokemonSets).where(and(eq(pokemonSets.id, setId), isNull(pokemonSets.deletedAt))).limit(1),
-        ]);
-        const totalCount = totalCountResult[0]?.count ?? 0;
-        const setRow = setInfoResult[0] ?? null;
-        // Use printedTotal (base cards only) not total (which includes secret/variant extras).
-        // This prevents the 90% check from failing when variants inflate the total count.
-        const expectedTotal = setRow?.printedTotal ?? setRow?.total ?? 0;
+        const { setId } = req.params;
+        const page = parseInt((req.query.page as string) || "1", 10);
+        const pageSize = parseInt((req.query.pageSize as string) || "250", 10);
+        const offset = (page - 1) * pageSize;
+        const cacheKey = `${setId}:${page}:${pageSize}`;
 
-        // For non-English sets: serve whatever cards we have (any amount).
-        // For English sets: only serve if ≥90% seeded (ensures complete sets).
-        const hasCards = totalCount > 0;
-        const fullySeeded = hasCards && (isNonEnglish || expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
+        // 1. Check in-memory cache (instant)
+        const memHit = getMemCache(cacheKey);
+        if (memHit) {
+          res.json(memHit);
+          return;
+        }
 
-        // LEFT JOIN so cards without any variant row are still included (older sets).
-        // Without this, only cards that have a pokemonCardVariants row would appear.
-        const dbCards = await db
-          .select({
-            card: pokemonCards,
-            variant: pokemonCardVariants,
-          })
-          .from(pokemonCards)
-          .leftJoin(
-            pokemonCardVariants,
-            eq(pokemonCardVariants.cardId, pokemonCards.id)
-          )
-          .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)))
-          .orderBy(pokemonCards.number);
+        // Non-English set IDs (JP/KO/ZH suffixes or non-TCG patterns) are not in the
+        // TCG API — only serve from DB, never fall through to TCG API.
+        const nonEnglishPatterns = [
+          "_ja",
+          "_ko",
+          "_zh",
+          "_cn",
+          "topsun",
+          "babanuki",
+          "mengka",
+          "oldmaid",
+          "hanafuda",
+          "_pocket",
+        ];
+        const isNonEnglish = nonEnglishPatterns.some((p) =>
+          setId.toLowerCase().includes(p),
+        );
 
-        console.log(`[SetCards] ${setId}: dbCards=${totalCount} expected=${expectedTotal} rows=${dbCards.length} fullySeeded=${fullySeeded}`);
+        // 2. Check DB
+        try {
+          const [totalCountResult, setInfoResult] = await Promise.all([
+            db
+              .select({ count: sql<number>`count(*)::int` })
+              .from(pokemonCards)
+              .where(
+                and(
+                  eq(pokemonCards.setId, setId),
+                  isNull(pokemonCards.deletedAt),
+                ),
+              ),
+            db
+              .select()
+              .from(pokemonSets)
+              .where(
+                and(eq(pokemonSets.id, setId), isNull(pokemonSets.deletedAt)),
+              )
+              .limit(1),
+          ]);
+          const totalCount = totalCountResult[0]?.count ?? 0;
+          const setRow = setInfoResult[0] ?? null;
+          // Use printedTotal (base cards only) not total (which includes secret/variant extras).
+          // This prevents the 90% check from failing when variants inflate the total count.
+          const expectedTotal = setRow?.printedTotal ?? setRow?.total ?? 0;
 
-                 if (fullySeeded && dbCards.length > 0) {
+          // For non-English sets: serve whatever cards we have (any amount).
+          // For English sets: only serve if ≥90% seeded (ensures complete sets).
+          const hasCards = totalCount > 0;
+          const fullySeeded =
+            hasCards &&
+            (isNonEnglish ||
+              expectedTotal === 0 ||
+              totalCount >= Math.floor(expectedTotal * 0.9));
+
+          // LEFT JOIN so cards without any variant row are still included (older sets).
+          // Without this, only cards that have a pokemonCardVariants row would appear.
+          const dbCards = await db
+            .select({
+              card: pokemonCards,
+              variant: pokemonCardVariants,
+            })
+            .from(pokemonCards)
+            .leftJoin(
+              pokemonCardVariants,
+              eq(pokemonCardVariants.cardId, pokemonCards.id),
+            )
+            .where(
+              and(
+                eq(pokemonCards.setId, setId),
+                isNull(pokemonCards.deletedAt),
+              ),
+            )
+            .orderBy(pokemonCards.number);
+
+          console.log(
+            `[SetCards] ${setId}: dbCards=${totalCount} expected=${expectedTotal} rows=${dbCards.length} fullySeeded=${fullySeeded}`,
+          );
+
+          if (fullySeeded && dbCards.length > 0) {
             const cardMap = new Map();
 
             for (const { card, variant } of dbCards) {
@@ -783,7 +933,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const formattedCards = Array.from(cardMap.values());
 
             console.log(
-              `[SetCards] ${setId}: serving ${formattedCards.length} grouped cards from DB`
+              `[SetCards] ${setId}: serving ${formattedCards.length} grouped cards from DB`,
             );
 
             const payload = {
@@ -800,93 +950,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
             res.json(payload);
             return;
           } else {
-
-      // 3. Fetch from TCG API for English sets (30s timeout)
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
-      const response = await fetch(
-        `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`,
-        { signal: controller.signal, headers: tcgHeaders() }
-      );
-      clearTimeout(timeout);
-      if (!response.ok) throw new Error(`TCG API ${response.status}`);
-      const data = await response.json();
-
-      // Cache the result and warm the individual card cache
-      setMemCache(cacheKey, data);
-      warmCardCache(data.data || []);
-      res.json(data);
-
-      // 4. Background: seed all pages of this set's cards into DB for future fast loads
-      (async () => {
-        try {
-          let bgPage = 1;
-          let seeded = 0;
-          while (true) {
-            const ctrl2 = new AbortController();
-            const t2 = setTimeout(() => ctrl2.abort(), 30000);
-            const r2 = await fetch(
-              `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${bgPage}&pageSize=250`,
-              { signal: ctrl2.signal }
+            // 3. Fetch from TCG API for English sets (30s timeout)
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30000);
+            const response = await fetch(
+              `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`,
+              { signal: controller.signal, headers: tcgHeaders() },
             );
-            clearTimeout(t2);
-            if (!r2.ok) break;
-            const d2 = await r2.json();
-            const cards2: any[] = d2.data || [];
-            if (cards2.length === 0) break;
+            clearTimeout(timeout);
+            if (!response.ok) throw new Error(`TCG API ${response.status}`);
+            const data = await response.json();
 
-            for (const card of cards2) {
+            // Cache the result and warm the individual card cache
+            setMemCache(cacheKey, data);
+            warmCardCache(data.data || []);
+            res.json(data);
+
+            // 4. Background: seed all pages of this set's cards into DB for future fast loads
+            async () => {
               try {
-                await db.insert(pokemonCards).values({
-                  id: card.id,
-                  setId: card.set?.id || setId,
-                  name: card.name,
-                  number: card.number,
-                  rarity: card.rarity || null,
-                  supertype: card.supertype || null,
-                  subtypes: Array.isArray(card.subtypes) ? card.subtypes.join(",") : null,
-                  hp: card.hp || null,
-                  artist: card.artist || null,
-                  imageSmall: card.images?.small || null,
-                  imageLarge: card.images?.large || null,
-                }).onConflictDoNothing();
-              } catch {}
-            }
-            seeded += cards2.length;
-            if (cards2.length < 250) break;
-            bgPage++;
+                let bgPage = 1;
+                let seeded = 0;
+                while (true) {
+                  const ctrl2 = new AbortController();
+                  const t2 = setTimeout(() => ctrl2.abort(), 30000);
+                  const r2 = await fetch(
+                    `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${bgPage}&pageSize=250`,
+                    { signal: ctrl2.signal },
+                  );
+                  clearTimeout(t2);
+                  if (!r2.ok) break;
+                  const d2 = await r2.json();
+                  const cards2: any[] = d2.data || [];
+                  if (cards2.length === 0) break;
+
+                  for (const card of cards2) {
+                    try {
+                      await db
+                        .insert(pokemonCards)
+                        .values({
+                          id: card.id,
+                          setId: card.set?.id || setId,
+                          name: card.name,
+                          number: card.number,
+                          rarity: card.rarity || null,
+                          supertype: card.supertype || null,
+                          subtypes: Array.isArray(card.subtypes)
+                            ? card.subtypes.join(",")
+                            : null,
+                          hp: card.hp || null,
+                          artist: card.artist || null,
+                          imageSmall: card.images?.small || null,
+                          imageLarge: card.images?.large || null,
+                        })
+                        .onConflictDoNothing();
+                    } catch {}
+                  }
+                  seeded += cards2.length;
+                  if (cards2.length < 250) break;
+                  bgPage++;
+                }
+                if (seeded > 0) {
+                  console.log(
+                    `[BgSeed] Seeded ${seeded} cards for set ${setId}`,
+                  );
+                  // Invalidate mem cache so next request reads from DB
+                  for (const k of setCardsMemCache.keys()) {
+                    if (k.startsWith(`${setId}:`)) setCardsMemCache.delete(k);
+                  }
+                }
+              } catch (bgErr) {
+                // Silent — background seed failure is non-critical
+              }
+            };
           }
-          if (seeded > 0) {
-            console.log(`[BgSeed] Seeded ${seeded} cards for set ${setId}`);
-            // Invalidate mem cache so next request reads from DB
-            for (const k of setCardsMemCache.keys()) {
-              if (k.startsWith(`${setId}:`)) setCardsMemCache.delete(k);
-            }
+        } catch (error: any) {
+          if (error?.name === "AbortError") {
+            res
+              .status(504)
+              .json({
+                error: "Cards took too long to load. Please try again.",
+              });
+          } else {
+            console.error("Failed to fetch set cards:", error);
+            res
+              .status(500)
+              .json({ error: "Failed to fetch cards. Please try again." });
           }
-        } catch (bgErr) {
-          // Silent — background seed failure is non-critical
         }
-      });
-  }                 
-    } catch (error: any) {
-      if (error?.name === "AbortError") {
-        res.status(504).json({ error: "Cards took too long to load. Please try again." });
-      } else {
-        console.error("Failed to fetch set cards:", error);
-        res.status(500).json({ error: "Failed to fetch cards. Please try again." });
+      } catch (err: any) {
+        if (!res.headersSent) {
+          if (err?.name === "AbortError") {
+            res
+              .status(504)
+              .json({
+                error: "Cards took too long to load. Please try again.",
+              });
+          } else {
+            console.error("Failed to fetch set cards (outer):", err);
+            res
+              .status(500)
+              .json({ error: "Failed to fetch cards. Please try again." });
+          }
+        }
       }
-    }
-  } catch (err: any) {
-    if (!res.headersSent) {
-      if (err?.name === "AbortError") {
-        res.status(504).json({ error: "Cards took too long to load. Please try again." });
-      } else {
-        console.error("Failed to fetch set cards (outer):", err);
-        res.status(500).json({ error: "Failed to fetch cards. Please try again." });
-      }
-    }
-  }
-  });
+    },
+  );
 
   app.get("/api/pokemon/cards/search", async (req: Request, res: Response) => {
     try {
@@ -905,7 +1074,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .select({ card: pokemonCards, set: pokemonSets })
           .from(pokemonCards)
           .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
-          .where(and(ilike(pokemonCards.name, `%${query.trim()}%`), isNull(pokemonCards.deletedAt)))
+          .where(
+            and(
+              ilike(pokemonCards.name, `%${query.trim()}%`),
+              isNull(pokemonCards.deletedAt),
+            ),
+          )
           .orderBy(desc(pokemonSets.releaseDate))
           .limit(pageSize)
           .offset(offset);
@@ -930,10 +1104,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const totalCountResult = await db
             .select({ count: sql<number>`count(*)::int` })
             .from(pokemonCards)
-            .where(and(ilike(pokemonCards.name, `%${query.trim()}%`), isNull(pokemonCards.deletedAt)));
+            .where(
+              and(
+                ilike(pokemonCards.name, `%${query.trim()}%`),
+                isNull(pokemonCards.deletedAt),
+              ),
+            );
 
           const totalCount = totalCountResult[0]?.count ?? formatted.length;
-          res.json({ data: formatted, count: formatted.length, totalCount, source: "db" });
+          res.json({
+            data: formatted,
+            count: formatted.length,
+            totalCount,
+            source: "db",
+          });
           return;
         }
       } catch (dbErr) {
@@ -947,12 +1131,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const encodedQuery = encodeURIComponent(`name:"${query.trim()}*"`);
         const response = await fetch(
           `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&page=${page}&pageSize=${pageSize}`,
-          { signal: ctrl.signal, headers: tcgHeaders() }
+          { signal: ctrl.signal, headers: tcgHeaders() },
         );
         clearTimeout(timer);
         const text = await response.text();
         if (!response.ok) {
-          console.error(`Pokemon TCG API error ${response.status}: ${text.substring(0, 200)}`);
+          console.error(
+            `Pokemon TCG API error ${response.status}: ${text.substring(0, 200)}`,
+          );
           res.json({ data: [], count: 0, totalCount: 0 });
           return;
         }
@@ -961,7 +1147,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (apiErr: any) {
         clearTimeout(timer);
         if (apiErr.name === "AbortError") {
-          res.json({ data: [], count: 0, totalCount: 0, error: "Search timed out" });
+          res.json({
+            data: [],
+            count: 0,
+            totalCount: 0,
+            error: "Search timed out",
+          });
         } else {
           console.error("Failed to search cards:", apiErr);
           res.json({ data: [], count: 0, totalCount: 0 });
@@ -973,99 +1164,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/pokemon/sets/:setId/all-cards", async (req: Request, res: Response) => {
-    try {
-      const { setId } = req.params;
+  app.get(
+    "/api/pokemon/sets/:setId/all-cards",
+    async (req: Request, res: Response) => {
+      try {
+        const { setId } = req.params;
 
-      // Only serve from DB if the set is fully seeded (≥90% of expected cards)
-      const setInfoResult = await db
-        .select({ total: pokemonSets.total })
-        .from(pokemonSets)
-        .where(and(eq(pokemonSets.id, setId), isNull(pokemonSets.deletedAt)))
-        .limit(1);
-      const expectedTotal = setInfoResult[0]?.total ?? 0;
+        // Only serve from DB if the set is fully seeded (≥90% of expected cards)
+        const setInfoResult = await db
+          .select({ total: pokemonSets.total })
+          .from(pokemonSets)
+          .where(and(eq(pokemonSets.id, setId), isNull(pokemonSets.deletedAt)))
+          .limit(1);
+        const expectedTotal = setInfoResult[0]?.total ?? 0;
 
-      const dbCountResult = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(pokemonCards)
-        .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)));
-      const dbCount = dbCountResult[0]?.count ?? 0;
-      const fullySeeded = expectedTotal > 0 && dbCount >= Math.floor(expectedTotal * 0.9);
-
-      if (fullySeeded) {
-        // LEFT JOIN so cards without a variant row still appear (older/incompletely seeded sets)
-        const dbCards = await db
-          .select({
-            card: pokemonCards,
-            variant: pokemonCardVariants,
-          })
+        const dbCountResult = await db
+          .select({ count: sql<number>`count(*)::int` })
           .from(pokemonCards)
-          .leftJoin(pokemonCardVariants, eq(pokemonCardVariants.cardId, pokemonCards.id))
-          .where(and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)))
-          .orderBy(pokemonCards.number);
+          .where(
+            and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)),
+          );
+        const dbCount = dbCountResult[0]?.count ?? 0;
+        const fullySeeded =
+          expectedTotal > 0 && dbCount >= Math.floor(expectedTotal * 0.9);
 
-        const formattedCards = dbCards.map(({ card, variant }) => {
-          const f = dbVariantToApiFormat(card, null);
-          // Keep card.id — do NOT overwrite with variant.id
-          f.cardId = card.id;
-          if (variant) {
-            f.variantId = variant.id;
-            f.finishType = variant.finishType;
-            f.editionType = variant.editionType;
-            f.variantLabel = variant.variantLabel;
-            f.isStamped = variant.isStamped;
-            f.language = variant.language;
-            if (variant.imageUrl) {
-              f.images = { small: variant.imageUrl, large: variant.imageUrl };
+        if (fullySeeded) {
+          // LEFT JOIN so cards without a variant row still appear (older/incompletely seeded sets)
+          const dbCards = await db
+            .select({
+              card: pokemonCards,
+              variant: pokemonCardVariants,
+            })
+            .from(pokemonCards)
+            .leftJoin(
+              pokemonCardVariants,
+              eq(pokemonCardVariants.cardId, pokemonCards.id),
+            )
+            .where(
+              and(
+                eq(pokemonCards.setId, setId),
+                isNull(pokemonCards.deletedAt),
+              ),
+            )
+            .orderBy(pokemonCards.number);
+
+          const formattedCards = dbCards.map(({ card, variant }) => {
+            const f = dbVariantToApiFormat(card, null);
+            // Keep card.id — do NOT overwrite with variant.id
+            f.cardId = card.id;
+            if (variant) {
+              f.variantId = variant.id;
+              f.finishType = variant.finishType;
+              f.editionType = variant.editionType;
+              f.variantLabel = variant.variantLabel;
+              f.isStamped = variant.isStamped;
+              f.language = variant.language;
+              if (variant.imageUrl) {
+                f.images = { small: variant.imageUrl, large: variant.imageUrl };
+              }
+            } else {
+              f.finishType = "Non-Holo";
+              f.variantLabel = "Standard";
             }
-          } else {
-            f.finishType = "Non-Holo";
-            f.variantLabel = "Standard";
+            return f;
+          });
+
+          res.json({
+            data: formattedCards,
+            count: formattedCards.length,
+          });
+          return;
+        }
+
+        let allCards: any[] = [];
+        let page = 1;
+        let hasMore = true;
+
+        while (hasMore) {
+          const response = await fetch(
+            `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=250`,
+          );
+
+          const text = await response.text();
+          if (!response.ok) break;
+
+          try {
+            const data = JSON.parse(text);
+            const cards = data.data || [];
+            allCards = allCards.concat(cards);
+            hasMore =
+              allCards.length < (data.totalCount || 0) && cards.length === 250;
+            page++;
+          } catch {
+            break;
           }
-          return f;
-        });
+        }
 
         res.json({
-          data: formattedCards,
-          count: formattedCards.length,
+          data: allCards,
+          count: allCards.length,
         });
-        return;
+      } catch (error) {
+        console.error("Failed to fetch all set cards:", error);
+        res.status(500).json({ error: "Failed to fetch cards" });
       }
-
-      let allCards: any[] = [];
-      let page = 1;
-      let hasMore = true;
-
-      while (hasMore) {
-        const response = await fetch(
-          `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=250`
-        );
-
-        const text = await response.text();
-        if (!response.ok) break;
-
-        try {
-          const data = JSON.parse(text);
-          const cards = data.data || [];
-          allCards = allCards.concat(cards);
-          hasMore =
-            allCards.length < (data.totalCount || 0) &&
-            cards.length === 250;
-          page++;
-        } catch {
-          break;
-        }
-      }
-
-      res.json({
-        data: allCards,
-        count: allCards.length,
-      });
-    } catch (error) {
-      console.error("Failed to fetch all set cards:", error);
-      res.status(500).json({ error: "Failed to fetch cards" });
-    }
-  });
+    },
+  );
 
   app.get("/api/pokemon/cards/find", async (req: Request, res: Response) => {
     try {
@@ -1080,8 +1284,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (setId) query += ` set.id:${setId}`;
       const encodedQuery = encodeURIComponent(query);
       const text = await fetch(
-        `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&pageSize=20`
-      ).then((r) => r.text()).catch(() => null);
+        `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&pageSize=20`,
+      )
+        .then((r) => r.text())
+        .catch(() => null);
       if (!text) {
         res.json({ data: null });
         return;
@@ -1125,13 +1331,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // collection items or cached navigation params may hold a variant ID.
       const resolvedCardId = cardId.replace(
         /-(normal|holo|holofoil|reverse|reverseHolofoil|default|non-holo|1stEditionHolofoil|1stEditionNormal)$/i,
-        ""
+        "",
       );
 
       const dbCard = await db
         .select()
         .from(pokemonCards)
-        .where(and(eq(pokemonCards.id, resolvedCardId), isNull(pokemonCards.deletedAt)))
+        .where(
+          and(
+            eq(pokemonCards.id, resolvedCardId),
+            isNull(pokemonCards.deletedAt),
+          ),
+        )
         .limit(1);
 
       if (dbCard.length > 0) {
@@ -1148,7 +1359,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .orderBy(desc(ebayPrices.fetchedAt))
           .limit(10);
 
-        const formattedCard = dbVariantToApiFormat(dbCard[0], pricing[0] ?? null, ebayData);
+        const variantRows = await db
+          .select()
+          .from(pokemonCardVariants)
+          .where(eq(pokemonCardVariants.cardId, resolvedCardId));
+
+        const formattedCard = dbVariantToApiFormat(
+          dbCard[0],
+          pricing[0] ?? null,
+          ebayData,
+        );
+
+        formattedCard.variants = variantRows.map((v) => ({
+          variantId: v.id,
+          finishType: v.finishType,
+          editionType: v.editionType,
+          variantLabel: v.variantLabel,
+          isStamped: v.isStamped,
+          language: v.language,
+          images: v.imageUrl
+            ? { small: v.imageUrl, large: v.imageUrl }
+            : formattedCard.images,
+        }));
 
         const setData = await db
           .select()
@@ -1168,14 +1400,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cardTimeout = setTimeout(() => cardAbort.abort(), 15000);
       let response: globalThis.Response;
       try {
-        response = await fetch(`${POKEMON_API}/cards/${resolvedCardId}`, { signal: cardAbort.signal });
+        response = await fetch(`${POKEMON_API}/cards/${resolvedCardId}`, {
+          signal: cardAbort.signal,
+        });
       } finally {
         clearTimeout(cardTimeout);
       }
 
       const contentType = response.headers.get("content-type") || "";
       if (!response.ok || !contentType.includes("application/json")) {
-        res.status(502).json({ error: "Card not available right now. Please try again." });
+        res
+          .status(502)
+          .json({ error: "Card not available right now. Please try again." });
         return;
       }
 
@@ -1187,7 +1423,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(data);
     } catch (error: any) {
       if (error?.name === "AbortError") {
-        res.status(504).json({ error: "Card took too long to load. Please try again." });
+        res
+          .status(504)
+          .json({ error: "Card took too long to load. Please try again." });
         return;
       }
       console.error("Failed to fetch card:", error);
@@ -1212,14 +1450,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isDevMode = process.env.NODE_ENV === "development";
       if (syncSecret) {
         if (authHeader !== syncSecret) {
-          res.status(401).json({ error: "Unauthorized: valid x-sync-secret header required" });
+          res
+            .status(401)
+            .json({
+              error: "Unauthorized: valid x-sync-secret header required",
+            });
           return;
         }
       } else if (!isDevMode) {
-        res.status(403).json({ error: "Forbidden: set SYNC_SECRET environment variable to enable manual sync in production" });
+        res
+          .status(403)
+          .json({
+            error:
+              "Forbidden: set SYNC_SECRET environment variable to enable manual sync in production",
+          });
         return;
       }
-      runFullSync(true).catch((err) => console.error("[CardSync] Manual sync error:", err));
+      runFullSync(true).catch((err) =>
+        console.error("[CardSync] Manual sync error:", err),
+      );
       res.json({ message: "Sync triggered", running: true });
     } catch (error) {
       console.error("Failed to trigger sync:", error);
@@ -1237,16 +1486,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/pcv/sets/:setId/:slug/cards", async (req: Request, res: Response) => {
-    try {
-      const { setId, slug } = req.params;
-      const cards = await scrapeSetCards(setId, slug);
-      res.json({ data: cards, count: cards.length });
-    } catch (error) {
-      console.error("Failed to scrape PCV set cards:", error);
-      res.status(500).json({ error: "Failed to fetch UK card data" });
-    }
-  });
+  app.get(
+    "/api/pcv/sets/:setId/:slug/cards",
+    async (req: Request, res: Response) => {
+      try {
+        const { setId, slug } = req.params;
+        const cards = await scrapeSetCards(setId, slug);
+        res.json({ data: cards, count: cards.length });
+      } catch (error) {
+        console.error("Failed to scrape PCV set cards:", error);
+        res.status(500).json({ error: "Failed to fetch UK card data" });
+      }
+    },
+  );
 
   app.get("/api/pcv/top/:condition", async (req: Request, res: Response) => {
     try {
@@ -1289,7 +1541,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get("/api/ebay/sold-price", async (req: Request, res: Response) => {
-    const { cardName, setName, number, cardId } = req.query as Record<string, string>;
+    const { cardName, setName, number, cardId } = req.query as Record<
+      string,
+      string
+    >;
     if (!cardName) {
       res.status(400).json({ error: "cardName required" });
       return;
@@ -1307,8 +1562,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const ebayUrl = `https://www.ebay.co.uk/sch/i.html?${searchParams}`;
       const html = await fetch(ebayUrl, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
           "Accept-Language": "en-GB,en;q=0.9",
         },
       }).then((r) => r.text());
@@ -1349,11 +1606,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return [...new Set(prices)].slice(0, 20);
     }
 
-    function computeStats(prices: number[]): { lowest: number | null; median: number | null; highest: number | null } {
-      if (prices.length === 0) return { lowest: null, median: null, highest: null };
+    function computeStats(prices: number[]): {
+      lowest: number | null;
+      median: number | null;
+      highest: number | null;
+    } {
+      if (prices.length === 0)
+        return { lowest: null, median: null, highest: null };
       const sorted = [...prices].sort((a, b) => a - b);
       const mid = Math.floor(sorted.length / 2);
-      const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+      const median =
+        sorted.length % 2 === 0
+          ? (sorted[mid - 1] + sorted[mid]) / 2
+          : sorted[mid];
       return {
         lowest: Math.round(sorted[0] * 100) / 100,
         median: Math.round(median * 100) / 100,
@@ -1361,7 +1626,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
     }
 
-    async function scrapeGradedMedian(baseQuery: string, grader: string, grade: number): Promise<number | null> {
+    async function scrapeGradedMedian(
+      baseQuery: string,
+      grader: string,
+      grade: number,
+    ): Promise<number | null> {
       try {
         const altGrader = grader === "Beckett" ? "BGS" : null;
         const query = `${baseQuery} ${altGrader ?? grader} ${grade} pokemon card`;
@@ -1382,13 +1651,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .orderBy(desc(ebayPrices.fetchedAt))
           .limit(20);
         if (cached.length > 0) {
-          const cacheAge = Date.now() - new Date(cached[0].fetchedAt!).getTime();
+          const cacheAge =
+            Date.now() - new Date(cached[0].fetchedAt!).getTime();
           if (cacheAge < 24 * 60 * 60 * 1000) {
-            const prices = cached.map((r) => r.price).filter((p): p is number => p !== null && p > 0);
+            const prices = cached
+              .map((r) => r.price)
+              .filter((p): p is number => p !== null && p > 0);
             if (prices.length > 0) {
               const stats = computeStats(prices);
               const cardBase = `${cardName}${setName ? " " + setName : ""}`;
-              const [psa9, psa10, beckett9, beckett10, ace9, ace10, cgc9, cgc10] = await Promise.allSettled([
+              const [
+                psa9,
+                psa10,
+                beckett9,
+                beckett10,
+                ace9,
+                ace10,
+                cgc9,
+                cgc10,
+              ] = await Promise.allSettled([
                 scrapeGradedMedian(cardBase, "PSA", 9),
                 scrapeGradedMedian(cardBase, "PSA", 10),
                 scrapeGradedMedian(cardBase, "Beckett", 9),
@@ -1398,12 +1679,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 scrapeGradedMedian(cardBase, "CGC", 9),
                 scrapeGradedMedian(cardBase, "CGC", 10),
               ]);
-              function getValCached(r: PromiseSettledResult<number | null>): number | null {
+              function getValCached(
+                r: PromiseSettledResult<number | null>,
+              ): number | null {
                 return r.status === "fulfilled" ? r.value : null;
               }
               const gradedPrices = {
                 PSA: { 9: getValCached(psa9), 10: getValCached(psa10) },
-                Beckett: { 9: getValCached(beckett9), 10: getValCached(beckett10) },
+                Beckett: {
+                  9: getValCached(beckett9),
+                  10: getValCached(beckett10),
+                },
                 ACE: { 9: getValCached(ace9), 10: getValCached(ace10) },
                 CGC: { 9: getValCached(cgc9), 10: getValCached(cgc10) },
               };
@@ -1424,10 +1710,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Build queries from most useful to least — "/" in number breaks eBay search
-      const numberFirst = number ? number.split("/")[0].replace(/^0+/, "") : null;
+      const numberFirst = number
+        ? number.split("/")[0].replace(/^0+/, "")
+        : null;
       const queries: string[] = [];
       if (setName) queries.push(`${cardName} pokemon ${setName}`);
-      if (numberFirst && parseInt(numberFirst, 10) > 0) queries.push(`${cardName} pokemon ${numberFirst}`);
+      if (numberFirst && parseInt(numberFirst, 10) > 0)
+        queries.push(`${cardName} pokemon ${numberFirst}`);
       queries.push(`${cardName} pokemon card`);
 
       let rawPrices: number[] = [];
@@ -1437,7 +1726,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (rawPrices.length === 0) {
-        res.json({ price: null, lowestSold: null, medianSold: null, highestSold: null, source: "eBay UK (Sold)", count: 0, gradedPrices: null });
+        res.json({
+          price: null,
+          lowestSold: null,
+          medianSold: null,
+          highestSold: null,
+          source: "eBay UK (Sold)",
+          count: 0,
+          gradedPrices: null,
+        });
         return;
       }
 
@@ -1453,22 +1750,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
               currency: "GBP",
               isSold: true,
               fetchedAt: new Date(),
-            }))
+            })),
           );
         } catch (_) {}
       }
 
       const cardBase = `${cardName}${setName ? " " + setName : ""}`;
-      const [psa9, psa10, beckett9, beckett10, ace9, ace10, cgc9, cgc10] = await Promise.allSettled([
-        scrapeGradedMedian(cardBase, "PSA", 9),
-        scrapeGradedMedian(cardBase, "PSA", 10),
-        scrapeGradedMedian(cardBase, "Beckett", 9),
-        scrapeGradedMedian(cardBase, "Beckett", 10),
-        scrapeGradedMedian(cardBase, "ACE", 9),
-        scrapeGradedMedian(cardBase, "ACE", 10),
-        scrapeGradedMedian(cardBase, "CGC", 9),
-        scrapeGradedMedian(cardBase, "CGC", 10),
-      ]);
+      const [psa9, psa10, beckett9, beckett10, ace9, ace10, cgc9, cgc10] =
+        await Promise.allSettled([
+          scrapeGradedMedian(cardBase, "PSA", 9),
+          scrapeGradedMedian(cardBase, "PSA", 10),
+          scrapeGradedMedian(cardBase, "Beckett", 9),
+          scrapeGradedMedian(cardBase, "Beckett", 10),
+          scrapeGradedMedian(cardBase, "ACE", 9),
+          scrapeGradedMedian(cardBase, "ACE", 10),
+          scrapeGradedMedian(cardBase, "CGC", 9),
+          scrapeGradedMedian(cardBase, "CGC", 10),
+        ]);
 
       function getVal(r: PromiseSettledResult<number | null>): number | null {
         return r.status === "fulfilled" ? r.value : null;
@@ -1492,33 +1790,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error: any) {
       console.error("eBay price fetch error:", error);
-      res.status(500).json({ error: error.message || "Failed to fetch eBay prices" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to fetch eBay prices" });
     }
   });
 
-  app.post("/api/identify-card", express.json({ limit: "15mb" }), async (req: Request, res: Response) => {
-    try {
-      const { imageBase64, mode } = req.body;
-      if (!imageBase64) {
-        res.status(400).json({ error: "imageBase64 is required" });
-        return;
-      }
+  app.post(
+    "/api/identify-card",
+    express.json({ limit: "15mb" }),
+    async (req: Request, res: Response) => {
+      try {
+        const { imageBase64, mode } = req.body;
+        if (!imageBase64) {
+          res.status(400).json({ error: "imageBase64 is required" });
+          return;
+        }
 
-      const isNumberStripMode = mode === "number-strip";
+        const isNumberStripMode = mode === "number-strip";
 
-      // ── Auth token resolved here; quota enforcement moves to after AI detection ──
-      const authToken = req.headers.authorization?.replace("Bearer ", "");
+        // ── Auth token resolved here; quota enforcement moves to after AI detection ──
+        const authToken = req.headers.authorization?.replace("Bearer ", "");
 
-      // ── Number-strip mode: focused prompt just for reading the collector number ──
-      if (isNumberStripMode) {
-        let stripResponse: Awaited<ReturnType<typeof openai.chat.completions.create>>;
-        try {
-          const stripPromise = openai.chat.completions.create({
-            model: "gpt-5.2",
-            messages: [
-              {
-                role: "system",
-                content: `You are examining a close-up photo of the bottom edge of a Pokémon card. This strip contains the collector number and possibly a set code and regulation mark.
+        // ── Number-strip mode: focused prompt just for reading the collector number ──
+        if (isNumberStripMode) {
+          let stripResponse: Awaited<
+            ReturnType<typeof openai.chat.completions.create>
+          >;
+          try {
+            const stripPromise = openai.chat.completions.create({
+              model: "gpt-5.2",
+              messages: [
+                {
+                  role: "system",
+                  content: `You are examining a close-up photo of the bottom edge of a Pokémon card. This strip contains the collector number and possibly a set code and regulation mark.
 
 READ THESE THREE ELEMENTS:
 
@@ -1550,65 +1855,93 @@ Rules:
 - "setCode": code as printed if visible, otherwise "".
 - "regulationMark": single letter if visible, otherwise "".
 - "confidence": "high"=fully clear · "medium"=some digits uncertain · "low"=unreadable.
-- NEVER invent digits you cannot see. If a digit is uncertain, use "medium" and note which one.`
-              },
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: "Read the collector number, set code, and regulation mark from this Pokémon card bottom strip. Return the JSON."
-                  },
-                  {
-                    type: "image_url",
-                    image_url: {
-                      url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
-                      detail: "high"
-                    }
-                  }
-                ]
-              }
-            ],
-            response_format: { type: "json_object" },
-            max_completion_tokens: 300,
-          });
-          const stripTimeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(Object.assign(new Error("AI identification timed out. Please try again."), { isTimeout: true })), 30000)
-          );
-          stripResponse = await Promise.race([stripPromise, stripTimeoutPromise]);
-        } catch (aiErr: any) {
-          if (aiErr.isTimeout || aiErr.name === "AbortError" || aiErr.code === "ERR_CANCELED") {
-            res.status(408).json({ error: aiErr.message || "AI identification timed out. Please try again." });
+- NEVER invent digits you cannot see. If a digit is uncertain, use "medium" and note which one.`,
+                },
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: "Read the collector number, set code, and regulation mark from this Pokémon card bottom strip. Return the JSON.",
+                    },
+                    {
+                      type: "image_url",
+                      image_url: {
+                        url: imageBase64.startsWith("data:")
+                          ? imageBase64
+                          : `data:image/jpeg;base64,${imageBase64}`,
+                        detail: "high",
+                      },
+                    },
+                  ],
+                },
+              ],
+              response_format: { type: "json_object" },
+              max_completion_tokens: 300,
+            });
+            const stripTimeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(
+                () =>
+                  reject(
+                    Object.assign(
+                      new Error(
+                        "AI identification timed out. Please try again.",
+                      ),
+                      { isTimeout: true },
+                    ),
+                  ),
+                30000,
+              ),
+            );
+            stripResponse = await Promise.race([
+              stripPromise,
+              stripTimeoutPromise,
+            ]);
+          } catch (aiErr: any) {
+            if (
+              aiErr.isTimeout ||
+              aiErr.name === "AbortError" ||
+              aiErr.code === "ERR_CANCELED"
+            ) {
+              res
+                .status(408)
+                .json({
+                  error:
+                    aiErr.message ||
+                    "AI identification timed out. Please try again.",
+                });
+              return;
+            }
+            throw aiErr;
+          }
+          const stripContent = stripResponse.choices[0]?.message?.content;
+          if (!stripContent) {
+            res.status(500).json({ error: "AI returned empty response" });
             return;
           }
-          throw aiErr;
-        }
-        const stripContent = stripResponse.choices[0]?.message?.content;
-        if (!stripContent) {
-          res.status(500).json({ error: "AI returned empty response" });
+          const stripResult = JSON.parse(stripContent);
+          res.json({
+            cardNumber: stripResult.cardNumber || "",
+            setCode: stripResult.setCode || "",
+            regulationMark: stripResult.regulationMark || "",
+            confidence: stripResult.confidence || "low",
+            notes: stripResult.notes || "",
+          });
           return;
         }
-        const stripResult = JSON.parse(stripContent);
-        res.json({
-          cardNumber: stripResult.cardNumber || "",
-          setCode: stripResult.setCode || "",
-          regulationMark: stripResult.regulationMark || "",
-          confidence: stripResult.confidence || "low",
-          notes: stripResult.notes || "",
-        });
-        return;
-      }
 
-      const setReference = await buildSetReferencePrompt();
+        const setReference = await buildSetReferencePrompt();
 
-      let response: Awaited<ReturnType<typeof openai.chat.completions.create>>;
-      try {
-        const aiPromise = openai.chat.completions.create({
-          model: "gpt-5.2",
-          messages: [
-            {
-              role: "system",
-              content: `You are a Pokémon TCG card identification system. Your job is to read what is physically printed on the card and return it as structured JSON. Study every visible detail of the image carefully.
+        let response: Awaited<
+          ReturnType<typeof openai.chat.completions.create>
+        >;
+        try {
+          const aiPromise = openai.chat.completions.create({
+            model: "gpt-5.2",
+            messages: [
+              {
+                role: "system",
+                content: `You are a Pokémon TCG card identification system. Your job is to read what is physically printed on the card and return it as structured JSON. Study every visible detail of the image carefully.
 
 ══ CARD LAYOUT — WHERE EACH ELEMENT LIVES ══
 
@@ -1688,221 +2021,270 @@ If the image shows the Pokémon card back (blue oval, Poké Ball, "Pokémon" tex
 • "setCode": the short printed code (2–6 chars). Empty string "" if not visible.
 • "notes": include regulation mark letter, any codes spotted, legibility observations
 
-${setReference}`
-            },
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: "Identify this Pokémon card. Start by zooming into the BOTTOM-LEFT corner to read the small collector number (e.g. '025/198'). Then read the card name from the top. Return the JSON."
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
-                    detail: "high"
-                  }
-                }
-              ]
-            }
-          ],
-          response_format: { type: "json_object" },
-          max_completion_tokens: 800,
-        });
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(Object.assign(new Error("AI identification timed out. Please try again."), { isTimeout: true })), 30000)
-        );
-        response = await Promise.race([aiPromise, timeoutPromise]);
-      } catch (aiErr: any) {
-        if (aiErr.isTimeout || aiErr.name === "AbortError" || aiErr.code === "ERR_CANCELED") {
-          res.status(408).json({ error: aiErr.message || "AI identification timed out. Please try again." });
-          return;
-        }
-        throw aiErr;
-      }
-
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        res.status(500).json({ error: "AI returned empty response" });
-        return;
-      }
-
-      const identification = JSON.parse(content);
-
-      // ── Card back detected — return early, no quota consumed ──────────────
-      if (identification.isCardBack === true) {
-        res.json({ isCardBack: true });
-        return;
-      }
-
-      // ── Scan quota enforcement (free users only, fronts only) ─────────────
-      if (authToken) {
-        const scanUser = await storage.validateSession(authToken);
-        if (scanUser && !scanUser.isPremium) {
-          const result = await consumeScan(scanUser.id);
-          if (!result.allowed) {
-            res.status(429).json({
-              error: "Daily scan limit reached",
-              freeRemaining: 0,
-              bonusRemaining: 0,
-              message: "You've used all your scans for today. Come back tomorrow or upgrade to Premium for unlimited scans.",
-            });
+${setReference}`,
+              },
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: "Identify this Pokémon card. Start by zooming into the BOTTOM-LEFT corner to read the small collector number (e.g. '025/198'). Then read the card name from the top. Return the JSON.",
+                  },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: imageBase64.startsWith("data:")
+                        ? imageBase64
+                        : `data:image/jpeg;base64,${imageBase64}`,
+                      detail: "high",
+                    },
+                  },
+                ],
+              },
+            ],
+            response_format: { type: "json_object" },
+            max_completion_tokens: 800,
+          });
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(
+              () =>
+                reject(
+                  Object.assign(
+                    new Error("AI identification timed out. Please try again."),
+                    { isTimeout: true },
+                  ),
+                ),
+              30000,
+            ),
+          );
+          response = await Promise.race([aiPromise, timeoutPromise]);
+        } catch (aiErr: any) {
+          if (
+            aiErr.isTimeout ||
+            aiErr.name === "AbortError" ||
+            aiErr.code === "ERR_CANCELED"
+          ) {
+            res
+              .status(408)
+              .json({
+                error:
+                  aiErr.message ||
+                  "AI identification timed out. Please try again.",
+              });
             return;
           }
+          throw aiErr;
         }
-      }
 
-      let pcvResults: any[] = [];
-      try {
-        pcvResults = await scrapeCardSearch(identification.englishName);
-        if (identification.cardNumber && pcvResults.length > 1) {
-          const numberOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
-          const filtered = pcvResults.filter((c: any) => {
-            const cNum = c.number?.split("/")[0].replace(/^0+/, "");
-            return cNum === numberOnly;
-          });
-          if (filtered.length > 0) pcvResults = filtered;
+        const content = response.choices[0]?.message?.content;
+        if (!content) {
+          res.status(500).json({ error: "AI returned empty response" });
+          return;
         }
-      } catch (e) {
-        console.error("PCV search after identification failed:", e);
-      }
 
-      let tcgApiResults: any[] = [];
-      // 1. Search local DB first for identified card name — includes pricing JOIN
-      try {
-        const cardName = identification.englishName?.trim();
-        const origName = identification.originalName?.trim();
-        if (cardName && cardName.length >= 2) {
-          // Try English name first; if that returns nothing try originalName too
-          const nameConditions = [ilike(pokemonCards.name, `%${cardName}%`)];
-          if (origName && origName !== cardName) {
-            nameConditions.push(ilike(pokemonCards.name, `%${origName}%`));
-          }
+        const identification = JSON.parse(content);
 
-          const dbMatches = await db
-            .select({ card: pokemonCards, set: pokemonSets, pricing: cardPricing })
-            .from(pokemonCards)
-            .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
-            .leftJoin(cardPricing, eq(cardPricing.variantId, pokemonCards.id))
-            .where(and(or(...nameConditions), isNull(pokemonCards.deletedAt)))
-            .orderBy(desc(pokemonSets.releaseDate))
-            .limit(20);
+        // ── Card back detected — return early, no quota consumed ──────────────
+        if (identification.isCardBack === true) {
+          res.json({ isCardBack: true });
+          return;
+        }
 
-          if (dbMatches.length > 0) {
-            let formatted = dbMatches.map(({ card, set, pricing }) => {
-              const base = dbVariantToApiFormat(card, pricing ?? null);
-              if (set) {
-                base.set = {
-                  id: set.id,
-                  name: set.name,
-                  series: set.series ?? undefined,
-                  printedTotal: set.printedTotal,
-                  total: set.total,
-                  releaseDate: set.releaseDate,
-                  images: { symbol: set.symbolUrl, logo: set.logoUrl },
-                };
-              }
-              return base;
-            });
-
-            // 1a. Filter by set CODE (most precise — exact ID match)
-            if (identification.setCode && formatted.length > 1) {
-              const aiCode = identification.setCode.toLowerCase().trim();
-              const codeMatch = formatted.filter((c: any) => {
-                const dbId = (c.set?.id ?? "").toLowerCase();
-                return dbId === aiCode || dbId.startsWith(aiCode) || aiCode.startsWith(dbId);
+        // ── Scan quota enforcement (free users only, fronts only) ─────────────
+        if (authToken) {
+          const scanUser = await storage.validateSession(authToken);
+          if (scanUser && !scanUser.isPremium) {
+            const result = await consumeScan(scanUser.id);
+            if (!result.allowed) {
+              res.status(429).json({
+                error: "Daily scan limit reached",
+                freeRemaining: 0,
+                bonusRemaining: 0,
+                message:
+                  "You've used all your scans for today. Come back tomorrow or upgrade to Premium for unlimited scans.",
               });
-              if (codeMatch.length > 0) formatted = codeMatch;
+              return;
             }
-
-            // 1b. Filter by set name if still multiple matches
-            if (identification.setName && formatted.length > 1) {
-              const aiSet = identification.setName.toLowerCase();
-              const setMatch = formatted.filter((c: any) => {
-                const dbSet = (c.set?.name ?? "").toLowerCase();
-                return dbSet.includes(aiSet) || aiSet.includes(dbSet);
-              });
-              if (setMatch.length > 0) formatted = setMatch;
-            }
-
-            // 1c. Filter by card number
-            if (identification.cardNumber && formatted.length > 1) {
-              const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
-              const exactMatch = formatted.filter((c: any) => {
-                const cn = String(c.number).replace(/^0+/, "");
-                return cn === numOnly;
-              });
-              if (exactMatch.length > 0) formatted = exactMatch;
-            }
-
-            // 1c. Sort: prefer cards that have a card image (imageSmall not null)
-            formatted.sort((a: any, b: any) => {
-              const aHasImg = a.images?.small ? 1 : 0;
-              const bHasImg = b.images?.small ? 1 : 0;
-              return bHasImg - aHasImg;
-            });
-
-            tcgApiResults = formatted;
           }
         }
-      } catch (dbErr) {
-        console.error("DB card search after identification failed:", dbErr);
-      }
 
-      // 2. If not found in DB, fall back to TCG API with a strict 10s timeout
-      if (tcgApiResults.length === 0) {
+        let pcvResults: any[] = [];
         try {
-          const encodedQuery = encodeURIComponent(`name:"${identification.englishName}"`);
-          const apiCtrl = new AbortController();
-          const apiTimer = setTimeout(() => apiCtrl.abort(), 10000);
-          const tcgRes = await fetch(
-            `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&pageSize=10`,
-            { signal: apiCtrl.signal, headers: tcgHeaders() }
-          );
-          clearTimeout(apiTimer);
-          if (tcgRes.ok) {
-            const tcgData = await tcgRes.json();
-            tcgApiResults = tcgData.data || [];
-            if (identification.cardNumber && tcgApiResults.length > 1) {
-              const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
-              const exactMatch = tcgApiResults.filter((c: any) => {
-                const cn = String(c.number).replace(/^0+/, "");
-                return cn === numOnly;
-              });
-              if (exactMatch.length > 0) tcgApiResults = exactMatch;
-            }
+          pcvResults = await scrapeCardSearch(identification.englishName);
+          if (identification.cardNumber && pcvResults.length > 1) {
+            const numberOnly = identification.cardNumber
+              .split("/")[0]
+              .replace(/^0+/, "");
+            const filtered = pcvResults.filter((c: any) => {
+              const cNum = c.number?.split("/")[0].replace(/^0+/, "");
+              return cNum === numberOnly;
+            });
+            if (filtered.length > 0) pcvResults = filtered;
           }
         } catch (e) {
-          console.error("TCG API search after identification failed:", e);
+          console.error("PCV search after identification failed:", e);
         }
-      }
 
-      res.json({
-        identification,
-        pcvResults: pcvResults.slice(0, 10),
-        tcgApiResults: tcgApiResults.slice(0, 10),
-      });
-    } catch (error: any) {
-      console.error("Card identification failed:", error);
-      res.status(500).json({ error: error.message || "Failed to identify card" });
-    }
-  });
+        let tcgApiResults: any[] = [];
+        // 1. Search local DB first for identified card name — includes pricing JOIN
+        try {
+          const cardName = identification.englishName?.trim();
+          const origName = identification.originalName?.trim();
+          if (cardName && cardName.length >= 2) {
+            // Try English name first; if that returns nothing try originalName too
+            const nameConditions = [ilike(pokemonCards.name, `%${cardName}%`)];
+            if (origName && origName !== cardName) {
+              nameConditions.push(ilike(pokemonCards.name, `%${origName}%`));
+            }
+
+            const dbMatches = await db
+              .select({
+                card: pokemonCards,
+                set: pokemonSets,
+                pricing: cardPricing,
+              })
+              .from(pokemonCards)
+              .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
+              .leftJoin(cardPricing, eq(cardPricing.variantId, pokemonCards.id))
+              .where(and(or(...nameConditions), isNull(pokemonCards.deletedAt)))
+              .orderBy(desc(pokemonSets.releaseDate))
+              .limit(20);
+
+            if (dbMatches.length > 0) {
+              let formatted = dbMatches.map(({ card, set, pricing }) => {
+                const base = dbVariantToApiFormat(card, pricing ?? null);
+                if (set) {
+                  base.set = {
+                    id: set.id,
+                    name: set.name,
+                    series: set.series ?? undefined,
+                    printedTotal: set.printedTotal,
+                    total: set.total,
+                    releaseDate: set.releaseDate,
+                    images: { symbol: set.symbolUrl, logo: set.logoUrl },
+                  };
+                }
+                return base;
+              });
+
+              // 1a. Filter by set CODE (most precise — exact ID match)
+              if (identification.setCode && formatted.length > 1) {
+                const aiCode = identification.setCode.toLowerCase().trim();
+                const codeMatch = formatted.filter((c: any) => {
+                  const dbId = (c.set?.id ?? "").toLowerCase();
+                  return (
+                    dbId === aiCode ||
+                    dbId.startsWith(aiCode) ||
+                    aiCode.startsWith(dbId)
+                  );
+                });
+                if (codeMatch.length > 0) formatted = codeMatch;
+              }
+
+              // 1b. Filter by set name if still multiple matches
+              if (identification.setName && formatted.length > 1) {
+                const aiSet = identification.setName.toLowerCase();
+                const setMatch = formatted.filter((c: any) => {
+                  const dbSet = (c.set?.name ?? "").toLowerCase();
+                  return dbSet.includes(aiSet) || aiSet.includes(dbSet);
+                });
+                if (setMatch.length > 0) formatted = setMatch;
+              }
+
+              // 1c. Filter by card number
+              if (identification.cardNumber && formatted.length > 1) {
+                const numOnly = identification.cardNumber
+                  .split("/")[0]
+                  .replace(/^0+/, "");
+                const exactMatch = formatted.filter((c: any) => {
+                  const cn = String(c.number).replace(/^0+/, "");
+                  return cn === numOnly;
+                });
+                if (exactMatch.length > 0) formatted = exactMatch;
+              }
+
+              // 1c. Sort: prefer cards that have a card image (imageSmall not null)
+              formatted.sort((a: any, b: any) => {
+                const aHasImg = a.images?.small ? 1 : 0;
+                const bHasImg = b.images?.small ? 1 : 0;
+                return bHasImg - aHasImg;
+              });
+
+              tcgApiResults = formatted;
+            }
+          }
+        } catch (dbErr) {
+          console.error("DB card search after identification failed:", dbErr);
+        }
+
+        // 2. If not found in DB, fall back to TCG API with a strict 10s timeout
+        if (tcgApiResults.length === 0) {
+          try {
+            const encodedQuery = encodeURIComponent(
+              `name:"${identification.englishName}"`,
+            );
+            const apiCtrl = new AbortController();
+            const apiTimer = setTimeout(() => apiCtrl.abort(), 10000);
+            const tcgRes = await fetch(
+              `${POKEMON_API}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&pageSize=10`,
+              { signal: apiCtrl.signal, headers: tcgHeaders() },
+            );
+            clearTimeout(apiTimer);
+            if (tcgRes.ok) {
+              const tcgData = await tcgRes.json();
+              tcgApiResults = tcgData.data || [];
+              if (identification.cardNumber && tcgApiResults.length > 1) {
+                const numOnly = identification.cardNumber
+                  .split("/")[0]
+                  .replace(/^0+/, "");
+                const exactMatch = tcgApiResults.filter((c: any) => {
+                  const cn = String(c.number).replace(/^0+/, "");
+                  return cn === numOnly;
+                });
+                if (exactMatch.length > 0) tcgApiResults = exactMatch;
+              }
+            }
+          } catch (e) {
+            console.error("TCG API search after identification failed:", e);
+          }
+        }
+
+        res.json({
+          identification,
+          pcvResults: pcvResults.slice(0, 10),
+          tcgApiResults: tcgApiResults.slice(0, 10),
+        });
+      } catch (error: any) {
+        console.error("Card identification failed:", error);
+        res
+          .status(500)
+          .json({ error: error.message || "Failed to identify card" });
+      }
+    },
+  );
 
   app.post("/api/auth/register", async (req: Request, res: Response) => {
     try {
       const { username, displayName, email, mobileNumber, password } = req.body;
       if (!username || !displayName || !email || !password) {
-        res.status(400).json({ error: "Username, display name, email and password are required" });
+        res
+          .status(400)
+          .json({
+            error: "Username, display name, email and password are required",
+          });
         return;
       }
       if (password.length < 6) {
-        res.status(400).json({ error: "Password must be at least 6 characters" });
+        res
+          .status(400)
+          .json({ error: "Password must be at least 6 characters" });
         return;
       }
       const existingEmail = await storage.getUserByEmail(email);
       if (existingEmail) {
-        res.status(409).json({ error: "An account with this email already exists" });
+        res
+          .status(409)
+          .json({ error: "An account with this email already exists" });
         return;
       }
       const existingUsername = await storage.getUserByUsername(username);
@@ -1922,7 +2304,7 @@ ${setReference}`
         isPremium: false,
         role: "user",
         avatarUrl: null,
-        ...(blocked ? { isTrialUsed: true } as any : {}),
+        ...(blocked ? ({ isTrialUsed: true } as any) : {}),
       });
       const token = await storage.createSession(user.id);
       const { passwordHash: _ph, ...safeUser } = user as any;
@@ -1953,10 +2335,20 @@ ${setReference}`
       const result = verifyOtp(normalised, code);
       if (!result.valid) {
         if (result.tooManyAttempts) {
-          res.status(429).json({ error: "Too many incorrect attempts. Please request a new code." });
+          res
+            .status(429)
+            .json({
+              error: "Too many incorrect attempts. Please request a new code.",
+            });
           return;
         }
-        res.status(401).json({ error: result.expired ? "Code expired. Please request a new one." : "Incorrect code. Please try again." });
+        res
+          .status(401)
+          .json({
+            error: result.expired
+              ? "Code expired. Please request a new one."
+              : "Incorrect code. Please try again.",
+          });
         return;
       }
       const user = await storage.getUserByEmail(normalised);
@@ -1972,31 +2364,38 @@ ${setReference}`
     }
   });
 
-  app.post("/api/auth/resend-email-verification", async (req: Request, res: Response) => {
-    try {
-      const { email } = req.body;
-      if (!email) {
-        res.status(400).json({ error: "email is required" });
-        return;
+  app.post(
+    "/api/auth/resend-email-verification",
+    async (req: Request, res: Response) => {
+      try {
+        const { email } = req.body;
+        if (!email) {
+          res.status(400).json({ error: "email is required" });
+          return;
+        }
+        const normalised = email.toLowerCase().trim();
+        const user = await storage.getUserByEmail(normalised);
+        if (!user) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+        const { code, rateLimited } = createOtp(normalised);
+        if (rateLimited) {
+          res
+            .status(429)
+            .json({ error: "Please wait before requesting another code." });
+          return;
+        }
+        await sendOtpByEmail(user.email, code);
+        res.json({ success: true });
+      } catch (error: any) {
+        console.error("Resend verification error:", error);
+        res
+          .status(500)
+          .json({ error: error.message || "Failed to resend code" });
       }
-      const normalised = email.toLowerCase().trim();
-      const user = await storage.getUserByEmail(normalised);
-      if (!user) {
-        res.status(404).json({ error: "User not found" });
-        return;
-      }
-      const { code, rateLimited } = createOtp(normalised);
-      if (rateLimited) {
-        res.status(429).json({ error: "Please wait before requesting another code." });
-        return;
-      }
-      await sendOtpByEmail(user.email, code);
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error("Resend verification error:", error);
-      res.status(500).json({ error: error.message || "Failed to resend code" });
-    }
-  });
+    },
+  );
 
   app.delete("/api/auth/account", async (req: Request, res: Response) => {
     try {
@@ -2012,14 +2411,21 @@ ${setReference}`
         return;
       }
       if (caller.isPremium && caller.subscriptionStatus === "active") {
-        res.status(403).json({ error: "Please cancel your Premium subscription before deleting your account." });
+        res
+          .status(403)
+          .json({
+            error:
+              "Please cancel your Premium subscription before deleting your account.",
+          });
         return;
       }
       await storage.deleteUser(caller.id);
       res.json({ success: true });
     } catch (error: any) {
       console.error("Delete account error:", error);
-      res.status(500).json({ error: error.message || "Failed to delete account" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to delete account" });
     }
   });
 
@@ -2030,17 +2436,25 @@ ${setReference}`
     try {
       const { credential, password } = req.body;
       if (!credential || !password) {
-        res.status(400).json({ error: "Email/username and password are required" });
+        res
+          .status(400)
+          .json({ error: "Email/username and password are required" });
         return;
       }
       let user = await storage.getUserByEmail(credential.toLowerCase().trim());
-      if (!user) user = await storage.getUserByUsername(credential.toLowerCase().trim());
+      if (!user)
+        user = await storage.getUserByUsername(credential.toLowerCase().trim());
       if (!user) {
         res.status(401).json({ error: "Invalid email/username or password" });
         return;
       }
       if (!user.passwordHash) {
-        res.status(401).json({ error: "This account does not have a password set. Contact an admin." });
+        res
+          .status(401)
+          .json({
+            error:
+              "This account does not have a password set. Contact an admin.",
+          });
         return;
       }
       const valid = await bcrypt.compare(password, user.passwordHash);
@@ -2053,7 +2467,8 @@ ${setReference}`
         const [local, domain] = e.split("@");
         return local.slice(0, 2) + "***@" + domain;
       };
-      const maskMobile = (m: string) => m.slice(0, -4).replace(/./g, "*") + m.slice(-4);
+      const maskMobile = (m: string) =>
+        m.slice(0, -4).replace(/./g, "*") + m.slice(-4);
       res.json({
         userId: user.id,
         hasEmail: !!user.email,
@@ -2073,17 +2488,25 @@ ${setReference}`
     try {
       const { credential, password } = req.body;
       if (!credential || !password) {
-        res.status(400).json({ error: "Email/username and password are required" });
+        res
+          .status(400)
+          .json({ error: "Email/username and password are required" });
         return;
       }
       let user = await storage.getUserByEmail(credential.toLowerCase().trim());
-      if (!user) user = await storage.getUserByUsername(credential.toLowerCase().trim());
+      if (!user)
+        user = await storage.getUserByUsername(credential.toLowerCase().trim());
       if (!user) {
         res.status(401).json({ error: "Invalid email/username or password" });
         return;
       }
       if (!user.passwordHash) {
-        res.status(401).json({ error: "This account does not have a password set. Contact an admin." });
+        res
+          .status(401)
+          .json({
+            error:
+              "This account does not have a password set. Contact an admin.",
+          });
         return;
       }
       const valid = await bcrypt.compare(password, user.passwordHash);
@@ -2093,7 +2516,8 @@ ${setReference}`
       }
       const bu = (user as any).bannedUntil as Date | null;
       if (bu && new Date(bu) > new Date()) {
-        const reason = (user as any).banReason || "Violation of community guidelines";
+        const reason =
+          (user as any).banReason || "Violation of community guidelines";
         const permanent = new Date(bu).getFullYear() > 2999;
         res.status(403).json({
           error: "Account banned",
@@ -2139,13 +2563,20 @@ ${setReference}`
       }
 
       if (!user) {
-        res.status(404).json({ error: "No account found with this credential" });
+        res
+          .status(404)
+          .json({ error: "No account found with this credential" });
         return;
       }
 
       const { code, rateLimited } = createOtp(credential);
       if (rateLimited) {
-        res.status(429).json({ error: "Too many requests. Please wait before requesting another code." });
+        res
+          .status(429)
+          .json({
+            error:
+              "Too many requests. Please wait before requesting another code.",
+          });
         return;
       }
       let sent = false;
@@ -2167,52 +2598,65 @@ ${setReference}`
     }
   });
 
-  app.post("/api/auth/send-otp-register", async (req: Request, res: Response) => {
-    try {
-      const { userId, channel } = req.body;
-      if (!userId || !channel) {
-        res.status(400).json({ error: "userId and channel are required" });
-        return;
-      }
-
-      const user = await storage.getUserById(userId);
-      if (!user) {
-        res.status(404).json({ error: "User not found" });
-        return;
-      }
-
-      let targetCredential: string;
-      let sent = false;
-
-      if (channel === "email") {
-        targetCredential = user.email;
-        const { code, rateLimited } = createOtp(targetCredential);
-        if (rateLimited) {
-          res.status(429).json({ error: "Too many requests. Please wait before requesting another code." });
+  app.post(
+    "/api/auth/send-otp-register",
+    async (req: Request, res: Response) => {
+      try {
+        const { userId, channel } = req.body;
+        if (!userId || !channel) {
+          res.status(400).json({ error: "userId and channel are required" });
           return;
         }
-        sent = await sendOtpByEmail(user.email, code);
-      } else {
-        targetCredential = user.mobileNumber;
-        const { code, rateLimited } = createOtp(targetCredential);
-        if (rateLimited) {
-          res.status(429).json({ error: "Too many requests. Please wait before requesting another code." });
+
+        const user = await storage.getUserById(userId);
+        if (!user) {
+          res.status(404).json({ error: "User not found" });
           return;
         }
-        sent = await sendOtpBySms(user.mobileNumber, code);
-      }
 
-      if (!sent) {
-        res.status(500).json({ error: "Failed to send verification code" });
-        return;
-      }
+        let targetCredential: string;
+        let sent = false;
 
-      res.json({ message: "Verification code sent" });
-    } catch (error: any) {
-      console.error("Send OTP register error:", error);
-      res.status(500).json({ error: error.message || "Failed to send OTP" });
-    }
-  });
+        if (channel === "email") {
+          targetCredential = user.email;
+          const { code, rateLimited } = createOtp(targetCredential);
+          if (rateLimited) {
+            res
+              .status(429)
+              .json({
+                error:
+                  "Too many requests. Please wait before requesting another code.",
+              });
+            return;
+          }
+          sent = await sendOtpByEmail(user.email, code);
+        } else {
+          targetCredential = user.mobileNumber;
+          const { code, rateLimited } = createOtp(targetCredential);
+          if (rateLimited) {
+            res
+              .status(429)
+              .json({
+                error:
+                  "Too many requests. Please wait before requesting another code.",
+              });
+            return;
+          }
+          sent = await sendOtpBySms(user.mobileNumber, code);
+        }
+
+        if (!sent) {
+          res.status(500).json({ error: "Failed to send verification code" });
+          return;
+        }
+
+        res.json({ message: "Verification code sent" });
+      } catch (error: any) {
+        console.error("Send OTP register error:", error);
+        res.status(500).json({ error: error.message || "Failed to send OTP" });
+      }
+    },
+  );
 
   app.post("/api/auth/verify-otp", async (req: Request, res: Response) => {
     try {
@@ -2225,10 +2669,20 @@ ${setReference}`
       const result = verifyOtp(credential, code);
       if (!result.valid) {
         if (result.tooManyAttempts) {
-          res.status(429).json({ error: "Too many incorrect attempts. Please request a new code." });
+          res
+            .status(429)
+            .json({
+              error: "Too many incorrect attempts. Please request a new code.",
+            });
           return;
         }
-        res.status(401).json({ error: result.expired ? "Verification code has expired. Please request a new one." : "Incorrect verification code. Please try again." });
+        res
+          .status(401)
+          .json({
+            error: result.expired
+              ? "Verification code has expired. Please request a new one."
+              : "Incorrect verification code. Please try again.",
+          });
         return;
       }
 
@@ -2244,7 +2698,8 @@ ${setReference}`
 
       const bu = (user as any).bannedUntil as Date | null;
       if (bu && new Date(bu) > new Date()) {
-        const reason = (user as any).banReason || "Violation of community guidelines";
+        const reason =
+          (user as any).banReason || "Violation of community guidelines";
         const permanent = new Date(bu).getFullYear() > 2999;
         res.status(403).json({
           error: "Account banned",
@@ -2282,7 +2737,9 @@ ${setReference}`
       res.json({ user });
     } catch (error: any) {
       console.error("Session validation error:", error);
-      res.status(500).json({ error: error.message || "Session validation failed" });
+      res
+        .status(500)
+        .json({ error: error.message || "Session validation failed" });
     }
   });
 
@@ -2313,60 +2770,82 @@ ${setReference}`
 
   // ─── Stripe — create checkout session ─────────────────────────────────────────
   // POST /api/stripe/create-checkout  body: { priceId, successUrl, cancelUrl }
-  app.post("/api/stripe/create-checkout", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+  app.post(
+    "/api/stripe/create-checkout",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid or expired session" });
+          return;
+        }
 
-      const { priceId, successUrl, cancelUrl } = req.body as {
-        priceId: string;
-        successUrl: string;
-        cancelUrl: string;
-      };
-      if (!priceId || !successUrl || !cancelUrl) {
-        res.status(400).json({ error: "priceId, successUrl and cancelUrl are required" });
-        return;
+        const { priceId, successUrl, cancelUrl } = req.body as {
+          priceId: string;
+          successUrl: string;
+          cancelUrl: string;
+        };
+        if (!priceId || !successUrl || !cancelUrl) {
+          res
+            .status(400)
+            .json({ error: "priceId, successUrl and cancelUrl are required" });
+          return;
+        }
+
+        const { getUncachableStripeClient, ensureStripeCustomer } =
+          await import("./stripe-client");
+        const stripe = await getUncachableStripeClient();
+
+        // Ensure a valid Stripe customer exists for this user.
+        // Auto-recreates if the stored ID is missing or invalid (e.g. test->live switch).
+        const customerId = await ensureStripeCustomer(stripe, user);
+
+        const session = await stripe.checkout.sessions.create({
+          customer: customerId,
+          payment_method_types: ["card"],
+          mode: "subscription",
+          line_items: [{ price: priceId, quantity: 1 }],
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          subscription_data: {
+            metadata: { pokescanUserId: user.id },
+          },
+          allow_promotion_codes: true,
+        });
+
+        res.json({ url: session.url, sessionId: session.id });
+      } catch (err: any) {
+        console.error("[Stripe] Checkout error:", err.message);
+        res
+          .status(500)
+          .json({ error: err.message || "Failed to create checkout session" });
       }
-
-      const { getUncachableStripeClient, ensureStripeCustomer } = await import("./stripe-client");
-      const stripe = await getUncachableStripeClient();
-
-      // Ensure a valid Stripe customer exists for this user.
-      // Auto-recreates if the stored ID is missing or invalid (e.g. test->live switch).
-      const customerId = await ensureStripeCustomer(stripe, user);
-
-      const session = await stripe.checkout.sessions.create({
-        customer: customerId,
-        payment_method_types: ["card"],
-        mode: "subscription",
-        line_items: [{ price: priceId, quantity: 1 }],
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        subscription_data: {
-          metadata: { pokescanUserId: user.id },
-        },
-        allow_promotion_codes: true,
-      });
-
-      res.json({ url: session.url, sessionId: session.id });
-    } catch (err: any) {
-      console.error("[Stripe] Checkout error:", err.message);
-      res.status(500).json({ error: err.message || "Failed to create checkout session" });
-    }
-  });
+    },
+  );
 
   // ─── Stripe — create billing portal session ────────────────────────────────────
   // POST /api/stripe/portal  body: { returnUrl }
   app.post("/api/stripe/portal", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
 
-      const { getUncachableStripeClient, ensureStripeCustomer } = await import("./stripe-client");
+      const { getUncachableStripeClient, ensureStripeCustomer } = await import(
+        "./stripe-client"
+      );
       const stripe = await getUncachableStripeClient();
       const { returnUrl } = req.body as { returnUrl: string };
 
@@ -2380,7 +2859,9 @@ ${setReference}`
       res.json({ url: portalSession.url });
     } catch (err: any) {
       console.error("[Stripe] Portal error:", err.message);
-      res.status(500).json({ error: err.message || "Failed to open billing portal" });
+      res
+        .status(500)
+        .json({ error: err.message || "Failed to open billing portal" });
     }
   });
 
@@ -2389,9 +2870,15 @@ ${setReference}`
   app.post("/api/stripe/sync", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
 
       const customerId = (user as any).stripeCustomerId as string | undefined;
       if (!customerId) {
@@ -2399,7 +2886,9 @@ ${setReference}`
         return;
       }
 
-      const { getUncachableStripeClient, ensureStripeCustomer } = await import("./stripe-client");
+      const { getUncachableStripeClient, ensureStripeCustomer } = await import(
+        "./stripe-client"
+      );
       const stripe = await getUncachableStripeClient();
 
       let subscriptions;
@@ -2412,28 +2901,37 @@ ${setReference}`
         });
       } catch (e: any) {
         // Stale customer (e.g. test->live mode switch) — clear it so the next purchase recreates one.
-        console.warn(`[Stripe] Sync failed for customer ${customerId}: ${e.message}. Clearing stored ID.`);
+        console.warn(
+          `[Stripe] Sync failed for customer ${customerId}: ${e.message}. Clearing stored ID.`,
+        );
         await storage.updateUser(user.id, { stripeCustomerId: null } as any);
         res.json({ isPremium: false, subscriptionStatus: null });
         return;
       }
 
       const active = subscriptions.data.find(
-        (s) => s.status === "active" || s.status === "trialing"
+        (s) => s.status === "active" || s.status === "trialing",
       );
 
       if (active) {
         const periodEnd = new Date((active as any).current_period_end * 1000);
         // Preserve "canceling" status when the sub is winding down
-        const resolvedStatus = (active as any).cancel_at_period_end ? "canceling" : active.status;
+        const resolvedStatus = (active as any).cancel_at_period_end
+          ? "canceling"
+          : active.status;
         await storage.updateUser(user.id, {
           isPremium: true,
           stripeSubscriptionId: active.id,
-          stripePriceId: (active.items.data[0]?.price?.id) ?? null,
+          stripePriceId: active.items.data[0]?.price?.id ?? null,
           subscriptionStatus: resolvedStatus,
           subscriptionPeriodEnd: periodEnd,
         } as any);
-        res.json({ isPremium: true, subscriptionStatus: resolvedStatus, periodEnd: periodEnd.toISOString(), cancelAtPeriodEnd: !!(active as any).cancel_at_period_end });
+        res.json({
+          isPremium: true,
+          subscriptionStatus: resolvedStatus,
+          periodEnd: periodEnd.toISOString(),
+          cancelAtPeriodEnd: !!(active as any).cancel_at_period_end,
+        });
       } else {
         // No active Stripe subscription — check if still within a paid period (webhook safety net)
         const latestSub = subscriptions.data[0];
@@ -2448,14 +2946,22 @@ ${setReference}`
           await storage.updateUser(user.id, {
             subscriptionStatus: "canceling",
           } as any);
-          res.json({ isPremium: true, subscriptionStatus: "canceling", periodEnd: periodEndDate!.toISOString(), cancelAtPeriodEnd: true });
+          res.json({
+            isPremium: true,
+            subscriptionStatus: "canceling",
+            periodEnd: periodEndDate!.toISOString(),
+            cancelAtPeriodEnd: true,
+          });
         } else {
           // Fully expired
           await storage.updateUser(user.id, {
             isPremium: false,
             subscriptionStatus: latestSub?.status ?? "canceled",
           } as any);
-          res.json({ isPremium: false, subscriptionStatus: latestSub?.status ?? "canceled" });
+          res.json({
+            isPremium: false,
+            subscriptionStatus: latestSub?.status ?? "canceled",
+          });
         }
       }
     } catch (err: any) {
@@ -2475,7 +2981,8 @@ ${setReference}`
 
       let event: any;
       try {
-        const { getUncachableStripeClient, ensureStripeCustomer } = await import("./stripe-client");
+        const { getUncachableStripeClient, ensureStripeCustomer } =
+          await import("./stripe-client");
         const stripe = await getUncachableStripeClient();
         if (webhookSecret && sig) {
           event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
@@ -2484,7 +2991,9 @@ ${setReference}`
         }
       } catch (err: any) {
         console.error("[Stripe Webhook] Signature error:", err.message);
-        res.status(400).json({ error: "Webhook signature verification failed" });
+        res
+          .status(400)
+          .json({ error: "Webhook signature verification failed" });
         return;
       }
 
@@ -2496,25 +3005,34 @@ ${setReference}`
             const customerId = sub.customer as string;
             const userRow = await pool.query(
               `SELECT id FROM pokescan_users WHERE stripe_customer_id = $1`,
-              [customerId]
+              [customerId],
             );
             if (userRow.rows.length > 0) {
               const userId = userRow.rows[0].id;
-              const isActive = sub.status === "active" || sub.status === "trialing";
+              const isActive =
+                sub.status === "active" || sub.status === "trialing";
               const periodEnd = new Date(sub.current_period_end * 1000);
               // If cancel_at_period_end is true the sub is still active but winding down
-              const resolvedStatus = isActive && sub.cancel_at_period_end
-                ? "canceling"
-                : sub.status;
+              const resolvedStatus =
+                isActive && sub.cancel_at_period_end ? "canceling" : sub.status;
               await pool.query(
                 `UPDATE pokescan_users
                  SET is_premium = $1, stripe_subscription_id = $2,
                      stripe_price_id = $3, subscription_status = $4,
                      subscription_period_end = $5
                  WHERE id = $6`,
-                [isActive, sub.id, sub.items?.data?.[0]?.price?.id ?? null, resolvedStatus, periodEnd, userId]
+                [
+                  isActive,
+                  sub.id,
+                  sub.items?.data?.[0]?.price?.id ?? null,
+                  resolvedStatus,
+                  periodEnd,
+                  userId,
+                ],
               );
-              console.log(`[Stripe Webhook] Updated user ${userId}: isPremium=${isActive} status=${resolvedStatus} cancelAtPeriodEnd=${sub.cancel_at_period_end}`);
+              console.log(
+                `[Stripe Webhook] Updated user ${userId}: isPremium=${isActive} status=${resolvedStatus} cancelAtPeriodEnd=${sub.cancel_at_period_end}`,
+              );
             }
             break;
           }
@@ -2529,9 +3047,11 @@ ${setReference}`
                SET is_premium = false, subscription_status = 'canceled',
                    subscription_period_end = $2
                WHERE stripe_customer_id = $1`,
-              [customerId, periodEnd]
+              [customerId, periodEnd],
             );
-            console.log(`[Stripe Webhook] Subscription ended for customer ${customerId} — premium removed`);
+            console.log(
+              `[Stripe Webhook] Subscription ended for customer ${customerId} — premium removed`,
+            );
             break;
           }
           case "invoice.payment_failed": {
@@ -2539,7 +3059,7 @@ ${setReference}`
             const customerId = invoice.customer as string;
             await pool.query(
               `UPDATE pokescan_users SET subscription_status = 'past_due' WHERE stripe_customer_id = $1`,
-              [customerId]
+              [customerId],
             );
             break;
           }
@@ -2549,7 +3069,7 @@ ${setReference}`
         console.error("[Stripe Webhook] Handler error:", err.message);
         res.status(500).json({ error: "Webhook handler failed" });
       }
-    }
+    },
   );
 
   // ─── Cancel premium (user-initiated) ─────────────────────────────────────────
@@ -2557,29 +3077,56 @@ ${setReference}`
   app.post("/api/user/cancel-premium", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
       if (user.role === "admin" || user.role === "moderator") {
-        res.status(403).json({ error: "Staff premium cannot be self-cancelled. Contact a superadmin." });
+        res
+          .status(403)
+          .json({
+            error:
+              "Staff premium cannot be self-cancelled. Contact a superadmin.",
+          });
         return;
       }
       if (!user.isPremium) {
-        res.status(400).json({ error: "Account does not have an active premium subscription." });
+        res
+          .status(400)
+          .json({
+            error: "Account does not have an active premium subscription.",
+          });
         return;
       }
 
       // Cancel the Stripe subscription if one exists
-      const subscriptionId = (user as any).stripeSubscriptionId as string | undefined;
+      const subscriptionId = (user as any).stripeSubscriptionId as
+        | string
+        | undefined;
       if (subscriptionId) {
         try {
-          const { getUncachableStripeClient, ensureStripeCustomer } = await import("./stripe-client");
+          const { getUncachableStripeClient, ensureStripeCustomer } =
+            await import("./stripe-client");
           const stripe = await getUncachableStripeClient();
           // Cancel at period end (not immediately) so user keeps access until paid period ends
-          await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
-          console.log(`[Premium] Stripe subscription ${subscriptionId} set to cancel at period end.`);
-          await storage.updateUser(user.id, { subscriptionStatus: "canceling" } as any);
-          res.json({ success: true, message: "Subscription will cancel at end of billing period." });
+          await stripe.subscriptions.update(subscriptionId, {
+            cancel_at_period_end: true,
+          });
+          console.log(
+            `[Premium] Stripe subscription ${subscriptionId} set to cancel at period end.`,
+          );
+          await storage.updateUser(user.id, {
+            subscriptionStatus: "canceling",
+          } as any);
+          res.json({
+            success: true,
+            message: "Subscription will cancel at end of billing period.",
+          });
           return;
         } catch (stripeErr: any) {
           console.error("[Premium] Stripe cancel error:", stripeErr.message);
@@ -2589,8 +3136,13 @@ ${setReference}`
 
       // No Stripe sub — just remove the flag (admin-granted premium)
       const updated = await storage.updateUser(user.id, { isPremium: false });
-      if (!updated) { res.status(404).json({ error: "User not found" }); return; }
-      console.log(`[Premium] User ${user.id} (${user.email || user.username}) cancelled premium.`);
+      if (!updated) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      console.log(
+        `[Premium] User ${user.id} (${user.email || user.username}) cancelled premium.`,
+      );
       res.json({ success: true });
     } catch (error: any) {
       console.error("Cancel premium error:", error);
@@ -2615,12 +3167,21 @@ ${setReference}`
       priceGBP: row.price_gbp ?? null,
       condition: row.condition,
       description: row.description ?? "",
-      photos: (() => { try { return JSON.parse(row.photos ?? "[]"); } catch { return []; } })(),
+      photos: (() => {
+        try {
+          return JSON.parse(row.photos ?? "[]");
+        } catch {
+          return [];
+        }
+      })(),
       status: row.status ?? "approved",
       reviewedBy: row.reviewed_by ?? null,
       reviewedAt: row.reviewed_at ?? null,
       reviewNote: row.review_note ?? null,
-      reviewNoteUpdatedBy: row.review_note_updated_by_username ?? row.review_note_updated_by ?? null,
+      reviewNoteUpdatedBy:
+        row.review_note_updated_by_username ??
+        row.review_note_updated_by ??
+        null,
       reviewNoteUpdatedAt: row.review_note_updated_at ?? null,
       externalUrl: row.external_url ?? null,
       createdAt: row.created_at,
@@ -2631,10 +3192,21 @@ ${setReference}`
   app.get("/api/listings", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
-      if (!user.isPremium) { res.status(403).json({ error: "Premium required to access the marketplace." }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
+      if (!user.isPremium) {
+        res
+          .status(403)
+          .json({ error: "Premium required to access the marketplace." });
+        return;
+      }
 
       // Public marketplace shows only approved listings.
       // The owner additionally sees their own pending/rejected listings so they
@@ -2644,7 +3216,7 @@ ${setReference}`
            WHERE status = 'approved' OR user_id = $1
            ORDER BY created_at DESC
            LIMIT 200`,
-        [user.id]
+        [user.id],
       );
       res.json({ listings: result.rows.map(rowToListing) });
     } catch (err: any) {
@@ -2658,24 +3230,58 @@ ${setReference}`
   app.post("/api/listings", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
-      if (!user.isPremium) { res.status(403).json({ error: "Premium required to list on the marketplace." }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
+      if (!user.isPremium) {
+        res
+          .status(403)
+          .json({ error: "Premium required to list on the marketplace." });
+        return;
+      }
 
-      const { cardId, cardName, cardImage, setName, rarity, type, priceGBP, condition, description, photos, externalUrl } = req.body;
-      if (!cardId || !cardName || !cardImage || !setName || !type || !condition) {
+      const {
+        cardId,
+        cardName,
+        cardImage,
+        setName,
+        rarity,
+        type,
+        priceGBP,
+        condition,
+        description,
+        photos,
+        externalUrl,
+      } = req.body;
+      if (
+        !cardId ||
+        !cardName ||
+        !cardImage ||
+        !setName ||
+        !type ||
+        !condition
+      ) {
         res.status(400).json({ error: "Missing required listing fields." });
         return;
       }
 
-      const rawPhotos: string[] = Array.isArray(photos) ? photos.slice(0, 6) : [];
+      const rawPhotos: string[] = Array.isArray(photos)
+        ? photos.slice(0, 6)
+        : [];
       const photosJson = JSON.stringify(rawPhotos);
 
       // Sanitise external URL — must be http/https or empty
-      const safeExternalUrl = (typeof externalUrl === "string" && /^https?:\/\//i.test(externalUrl.trim()))
-        ? externalUrl.trim()
-        : null;
+      const safeExternalUrl =
+        typeof externalUrl === "string" &&
+        /^https?:\/\//i.test(externalUrl.trim())
+          ? externalUrl.trim()
+          : null;
 
       // Staff posts are auto-approved; everyone else starts pending review.
       const isStaff = user.role === "admin" || user.role === "moderator";
@@ -2687,16 +3293,23 @@ ${setReference}`
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
          RETURNING *`,
         [
-          user.id, user.displayName,
-          cardId, cardName, cardImage, setName, rarity ?? "Unknown",
-          type, priceGBP ?? null,
-          condition, description ?? "",
+          user.id,
+          user.displayName,
+          cardId,
+          cardName,
+          cardImage,
+          setName,
+          rarity ?? "Unknown",
+          type,
+          priceGBP ?? null,
+          condition,
+          description ?? "",
           photosJson,
           initialStatus,
           isStaff ? user.id : null,
           isStaff ? new Date() : null,
           safeExternalUrl,
-        ]
+        ],
       );
       res.status(201).json({ listing: rowToListing(result.rows[0]) });
     } catch (err: any) {
@@ -2709,19 +3322,38 @@ ${setReference}`
   app.delete("/api/listings/:id", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
 
       const { id } = req.params;
-      const existing = await pool.query(`SELECT user_id FROM pokescan_market_listings WHERE id = $1`, [id]);
-      if (existing.rows.length === 0) { res.status(404).json({ error: "Listing not found" }); return; }
+      const existing = await pool.query(
+        `SELECT user_id FROM pokescan_market_listings WHERE id = $1`,
+        [id],
+      );
+      if (existing.rows.length === 0) {
+        res.status(404).json({ error: "Listing not found" });
+        return;
+      }
 
       const isOwner = existing.rows[0].user_id === user.id;
       const isStaff = user.role === "admin" || user.role === "moderator";
-      if (!isOwner && !isStaff) { res.status(403).json({ error: "Not authorised to delete this listing" }); return; }
+      if (!isOwner && !isStaff) {
+        res
+          .status(403)
+          .json({ error: "Not authorised to delete this listing" });
+        return;
+      }
 
-      await pool.query(`DELETE FROM pokescan_market_listings WHERE id = $1`, [id]);
+      await pool.query(`DELETE FROM pokescan_market_listings WHERE id = $1`, [
+        id,
+      ]);
       res.json({ success: true });
     } catch (err: any) {
       console.error("[Listings] DELETE error:", err.message);
@@ -2733,23 +3365,44 @@ ${setReference}`
   app.patch("/api/listings/:id", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
 
       const { id } = req.params;
-      const existing = await pool.query(`SELECT user_id FROM pokescan_market_listings WHERE id = $1`, [id]);
-      if (existing.rows.length === 0) { res.status(404).json({ error: "Listing not found" }); return; }
+      const existing = await pool.query(
+        `SELECT user_id FROM pokescan_market_listings WHERE id = $1`,
+        [id],
+      );
+      if (existing.rows.length === 0) {
+        res.status(404).json({ error: "Listing not found" });
+        return;
+      }
 
       const isOwner = existing.rows[0].user_id === user.id;
-      if (!isOwner) { res.status(403).json({ error: "Not authorised to edit this listing" }); return; }
+      if (!isOwner) {
+        res.status(403).json({ error: "Not authorised to edit this listing" });
+        return;
+      }
 
-      const { priceGBP, condition, description, externalUrl, photos } = req.body;
-      if (!condition) { res.status(400).json({ error: "Condition is required" }); return; }
+      const { priceGBP, condition, description, externalUrl, photos } =
+        req.body;
+      if (!condition) {
+        res.status(400).json({ error: "Condition is required" });
+        return;
+      }
 
-      const safeExternalUrl = (typeof externalUrl === "string" && /^https?:\/\//i.test(externalUrl.trim()))
-        ? externalUrl.trim()
-        : null;
+      const safeExternalUrl =
+        typeof externalUrl === "string" &&
+        /^https?:\/\//i.test(externalUrl.trim())
+          ? externalUrl.trim()
+          : null;
 
       const isStaff = user.role === "admin" || user.role === "moderator";
       const newStatus = isStaff ? "approved" : "pending";
@@ -2767,13 +3420,16 @@ ${setReference}`
              WHERE id = $9
              RETURNING *`,
           [
-            priceGBP ?? null, condition, description ?? "", safeExternalUrl,
+            priceGBP ?? null,
+            condition,
+            description ?? "",
+            safeExternalUrl,
             photosJson,
             newStatus,
             isStaff ? user.id : null,
             isStaff ? new Date() : null,
             id,
-          ]
+          ],
         );
       } else {
         result = await pool.query(
@@ -2785,12 +3441,15 @@ ${setReference}`
              WHERE id = $8
              RETURNING *`,
           [
-            priceGBP ?? null, condition, description ?? "", safeExternalUrl,
+            priceGBP ?? null,
+            condition,
+            description ?? "",
+            safeExternalUrl,
             newStatus,
             isStaff ? user.id : null,
             isStaff ? new Date() : null,
             id,
-          ]
+          ],
         );
       }
       res.json({ listing: rowToListing(result.rows[0]) });
@@ -2805,11 +3464,18 @@ ${setReference}`
   app.get("/api/admin/listings", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
       if (user.role !== "admin" && user.role !== "moderator") {
-        res.status(403).json({ error: "Staff access required" }); return;
+        res.status(403).json({ error: "Staff access required" });
+        return;
       }
 
       const status = String(req.query.status ?? "all").toLowerCase();
@@ -2821,13 +3487,13 @@ ${setReference}`
                LEFT JOIN pokescan_users u ON u.id = ml.review_note_updated_by
               WHERE ml.status = $1
               ORDER BY ml.created_at DESC LIMIT 500`,
-            [status]
+            [status],
           )
         : await pool.query(
             `SELECT ml.*, u.username AS review_note_updated_by_username
                FROM pokescan_market_listings ml
                LEFT JOIN pokescan_users u ON u.id = ml.review_note_updated_by
-              ORDER BY ml.created_at DESC LIMIT 500`
+              ORDER BY ml.created_at DESC LIMIT 500`,
           );
       res.json({ listings: result.rows.map(rowToListing) });
     } catch (err: any) {
@@ -2840,18 +3506,32 @@ ${setReference}`
   app.patch("/api/admin/listings/:id", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
       if (user.role !== "admin" && user.role !== "moderator") {
-        res.status(403).json({ error: "Staff access required" }); return;
+        res.status(403).json({ error: "Staff access required" });
+        return;
       }
 
       const { id } = req.params;
       const { status, reviewNote } = req.body ?? {};
 
-      if (status !== undefined && status !== "approved" && status !== "rejected") {
-        res.status(400).json({ error: "status must be 'approved' or 'rejected'" }); return;
+      if (
+        status !== undefined &&
+        status !== "approved" &&
+        status !== "rejected"
+      ) {
+        res
+          .status(400)
+          .json({ error: "status must be 'approved' or 'rejected'" });
+        return;
       }
 
       let result;
@@ -2861,7 +3541,7 @@ ${setReference}`
               SET status = $1, reviewed_by = $2, reviewed_at = NOW(), review_note = $3
             WHERE id = $4
             RETURNING *`,
-          [status, user.id, reviewNote ?? null, id]
+          [status, user.id, reviewNote ?? null, id],
         );
       } else {
         result = await pool.query(
@@ -2876,10 +3556,13 @@ ${setReference}`
            SELECT upd.*, u.username AS review_note_updated_by_username
              FROM upd
              LEFT JOIN pokescan_users u ON u.id = upd.review_note_updated_by`,
-          [reviewNote ?? null, user.id, id]
+          [reviewNote ?? null, user.id, id],
         );
       }
-      if (result.rows.length === 0) { res.status(404).json({ error: "Listing not found" }); return; }
+      if (result.rows.length === 0) {
+        res.status(404).json({ error: "Listing not found" });
+        return;
+      }
 
       const row = result.rows[0];
       const action = status !== undefined ? status : "note_edited";
@@ -2911,26 +3594,45 @@ ${setReference}`
   app.get("/api/admin/activity-log", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
       if (user.role !== "admin" && !(await isSuperadminAuthorized(req))) {
-        res.status(403).json({ error: "Admin access required" }); return;
+        res.status(403).json({ error: "Admin access required" });
+        return;
       }
 
       const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
-      const limit = Math.min(50, Math.max(1, parseInt((req.query.limit as string) || "20", 10)));
+      const limit = Math.min(
+        50,
+        Math.max(1, parseInt((req.query.limit as string) || "20", 10)),
+      );
       const offset = (page - 1) * limit;
       const moderator = (req.query.moderator as string) || "";
       const dateFrom = (req.query.dateFrom as string) || "";
       const dateTo = (req.query.dateTo as string) || "";
 
       const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-      if (dateFrom && (!datePattern.test(dateFrom) || isNaN(Date.parse(dateFrom)))) {
-        res.status(400).json({ error: "Invalid dateFrom format — use YYYY-MM-DD" }); return;
+      if (
+        dateFrom &&
+        (!datePattern.test(dateFrom) || isNaN(Date.parse(dateFrom)))
+      ) {
+        res
+          .status(400)
+          .json({ error: "Invalid dateFrom format — use YYYY-MM-DD" });
+        return;
       }
       if (dateTo && (!datePattern.test(dateTo) || isNaN(Date.parse(dateTo)))) {
-        res.status(400).json({ error: "Invalid dateTo format — use YYYY-MM-DD" }); return;
+        res
+          .status(400)
+          .json({ error: "Invalid dateTo format — use YYYY-MM-DD" });
+        return;
       }
 
       const conditions: string[] = [];
@@ -2950,14 +3652,15 @@ ${setReference}`
         params.push(new Date(dateTo + "T23:59:59").toISOString());
       }
 
-      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const where =
+        conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
       const countResult = await pool.query(
         `SELECT COUNT(*)::int AS total
            FROM pokescan_admin_activity_log al
            LEFT JOIN pokescan_users u ON u.id = al.performed_by
            ${where}`,
-        params
+        params,
       );
       const total = countResult.rows[0]?.total ?? 0;
 
@@ -2968,7 +3671,7 @@ ${setReference}`
            ${where}
            ORDER BY al.created_at DESC
            LIMIT $${pi++} OFFSET $${pi++}`,
-        [...params, limit, offset]
+        [...params, limit, offset],
       );
 
       res.json({
@@ -3001,15 +3704,25 @@ ${setReference}`
   app.get("/api/admin/reports/all", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
       if (user.role !== "admin" && !(await isSuperadminAuthorized(req))) {
-        res.status(403).json({ error: "Admin access required" }); return;
+        res.status(403).json({ error: "Admin access required" });
+        return;
       }
 
       const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
-      const limit = Math.min(50, Math.max(1, parseInt((req.query.limit as string) || "20", 10)));
+      const limit = Math.min(
+        50,
+        Math.max(1, parseInt((req.query.limit as string) || "20", 10)),
+      );
       const offset = (page - 1) * limit;
       const status = (req.query.status as string) || "all";
       const reporter = (req.query.reporter as string) || "";
@@ -3017,11 +3730,20 @@ ${setReference}`
       const dateTo = (req.query.dateTo as string) || "";
 
       const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-      if (dateFrom && (!datePattern.test(dateFrom) || isNaN(Date.parse(dateFrom)))) {
-        res.status(400).json({ error: "Invalid dateFrom format — use YYYY-MM-DD" }); return;
+      if (
+        dateFrom &&
+        (!datePattern.test(dateFrom) || isNaN(Date.parse(dateFrom)))
+      ) {
+        res
+          .status(400)
+          .json({ error: "Invalid dateFrom format — use YYYY-MM-DD" });
+        return;
       }
       if (dateTo && (!datePattern.test(dateTo) || isNaN(Date.parse(dateTo)))) {
-        res.status(400).json({ error: "Invalid dateTo format — use YYYY-MM-DD" }); return;
+        res
+          .status(400)
+          .json({ error: "Invalid dateTo format — use YYYY-MM-DD" });
+        return;
       }
 
       const conditions: string[] = [];
@@ -3046,14 +3768,15 @@ ${setReference}`
         params.push(new Date(dateTo + "T23:59:59").toISOString());
       }
 
-      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const where =
+        conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
       const countResult = await pool.query(
         `SELECT COUNT(*)::int AS total
            FROM pokescan_reports r
            LEFT JOIN pokescan_users reporter ON reporter.id = r.reporter_id
            ${where}`,
-        params
+        params,
       );
       const total = countResult.rows[0]?.total ?? 0;
 
@@ -3070,7 +3793,7 @@ ${setReference}`
            ${where}
            ORDER BY r.created_at DESC
            LIMIT $${pi++} OFFSET $${pi++}`,
-        [...params, limit, offset]
+        [...params, limit, offset],
       );
 
       res.json({
@@ -3107,9 +3830,15 @@ ${setReference}`
   app.post("/api/user/daily-checkin", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
       if (user.isPremium) {
         res.json({ isPremium: true, unlimited: true });
         return;
@@ -3126,9 +3855,15 @@ ${setReference}`
   app.get("/api/user/scan-quota", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
       if (user.isPremium) {
         res.json({ isPremium: true, unlimited: true });
         return;
@@ -3145,9 +3880,15 @@ ${setReference}`
   app.post("/api/user/avatar", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
 
       const { base64, mimeType } = req.body;
       if (!base64 || typeof base64 !== "string") {
@@ -3156,12 +3897,17 @@ ${setReference}`
       }
       // ~1.5 MB base64 cap (~1.1 MB raw image)
       if (base64.length > 1572864) {
-        res.status(400).json({ error: "Image too large. Please choose a smaller image." });
+        res
+          .status(400)
+          .json({ error: "Image too large. Please choose a smaller image." });
         return;
       }
       const dataUrl = `data:${mimeType || "image/jpeg"};base64,${base64}`;
       const updated = await storage.updateUser(user.id, { avatarUrl: dataUrl });
-      if (!updated) { res.status(404).json({ error: "User not found" }); return; }
+      if (!updated) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
       res.json({ avatarUrl: dataUrl });
     } catch (error: any) {
       console.error("Avatar upload error:", error);
@@ -3174,11 +3920,17 @@ ${setReference}`
   app.get("/api/scan-history", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
       const rows = await db.execute(
-        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`
+        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`,
       );
       const entries = (rows.rows as any[]).map((r) => ({
         id: r.id,
@@ -3196,115 +3948,180 @@ ${setReference}`
       res.json({ history: entries });
     } catch (error: any) {
       console.error("Scan history fetch error:", error);
-      res.status(500).json({ error: error.message || "Failed to fetch scan history" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to fetch scan history" });
     }
   });
 
-  app.post("/api/scan-history", express.json({ limit: "10mb" }), async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
-      const { cardName, setName, cardNumber, language, thumbnail, priceGBP, identification, tcgApiResults, pcvResults } = req.body;
-      if (!cardName) { res.status(400).json({ error: "cardName is required" }); return; }
-      const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      await db.execute(
-        sql`INSERT INTO pokescan_scan_history (id, user_id, card_name, set_name, card_number, language, thumbnail, price_gbp, identification, tcg_api_results, pcv_results)
+  app.post(
+    "/api/scan-history",
+    express.json({ limit: "10mb" }),
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid or expired session" });
+          return;
+        }
+        const {
+          cardName,
+          setName,
+          cardNumber,
+          language,
+          thumbnail,
+          priceGBP,
+          identification,
+          tcgApiResults,
+          pcvResults,
+        } = req.body;
+        if (!cardName) {
+          res.status(400).json({ error: "cardName is required" });
+          return;
+        }
+        const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        await db.execute(
+          sql`INSERT INTO pokescan_scan_history (id, user_id, card_name, set_name, card_number, language, thumbnail, price_gbp, identification, tcg_api_results, pcv_results)
             VALUES (${id}, ${user.id}, ${cardName}, ${setName || ""}, ${cardNumber || ""}, ${language || "english"},
                     ${thumbnail || null}, ${priceGBP ?? null},
-                    ${JSON.stringify(identification || {})}, ${JSON.stringify(tcgApiResults || [])}, ${JSON.stringify(pcvResults || [])})`
-      );
-      await db.execute(
-        sql`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id} AND id NOT IN (
+                    ${JSON.stringify(identification || {})}, ${JSON.stringify(tcgApiResults || [])}, ${JSON.stringify(pcvResults || [])})`,
+        );
+        await db.execute(
+          sql`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id} AND id NOT IN (
               SELECT id FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25
-            )`
-      );
-      const rows = await db.execute(
-        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`
-      );
-      const entries = (rows.rows as any[]).map((r) => ({
-        id: r.id,
-        timestamp: r.scanned_at,
-        cardName: r.card_name,
-        setName: r.set_name,
-        cardNumber: r.card_number,
-        language: r.language,
-        thumbnail: r.thumbnail,
-        priceGBP: r.price_gbp,
-        identification: JSON.parse(r.identification || "{}"),
-        tcgApiResults: JSON.parse(r.tcg_api_results || "[]"),
-        pcvResults: JSON.parse(r.pcv_results || "[]"),
-      }));
-      res.json({ history: entries });
-    } catch (error: any) {
-      console.error("Scan history add error:", error);
-      res.status(500).json({ error: error.message || "Failed to add scan history entry" });
-    }
-  });
+            )`,
+        );
+        const rows = await db.execute(
+          sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`,
+        );
+        const entries = (rows.rows as any[]).map((r) => ({
+          id: r.id,
+          timestamp: r.scanned_at,
+          cardName: r.card_name,
+          setName: r.set_name,
+          cardNumber: r.card_number,
+          language: r.language,
+          thumbnail: r.thumbnail,
+          priceGBP: r.price_gbp,
+          identification: JSON.parse(r.identification || "{}"),
+          tcgApiResults: JSON.parse(r.tcg_api_results || "[]"),
+          pcvResults: JSON.parse(r.pcv_results || "[]"),
+        }));
+        res.json({ history: entries });
+      } catch (error: any) {
+        console.error("Scan history add error:", error);
+        res
+          .status(500)
+          .json({ error: error.message || "Failed to add scan history entry" });
+      }
+    },
+  );
 
-  app.post("/api/scan-history/bulk", express.json({ limit: "10mb" }), async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
-      const { entries } = req.body;
-      if (!Array.isArray(entries) || entries.length === 0) { res.json({ migrated: 0, failed: 0 }); return; }
-      let migrated = 0;
-      let failed = 0;
-      for (const entry of entries) {
-        try {
-          const existingRows = await db.execute(
-            sql`SELECT id FROM pokescan_scan_history WHERE id = ${entry.id} AND user_id = ${user.id}`
-          );
-          if ((existingRows.rows as any[]).length > 0) { migrated++; continue; }
-          const scannedAt = entry.timestamp ? new Date(entry.timestamp) : new Date();
-          await db.execute(
-            sql`INSERT INTO pokescan_scan_history (id, user_id, card_name, set_name, card_number, language, thumbnail, price_gbp, identification, tcg_api_results, pcv_results, scanned_at)
+  app.post(
+    "/api/scan-history/bulk",
+    express.json({ limit: "10mb" }),
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid or expired session" });
+          return;
+        }
+        const { entries } = req.body;
+        if (!Array.isArray(entries) || entries.length === 0) {
+          res.json({ migrated: 0, failed: 0 });
+          return;
+        }
+        let migrated = 0;
+        let failed = 0;
+        for (const entry of entries) {
+          try {
+            const existingRows = await db.execute(
+              sql`SELECT id FROM pokescan_scan_history WHERE id = ${entry.id} AND user_id = ${user.id}`,
+            );
+            if ((existingRows.rows as any[]).length > 0) {
+              migrated++;
+              continue;
+            }
+            const scannedAt = entry.timestamp
+              ? new Date(entry.timestamp)
+              : new Date();
+            await db.execute(
+              sql`INSERT INTO pokescan_scan_history (id, user_id, card_name, set_name, card_number, language, thumbnail, price_gbp, identification, tcg_api_results, pcv_results, scanned_at)
                 VALUES (${entry.id}, ${user.id}, ${entry.cardName || ""}, ${entry.setName || ""}, ${entry.cardNumber || ""},
                         ${entry.language || "english"}, ${entry.thumbnail || null}, ${entry.priceGBP ?? null},
-                        ${JSON.stringify(entry.identification || {})}, ${JSON.stringify(entry.tcgApiResults || [])}, ${JSON.stringify(entry.pcvResults || [])}, ${scannedAt})`
-          );
-          migrated++;
-        } catch { failed++; }
-      }
-      await db.execute(
-        sql`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id} AND id NOT IN (
+                        ${JSON.stringify(entry.identification || {})}, ${JSON.stringify(entry.tcgApiResults || [])}, ${JSON.stringify(entry.pcvResults || [])}, ${scannedAt})`,
+            );
+            migrated++;
+          } catch {
+            failed++;
+          }
+        }
+        await db.execute(
+          sql`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id} AND id NOT IN (
               SELECT id FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25
-            )`
-      );
-      res.json({ migrated, failed });
-    } catch (error: any) {
-      console.error("Scan history bulk migrate error:", error);
-      res.status(500).json({ error: error.message || "Migration failed" });
-    }
-  });
+            )`,
+        );
+        res.json({ migrated, failed });
+      } catch (error: any) {
+        console.error("Scan history bulk migrate error:", error);
+        res.status(500).json({ error: error.message || "Migration failed" });
+      }
+    },
+  );
 
   app.delete("/api/scan-history", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
-      await db.execute(sql`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id}`);
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
+      await db.execute(
+        sql`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id}`,
+      );
       res.json({ history: [] });
     } catch (error: any) {
       console.error("Scan history clear error:", error);
-      res.status(500).json({ error: error.message || "Failed to clear scan history" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to clear scan history" });
     }
   });
 
   app.delete("/api/scan-history/:id", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
       const { id } = req.params;
-      await db.execute(sql`DELETE FROM pokescan_scan_history WHERE id = ${id} AND user_id = ${user.id}`);
+      await db.execute(
+        sql`DELETE FROM pokescan_scan_history WHERE id = ${id} AND user_id = ${user.id}`,
+      );
       const rows = await db.execute(
-        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`
+        sql`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`,
       );
       const entries = (rows.rows as any[]).map((r) => ({
         id: r.id,
@@ -3322,7 +4139,11 @@ ${setReference}`
       res.json({ history: entries });
     } catch (error: any) {
       console.error("Scan history delete error:", error);
-      res.status(500).json({ error: error.message || "Failed to delete scan history entry" });
+      res
+        .status(500)
+        .json({
+          error: error.message || "Failed to delete scan history entry",
+        });
     }
   });
 
@@ -3331,12 +4152,18 @@ ${setReference}`
   app.get("/api/collection", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
 
       const rows = await db.execute(
-        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`
+        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`,
       );
       const items = (rows.rows as any[]).map((r) => ({
         id: r.id,
@@ -3359,18 +4186,40 @@ ${setReference}`
       res.json({ collection: items });
     } catch (error: any) {
       console.error("Collection fetch error:", error);
-      res.status(500).json({ error: error.message || "Failed to fetch collection" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to fetch collection" });
     }
   });
 
   app.post("/api/collection", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
 
-      const { cardId, cardName, cardImage, setName, setId, rarity, quantity, condition, variant, priceGBP, migrate, gradingCompany, grade } = req.body;
+      const {
+        cardId,
+        cardName,
+        cardImage,
+        setName,
+        setId,
+        rarity,
+        quantity,
+        condition,
+        variant,
+        priceGBP,
+        migrate,
+        gradingCompany,
+        grade,
+      } = req.body;
       const v = variant || "Non-Holo";
       const gc = gradingCompany || null;
       const gr = grade || null;
@@ -3384,23 +4233,25 @@ ${setReference}`
               AND condition = ${condition}
               AND COALESCE(variant, 'Non-Holo') = ${v}
               AND COALESCE(grading_company, '') = COALESCE(${gc}, '')
-              AND COALESCE(grade, '') = COALESCE(${gr}, '')`
+              AND COALESCE(grade, '') = COALESCE(${gr}, '')`,
       );
 
       if (existing.rows.length > 0) {
         const row = existing.rows[0] as any;
-        const newQty = migrate ? Math.max(row.quantity, quantity || 1) : row.quantity + (quantity || 1);
+        const newQty = migrate
+          ? Math.max(row.quantity, quantity || 1)
+          : row.quantity + (quantity || 1);
         await db.execute(
-          sql`UPDATE pokescan_collections SET quantity = ${newQty}, price_gbp = ${priceGBP ?? null} WHERE id = ${row.id}`
+          sql`UPDATE pokescan_collections SET quantity = ${newQty}, price_gbp = ${priceGBP ?? null} WHERE id = ${row.id}`,
         );
       } else {
         await db.execute(
-          sql`INSERT INTO pokescan_collections (user_id, card_id, card_name, card_image, set_name, set_id, rarity, quantity, condition, variant, price_gbp, grading_company, grade) VALUES (${user.id}, ${cardId}, ${cardName}, ${cardImage ?? null}, ${setName || setId || "Unknown"}, ${setId || null}, ${rarity || "Unknown"}, ${quantity || 1}, ${condition}, ${v}, ${priceGBP ?? null}, ${gc}, ${gr})`
+          sql`INSERT INTO pokescan_collections (user_id, card_id, card_name, card_image, set_name, set_id, rarity, quantity, condition, variant, price_gbp, grading_company, grade) VALUES (${user.id}, ${cardId}, ${cardName}, ${cardImage ?? null}, ${setName || setId || "Unknown"}, ${setId || null}, ${rarity || "Unknown"}, ${quantity || 1}, ${condition}, ${v}, ${priceGBP ?? null}, ${gc}, ${gr})`,
         );
       }
 
       const rows = await db.execute(
-        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`
+        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`,
       );
       const items = (rows.rows as any[]).map((r) => ({
         id: r.id,
@@ -3430,25 +4281,37 @@ ${setReference}`
   app.put("/api/collection/:id", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
 
       const { id } = req.params;
       const { quantity, gradingCompany, grade } = req.body;
 
       if (quantity <= 0) {
-        await db.execute(sql`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`);
+        await db.execute(
+          sql`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`,
+        );
       } else if (gradingCompany !== undefined) {
         const gc = gradingCompany || null;
         const gr = grade || null;
-        await db.execute(sql`UPDATE pokescan_collections SET quantity = ${quantity}, grading_company = ${gc}, grade = ${gr} WHERE id = ${id} AND user_id = ${user.id}`);
+        await db.execute(
+          sql`UPDATE pokescan_collections SET quantity = ${quantity}, grading_company = ${gc}, grade = ${gr} WHERE id = ${id} AND user_id = ${user.id}`,
+        );
       } else {
-        await db.execute(sql`UPDATE pokescan_collections SET quantity = ${quantity} WHERE id = ${id} AND user_id = ${user.id}`);
+        await db.execute(
+          sql`UPDATE pokescan_collections SET quantity = ${quantity} WHERE id = ${id} AND user_id = ${user.id}`,
+        );
       }
 
       const rows = await db.execute(
-        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`
+        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`,
       );
       const items = (rows.rows as any[]).map((r) => ({
         id: r.id,
@@ -3478,15 +4341,23 @@ ${setReference}`
   app.delete("/api/collection/:id", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid or expired session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid or expired session" });
+        return;
+      }
 
       const { id } = req.params;
-      await db.execute(sql`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`);
+      await db.execute(
+        sql`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`,
+      );
 
       const rows = await db.execute(
-        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`
+        sql`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`,
       );
       const items = (rows.rows as any[]).map((r) => ({
         id: r.id,
@@ -3514,29 +4385,46 @@ ${setReference}`
   });
 
   // ─── Card photo verification ──────────────────────────────────────────────
-  app.post("/api/collection/:id/verify", express.json({ limit: "25mb" }), async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid session" }); return; }
+  app.post(
+    "/api/collection/:id/verify",
+    express.json({ limit: "25mb" }),
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
 
-      const { id } = req.params;
-      const { frontImageBase64, backImageBase64 } = req.body;
-      if (!frontImageBase64 || !backImageBase64) {
-        res.status(400).json({ error: "Both frontImageBase64 and backImageBase64 are required" }); return;
-      }
+        const { id } = req.params;
+        const { frontImageBase64, backImageBase64 } = req.body;
+        if (!frontImageBase64 || !backImageBase64) {
+          res
+            .status(400)
+            .json({
+              error: "Both frontImageBase64 and backImageBase64 are required",
+            });
+          return;
+        }
 
-      const row = await db.execute(
-        sql`SELECT card_name, set_name, card_id, card_image FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`
-      );
-      if (!row.rows.length) { res.status(404).json({ error: "Collection item not found" }); return; }
-      const card = row.rows[0] as any;
+        const row = await db.execute(
+          sql`SELECT card_name, set_name, card_id, card_image FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`,
+        );
+        if (!row.rows.length) {
+          res.status(404).json({ error: "Collection item not found" });
+          return;
+        }
+        const card = row.rows[0] as any;
 
-      // Extract card number from card ID (e.g. "sv4-25" → "25")
-      const cardNumber = card.card_id?.split("-").pop() || "";
+        // Extract card number from card ID (e.g. "sv4-25" → "25")
+        const cardNumber = card.card_id?.split("-").pop() || "";
 
-      const prompt = `You are a Pokémon TCG card verification expert. A user claims this physical card is:
+        const prompt = `You are a Pokémon TCG card verification expert. A user claims this physical card is:
 Card Name: ${card.card_name}
 Set Name: ${card.set_name}
 Card Number: ${cardNumber}
@@ -3553,71 +4441,93 @@ Return ONLY valid JSON with no markdown:
 confidence must be "high", "medium", or "low".
 matches must be true or false.`;
 
-      const aiRes = await openai.chat.completions.create({
-        model: "gpt-4o",
-        max_tokens: 200,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: frontImageBase64, detail: "high" } },
-            { type: "image_url", image_url: { url: backImageBase64, detail: "low" } },
+        const aiRes = await openai.chat.completions.create({
+          model: "gpt-4o",
+          max_tokens: 200,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                {
+                  type: "image_url",
+                  image_url: { url: frontImageBase64, detail: "high" },
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: backImageBase64, detail: "low" },
+                },
+              ],
+            },
           ],
-        }],
-      });
+        });
 
-      const raw = aiRes.choices[0]?.message?.content?.trim() || "";
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("AI returned invalid response");
-      const parsed = JSON.parse(jsonMatch[0]);
+        const raw = aiRes.choices[0]?.message?.content?.trim() || "";
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("AI returned invalid response");
+        const parsed = JSON.parse(jsonMatch[0]);
 
-      const verified = !!(parsed.matches && parsed.confidence !== "low");
-      let verifiedPercent = 0;
-      let badgeEarned = false;
-      if (verified) {
-        await db.execute(
-          sql`UPDATE pokescan_collections SET is_verified = true, verified_at = NOW() WHERE id = ${id} AND user_id = ${user.id}`
-        );
-        // Auto-grant Verified Collector badge if 90%+ of collection is now verified
-        const countRow = await db.execute(
-          sql`SELECT COUNT(*) FILTER (WHERE is_verified = true) AS verified_count, COUNT(*) AS total_count FROM pokescan_collections WHERE user_id = ${user.id}`
-        );
-        const counts = countRow.rows[0] as any;
-        const total = parseInt(counts.total_count) || 0;
-        const verifiedCount = parseInt(counts.verified_count) || 0;
-        verifiedPercent = total > 0 ? Math.round((verifiedCount / total) * 100) : 0;
-        if (total > 0 && verifiedCount / total >= 0.9) {
-          const alreadyBadged = await db.execute(sql`SELECT is_verified_collector FROM pokescan_users WHERE id = ${user.id}`);
-          if (!(alreadyBadged.rows[0] as any)?.is_verified_collector) {
-            await db.execute(sql`UPDATE pokescan_users SET is_verified_collector = true WHERE id = ${user.id}`);
-            badgeEarned = true;
+        const verified = !!(parsed.matches && parsed.confidence !== "low");
+        let verifiedPercent = 0;
+        let badgeEarned = false;
+        if (verified) {
+          await db.execute(
+            sql`UPDATE pokescan_collections SET is_verified = true, verified_at = NOW() WHERE id = ${id} AND user_id = ${user.id}`,
+          );
+          // Auto-grant Verified Collector badge if 90%+ of collection is now verified
+          const countRow = await db.execute(
+            sql`SELECT COUNT(*) FILTER (WHERE is_verified = true) AS verified_count, COUNT(*) AS total_count FROM pokescan_collections WHERE user_id = ${user.id}`,
+          );
+          const counts = countRow.rows[0] as any;
+          const total = parseInt(counts.total_count) || 0;
+          const verifiedCount = parseInt(counts.verified_count) || 0;
+          verifiedPercent =
+            total > 0 ? Math.round((verifiedCount / total) * 100) : 0;
+          if (total > 0 && verifiedCount / total >= 0.9) {
+            const alreadyBadged = await db.execute(
+              sql`SELECT is_verified_collector FROM pokescan_users WHERE id = ${user.id}`,
+            );
+            if (!(alreadyBadged.rows[0] as any)?.is_verified_collector) {
+              await db.execute(
+                sql`UPDATE pokescan_users SET is_verified_collector = true WHERE id = ${user.id}`,
+              );
+              badgeEarned = true;
+            }
           }
         }
-      }
 
-      res.json({
-        verified,
-        confidence: parsed.confidence || "low",
-        reason: parsed.reason || "Unable to determine.",
-        verifiedPercent,
-        badgeEarned,
-      });
-    } catch (err: any) {
-      console.error("Card verify error:", err);
-      res.status(500).json({ error: "Verification failed" });
-    }
-  });
+        res.json({
+          verified,
+          confidence: parsed.confidence || "low",
+          reason: parsed.reason || "Unable to determine.",
+          verifiedPercent,
+          badgeEarned,
+        });
+      } catch (err: any) {
+        console.error("Card verify error:", err);
+        res.status(500).json({ error: "Verification failed" });
+      }
+    },
+  );
 
   // ─── Top verified value collections ──────────────────────────────────────
-  app.get("/api/collections/top-verified", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const me = await storage.validateSession(token);
-      if (!me) { res.status(401).json({ error: "Invalid session" }); return; }
+  app.get(
+    "/api/collections/top-verified",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const me = await storage.validateSession(token);
+        if (!me) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
 
-      const result = await db.execute(
-        sql`SELECT u.id, u.username, u.display_name, u.avatar_url, u.is_verified_collector,
+        const result = await db.execute(
+          sql`SELECT u.id, u.username, u.display_name, u.avatar_url, u.is_verified_collector,
                    COUNT(c.id) FILTER (WHERE c.is_verified = true)::int AS verified_count,
                    COUNT(c.id)::int AS total_count,
                    COALESCE(SUM(c.price_gbp * c.quantity) FILTER (WHERE c.is_verified = true), 0) AS verified_value
@@ -3627,124 +4537,188 @@ matches must be true or false.`;
             GROUP BY u.id, u.username, u.display_name, u.avatar_url, u.is_verified_collector
             HAVING COUNT(c.id) FILTER (WHERE c.is_verified = true) > 0
             ORDER BY verified_value DESC
-            LIMIT 10`
-      );
+            LIMIT 10`,
+        );
 
-      const top = (result.rows as any[]).map((r) => ({
-        id: r.id,
-        username: r.username,
-        displayName: r.display_name,
-        avatarUrl: r.avatar_url || null,
-        isVerifiedCollector: r.is_verified_collector ?? false,
-        verifiedCount: r.verified_count,
-        totalCount: r.total_count,
-        verifiedValue: parseFloat(r.verified_value) || 0,
-        verifiedPercent: r.total_count > 0 ? Math.round((r.verified_count / r.total_count) * 100) : 0,
-      }));
-      res.json({ top });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || "Failed to fetch top verified" });
-    }
-  });
+        const top = (result.rows as any[]).map((r) => ({
+          id: r.id,
+          username: r.username,
+          displayName: r.display_name,
+          avatarUrl: r.avatar_url || null,
+          isVerifiedCollector: r.is_verified_collector ?? false,
+          verifiedCount: r.verified_count,
+          totalCount: r.total_count,
+          verifiedValue: parseFloat(r.verified_value) || 0,
+          verifiedPercent:
+            r.total_count > 0
+              ? Math.round((r.verified_count / r.total_count) * 100)
+              : 0,
+        }));
+        res.json({ top });
+      } catch (err: any) {
+        res
+          .status(500)
+          .json({ error: err.message || "Failed to fetch top verified" });
+      }
+    },
+  );
 
   // ─── Collection visibility toggle ─────────────────────────────────────────
-  app.patch("/api/user/collection-visible", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid session" }); return; }
-      const { visible } = req.body;
-      const updated = await storage.updateUser(user.id, { collectionVisible: !!visible });
-      res.json({ collectionVisible: updated?.collectionVisible ?? !!visible });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to update visibility" });
-    }
-  });
+  app.patch(
+    "/api/user/collection-visible",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        const { visible } = req.body;
+        const updated = await storage.updateUser(user.id, {
+          collectionVisible: !!visible,
+        });
+        res.json({
+          collectionVisible: updated?.collectionVisible ?? !!visible,
+        });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ error: error.message || "Failed to update visibility" });
+      }
+    },
+  );
 
   // Alias for collection visibility following task API contract
   app.patch("/api/collection/privacy", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!user) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
       const { isPublic } = req.body;
-      const updated = await storage.updateUser(user.id, { collectionVisible: !!isPublic });
+      const updated = await storage.updateUser(user.id, {
+        collectionVisible: !!isPublic,
+      });
       res.json({ isPublic: updated?.collectionVisible ?? !!isPublic });
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to update privacy" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to update privacy" });
     }
   });
 
   // ─── View a friend's public collection ────────────────────────────────────
-  app.get("/api/collection/user/:userId", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const me = await storage.validateSession(token);
-      if (!me) { res.status(401).json({ error: "Invalid session" }); return; }
+  app.get(
+    "/api/collection/user/:userId",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const me = await storage.validateSession(token);
+        if (!me) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
 
-      const { userId } = req.params;
+        const { userId } = req.params;
 
-      // Check the target user exists and has collection visible
-      const target = await storage.getUserById(userId);
-      if (!target) { res.status(404).json({ error: "User not found" }); return; }
-      if (!target.collectionVisible) { res.status(403).json({ error: "This collection is private" }); return; }
+        // Check the target user exists and has collection visible
+        const target = await storage.getUserById(userId);
+        if (!target) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+        if (!target.collectionVisible) {
+          res.status(403).json({ error: "This collection is private" });
+          return;
+        }
 
-      // Check they are friends (accepted friendship)
-      const friendship = await db.execute(
-        sql`SELECT id FROM pokescan_friendships WHERE status = 'accepted' AND (
+        // Check they are friends (accepted friendship)
+        const friendship = await db.execute(
+          sql`SELECT id FROM pokescan_friendships WHERE status = 'accepted' AND (
           (requester_id = ${me.id} AND addressee_id = ${userId}) OR
           (requester_id = ${userId} AND addressee_id = ${me.id})
-        )`
-      );
-      if (friendship.rows.length === 0 && me.id !== userId) {
-        res.status(403).json({ error: "You are not friends with this user" }); return;
-      }
+        )`,
+        );
+        if (friendship.rows.length === 0 && me.id !== userId) {
+          res.status(403).json({ error: "You are not friends with this user" });
+          return;
+        }
 
-      const rows = await db.execute(
-        sql`SELECT * FROM pokescan_collections WHERE user_id = ${userId} ORDER BY added_at DESC`
-      );
-      const items = (rows.rows as any[]).map((r) => ({
-        id: r.id,
-        cardId: r.card_id,
-        cardName: r.card_name,
-        cardImage: r.card_image,
-        setName: r.set_name,
-        setId: r.set_id,
-        rarity: r.rarity,
-        quantity: r.quantity,
-        condition: r.condition,
-        variant: r.variant || "Non-Holo",
-        priceGBP: r.price_gbp,
-        gradingCompany: r.grading_company || null,
-        grade: r.grade || null,
-        isVerified: r.is_verified ?? false,
-        verifiedAt: r.verified_at || null,
-        addedAt: r.added_at,
-      }));
-      res.json({ collection: items, owner: { id: target.id, displayName: target.displayName, username: target.username, avatarUrl: target.avatarUrl, isVerifiedCollector: target.isVerifiedCollector ?? false } });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to fetch collection" });
-    }
-  });
+        const rows = await db.execute(
+          sql`SELECT * FROM pokescan_collections WHERE user_id = ${userId} ORDER BY added_at DESC`,
+        );
+        const items = (rows.rows as any[]).map((r) => ({
+          id: r.id,
+          cardId: r.card_id,
+          cardName: r.card_name,
+          cardImage: r.card_image,
+          setName: r.set_name,
+          setId: r.set_id,
+          rarity: r.rarity,
+          quantity: r.quantity,
+          condition: r.condition,
+          variant: r.variant || "Non-Holo",
+          priceGBP: r.price_gbp,
+          gradingCompany: r.grading_company || null,
+          grade: r.grade || null,
+          isVerified: r.is_verified ?? false,
+          verifiedAt: r.verified_at || null,
+          addedAt: r.added_at,
+        }));
+        res.json({
+          collection: items,
+          owner: {
+            id: target.id,
+            displayName: target.displayName,
+            username: target.username,
+            avatarUrl: target.avatarUrl,
+            isVerifiedCollector: target.isVerifiedCollector ?? false,
+          },
+        });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ error: error.message || "Failed to fetch collection" });
+      }
+    },
+  );
 
   // ─── Public Collections browse ────────────────────────────────────────────
   app.get("/api/collections/public", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const me = await storage.validateSession(token);
-      if (!me) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!me) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
 
-      const search = (req.query.search as string || "").trim();
+      const search = ((req.query.search as string) || "").trim();
       const page = parseInt((req.query.page as string) || "1", 10);
       const pageSize = 20;
       const offset = (page - 1) * pageSize;
 
       const searchClause = search
-        ? sql`AND (u.username ILIKE ${'%' + search + '%'} OR u.display_name ILIKE ${'%' + search + '%'})`
+        ? sql`AND (u.username ILIKE ${"%" + search + "%"} OR u.display_name ILIKE ${"%" + search + "%"})`
         : sql``;
 
       const result = await db.execute(
@@ -3757,7 +4731,7 @@ matches must be true or false.`;
             WHERE u.collection_visible = true ${searchClause}
             GROUP BY u.id, u.username, u.display_name, u.avatar_url, u.is_verified_collector
             ORDER BY total_value DESC
-            LIMIT ${pageSize} OFFSET ${offset}`
+            LIMIT ${pageSize} OFFSET ${offset}`,
       );
 
       const collectors = (result.rows as any[]).map((r) => ({
@@ -3773,286 +4747,420 @@ matches must be true or false.`;
 
       res.json({ collectors, page, hasMore: collectors.length === pageSize });
     } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to fetch public collections" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to fetch public collections" });
     }
   });
 
   // ─── Public collection view (no friendship required) ───────────────────────
-  app.get("/api/collections/public/:userId", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const me = await storage.validateSession(token);
-      if (!me) { res.status(401).json({ error: "Invalid session" }); return; }
-
-      const { userId } = req.params;
-      const target = await storage.getUserById(userId);
-      if (!target) { res.status(404).json({ error: "User not found" }); return; }
-      if (!target.collectionVisible) { res.status(403).json({ error: "This collection is private" }); return; }
-
-      const rows = await db.execute(
-        sql`SELECT * FROM pokescan_collections WHERE user_id = ${userId} ORDER BY added_at DESC`
-      );
-      const items = (rows.rows as any[]).map((r) => ({
-        id: r.id,
-        cardId: r.card_id,
-        cardName: r.card_name,
-        cardImage: r.card_image,
-        setName: r.set_name,
-        setId: r.set_id,
-        rarity: r.rarity,
-        quantity: r.quantity,
-        condition: r.condition,
-        variant: r.variant || "Non-Holo",
-        priceGBP: r.price_gbp,
-        gradingCompany: r.grading_company || null,
-        grade: r.grade || null,
-        isVerified: r.is_verified ?? false,
-        verifiedAt: r.verified_at || null,
-        addedAt: r.added_at,
-      }));
-      res.json({
-        collection: items,
-        owner: {
-          id: target.id,
-          displayName: target.displayName,
-          username: target.username,
-          avatarUrl: target.avatarUrl,
-          isVerifiedCollector: target.isVerifiedCollector ?? false,
+  app.get(
+    "/api/collections/public/:userId",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
         }
-      });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to fetch collection" });
-    }
-  });
+        const me = await storage.validateSession(token);
+        if (!me) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+
+        const { userId } = req.params;
+        const target = await storage.getUserById(userId);
+        if (!target) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+        if (!target.collectionVisible) {
+          res.status(403).json({ error: "This collection is private" });
+          return;
+        }
+
+        const rows = await db.execute(
+          sql`SELECT * FROM pokescan_collections WHERE user_id = ${userId} ORDER BY added_at DESC`,
+        );
+        const items = (rows.rows as any[]).map((r) => ({
+          id: r.id,
+          cardId: r.card_id,
+          cardName: r.card_name,
+          cardImage: r.card_image,
+          setName: r.set_name,
+          setId: r.set_id,
+          rarity: r.rarity,
+          quantity: r.quantity,
+          condition: r.condition,
+          variant: r.variant || "Non-Holo",
+          priceGBP: r.price_gbp,
+          gradingCompany: r.grading_company || null,
+          grade: r.grade || null,
+          isVerified: r.is_verified ?? false,
+          verifiedAt: r.verified_at || null,
+          addedAt: r.added_at,
+        }));
+        res.json({
+          collection: items,
+          owner: {
+            id: target.id,
+            displayName: target.displayName,
+            username: target.username,
+            avatarUrl: target.avatarUrl,
+            isVerifiedCollector: target.isVerifiedCollector ?? false,
+          },
+        });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ error: error.message || "Failed to fetch collection" });
+      }
+    },
+  );
 
   // ─── Collector Verification ────────────────────────────────────────────────
-  app.post("/api/collector-verification", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid session" }); return; }
+  app.post(
+    "/api/collector-verification",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
 
-      const { cardId, cardName, cardImage, frontPhoto, backPhoto } = req.body;
-      if (!cardId || !cardName || !frontPhoto || !backPhoto) {
-        res.status(400).json({ error: "cardId, cardName, frontPhoto and backPhoto are required" }); return;
-      }
+        const { cardId, cardName, cardImage, frontPhoto, backPhoto } = req.body;
+        if (!cardId || !cardName || !frontPhoto || !backPhoto) {
+          res
+            .status(400)
+            .json({
+              error: "cardId, cardName, frontPhoto and backPhoto are required",
+            });
+          return;
+        }
 
-      // Verify the card belongs to this user's collection and is a graded entry
-      const cardOwnership = await db.execute(
-        sql`SELECT id, grading_company, grade FROM pokescan_collections
+        // Verify the card belongs to this user's collection and is a graded entry
+        const cardOwnership = await db.execute(
+          sql`SELECT id, grading_company, grade FROM pokescan_collections
             WHERE user_id = ${user.id} AND card_id = ${cardId}
               AND grading_company IS NOT NULL AND grade IS NOT NULL
-            LIMIT 1`
-      );
-      if (cardOwnership.rows.length === 0) {
-        res.status(403).json({ error: "The selected card must be a professionally graded entry in your collection (add it with a grading company and grade first)" }); return;
+            LIMIT 1`,
+        );
+        if (cardOwnership.rows.length === 0) {
+          res
+            .status(403)
+            .json({
+              error:
+                "The selected card must be a professionally graded entry in your collection (add it with a grading company and grade first)",
+            });
+          return;
+        }
+
+        // Check for existing pending application
+        const existing = await db.execute(
+          sql`SELECT id FROM pokescan_collector_verifications WHERE user_id = ${user.id} AND status = 'pending'`,
+        );
+        if (existing.rows.length > 0) {
+          res
+            .status(409)
+            .json({
+              error: "You already have a pending verification application",
+            });
+          return;
+        }
+
+        // Check if already verified
+        const userRow = await db.execute(
+          sql`SELECT is_verified_collector FROM pokescan_users WHERE id = ${user.id}`,
+        );
+        if ((userRow.rows[0] as any)?.is_verified_collector) {
+          res
+            .status(409)
+            .json({ error: "You are already a Verified Collector" });
+          return;
+        }
+
+        await db.execute(
+          sql`INSERT INTO pokescan_collector_verifications (user_id, card_id, card_name, card_image, front_photo, back_photo)
+            VALUES (${user.id}, ${cardId}, ${cardName}, ${cardImage || ""}, ${frontPhoto}, ${backPhoto})`,
+        );
+        res.json({ success: true, message: "Application submitted" });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ error: error.message || "Failed to submit verification" });
       }
+    },
+  );
 
-      // Check for existing pending application
-      const existing = await db.execute(
-        sql`SELECT id FROM pokescan_collector_verifications WHERE user_id = ${user.id} AND status = 'pending'`
-      );
-      if (existing.rows.length > 0) {
-        res.status(409).json({ error: "You already have a pending verification application" }); return;
+  app.get(
+    "/api/collector-verification/status",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+
+        const row = await db.execute(
+          sql`SELECT id, status, created_at FROM pokescan_collector_verifications WHERE user_id = ${user.id} ORDER BY created_at DESC LIMIT 1`,
+        );
+        const app = row.rows[0] as any;
+        res.json({
+          isVerifiedCollector: user.isVerifiedCollector ?? false,
+          application: app
+            ? { id: app.id, status: app.status, createdAt: app.created_at }
+            : null,
+        });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({
+            error: error.message || "Failed to get verification status",
+          });
       }
+    },
+  );
 
-      // Check if already verified
-      const userRow = await db.execute(sql`SELECT is_verified_collector FROM pokescan_users WHERE id = ${user.id}`);
-      if ((userRow.rows[0] as any)?.is_verified_collector) {
-        res.status(409).json({ error: "You are already a Verified Collector" }); return;
-      }
+  app.get(
+    "/api/admin/collector-verifications",
+    async (req: Request, res: Response) => {
+      try {
+        const adminToken = req.headers.authorization?.replace("Bearer ", "");
+        const admin = adminToken
+          ? await storage.validateSession(adminToken)
+          : null;
+        if (!admin || (admin.role !== "admin" && admin.role !== "moderator")) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
 
-      await db.execute(
-        sql`INSERT INTO pokescan_collector_verifications (user_id, card_id, card_name, card_image, front_photo, back_photo)
-            VALUES (${user.id}, ${cardId}, ${cardName}, ${cardImage || ""}, ${frontPhoto}, ${backPhoto})`
-      );
-      res.json({ success: true, message: "Application submitted" });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to submit verification" });
-    }
-  });
-
-  app.get("/api/collector-verification/status", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const user = await storage.validateSession(token);
-      if (!user) { res.status(401).json({ error: "Invalid session" }); return; }
-
-      const row = await db.execute(
-        sql`SELECT id, status, created_at FROM pokescan_collector_verifications WHERE user_id = ${user.id} ORDER BY created_at DESC LIMIT 1`
-      );
-      const app = row.rows[0] as any;
-      res.json({
-        isVerifiedCollector: user.isVerifiedCollector ?? false,
-        application: app ? { id: app.id, status: app.status, createdAt: app.created_at } : null,
-      });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to get verification status" });
-    }
-  });
-
-  app.get("/api/admin/collector-verifications", async (req: Request, res: Response) => {
-    try {
-      const adminToken = req.headers.authorization?.replace("Bearer ", "");
-      const admin = adminToken ? await storage.validateSession(adminToken) : null;
-      if (!admin || (admin.role !== "admin" && admin.role !== "moderator")) { res.status(403).json({ error: "Forbidden" }); return; }
-
-      const status = (req.query.status as string) || "pending";
-      const result = await db.execute(
-        sql`SELECT v.*, u.username, u.display_name, u.avatar_url
+        const status = (req.query.status as string) || "pending";
+        const result = await db.execute(
+          sql`SELECT v.*, u.username, u.display_name, u.avatar_url
             FROM pokescan_collector_verifications v
             JOIN pokescan_users u ON u.id = v.user_id
             WHERE v.status = ${status}
-            ORDER BY v.created_at DESC`
-      );
-      const verifications = (result.rows as any[]).map((r) => ({
-        id: r.id,
-        userId: r.user_id,
-        username: r.username,
-        displayName: r.display_name,
-        avatarUrl: r.avatar_url || null,
-        cardId: r.card_id,
-        cardName: r.card_name,
-        cardImage: r.card_image,
-        frontPhoto: r.front_photo,
-        backPhoto: r.back_photo,
-        status: r.status,
-        reviewedBy: r.reviewed_by || null,
-        reviewedAt: r.reviewed_at || null,
-        createdAt: r.created_at,
-      }));
-      res.json({ verifications });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to fetch verifications" });
-    }
-  });
-
-  app.post("/api/admin/collector-verifications/:id/approve", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      const reviewer = token ? await storage.validateSession(token) : null;
-      if (!reviewer || (reviewer.role !== "admin" && reviewer.role !== "moderator")) { res.status(403).json({ error: "Forbidden" }); return; }
-
-      const { id } = req.params;
-      const ver = await db.execute(sql`SELECT * FROM pokescan_collector_verifications WHERE id = ${id}`);
-      if (!ver.rows.length) { res.status(404).json({ error: "Not found" }); return; }
-      const v = ver.rows[0] as any;
-
-      await db.execute(
-        sql`UPDATE pokescan_collector_verifications SET status = 'approved', reviewed_by = ${reviewer?.id || null}, reviewed_at = NOW() WHERE id = ${id}`
-      );
-      await db.execute(
-        sql`UPDATE pokescan_users SET is_verified_collector = true WHERE id = ${v.user_id}`
-      );
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to approve" });
-    }
-  });
-
-  app.post("/api/admin/collector-verifications/:id/reject", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      const reviewer = token ? await storage.validateSession(token) : null;
-      if (!reviewer || (reviewer.role !== "admin" && reviewer.role !== "moderator")) { res.status(403).json({ error: "Forbidden" }); return; }
-
-      const { id } = req.params;
-      await db.execute(
-        sql`UPDATE pokescan_collector_verifications SET status = 'rejected', reviewed_by = ${reviewer?.id || null}, reviewed_at = NOW() WHERE id = ${id}`
-      );
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to reject" });
-    }
-  });
-
-  app.get("/api/admin/subscription-stats", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (caller.role !== "admin") { res.status(403).json({ error: "Admin required" }); return; }
-
-      const MONTHLY_PRICE = 4.99;
-      const ANNUAL_PRICE = 49.99;
-      const MONTHLY_ID = "price_1TM7D8K7N6BNdayAPnuINUuU";
-      const ANNUAL_ID = "price_1TM7D8K7N6BNdayAB1PFakyH";
-
-      const result = await db.execute(
-        sql`SELECT id, username, display_name, stripe_price_id, subscription_status, subscription_period_end, created_at
-            FROM pokescan_users
-            WHERE is_premium = true AND subscription_status IS NOT NULL
-            ORDER BY subscription_period_end DESC NULLS LAST`
-      );
-
-      const subscribers = (result.rows as any[]).map(r => {
-        const plan = r.stripe_price_id === MONTHLY_ID ? "monthly" : r.stripe_price_id === ANNUAL_ID ? "annual" : "unknown";
-        return {
+            ORDER BY v.created_at DESC`,
+        );
+        const verifications = (result.rows as any[]).map((r) => ({
           id: r.id,
+          userId: r.user_id,
           username: r.username,
           displayName: r.display_name,
-          plan,
-          price: plan === "monthly" ? MONTHLY_PRICE : plan === "annual" ? ANNUAL_PRICE : 0,
-          status: r.subscription_status,
-          periodEnd: r.subscription_period_end,
+          avatarUrl: r.avatar_url || null,
+          cardId: r.card_id,
+          cardName: r.card_name,
+          cardImage: r.card_image,
+          frontPhoto: r.front_photo,
+          backPhoto: r.back_photo,
+          status: r.status,
+          reviewedBy: r.reviewed_by || null,
+          reviewedAt: r.reviewed_at || null,
           createdAt: r.created_at,
-        };
-      });
-
-      const now = new Date();
-      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const weekStart = new Date(dayStart);
-      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const yearStart = new Date(now.getFullYear(), 0, 1);
-
-      let dailyRevenue = 0, weeklyRevenue = 0, monthlyRevenue = 0, yearlyRevenue = 0;
-      let totalActive = 0, monthlyCount = 0, annualCount = 0;
-
-      for (const s of subscribers) {
-        if (s.status === "active" || s.status === "canceling") {
-          totalActive++;
-          if (s.plan === "monthly") monthlyCount++;
-          else annualCount++;
-        }
-
-        if (s.periodEnd) {
-          const pEnd = new Date(s.periodEnd);
-          const periodStart = s.plan === "monthly"
-            ? new Date(pEnd.getTime() - 30 * 24 * 60 * 60 * 1000)
-            : new Date(pEnd.getTime() - 365 * 24 * 60 * 60 * 1000);
-
-          if (periodStart >= dayStart) dailyRevenue += s.price;
-          if (periodStart >= weekStart) weeklyRevenue += s.price;
-          if (periodStart >= monthStart) monthlyRevenue += s.price;
-          if (periodStart >= yearStart) yearlyRevenue += s.price;
-        }
+        }));
+        res.json({ verifications });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ error: error.message || "Failed to fetch verifications" });
       }
+    },
+  );
 
-      const monthlyRecurring = monthlyCount * MONTHLY_PRICE + annualCount * (ANNUAL_PRICE / 12);
+  app.post(
+    "/api/admin/collector-verifications/:id/approve",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        const reviewer = token ? await storage.validateSession(token) : null;
+        if (
+          !reviewer ||
+          (reviewer.role !== "admin" && reviewer.role !== "moderator")
+        ) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
 
-      res.json({
-        subscribers,
-        stats: {
-          totalActive,
-          monthlyCount,
-          annualCount,
-          dailyRevenue,
-          weeklyRevenue,
-          monthlyRevenue,
-          yearlyRevenue,
-          monthlyRecurring: Math.round(monthlyRecurring * 100) / 100,
-        },
-      });
-    } catch (error: any) {
-      console.error("Subscription stats error:", error);
-      res.status(500).json({ error: error.message || "Failed to fetch stats" });
-    }
-  });
+        const { id } = req.params;
+        const ver = await db.execute(
+          sql`SELECT * FROM pokescan_collector_verifications WHERE id = ${id}`,
+        );
+        if (!ver.rows.length) {
+          res.status(404).json({ error: "Not found" });
+          return;
+        }
+        const v = ver.rows[0] as any;
+
+        await db.execute(
+          sql`UPDATE pokescan_collector_verifications SET status = 'approved', reviewed_by = ${reviewer?.id || null}, reviewed_at = NOW() WHERE id = ${id}`,
+        );
+        await db.execute(
+          sql`UPDATE pokescan_users SET is_verified_collector = true WHERE id = ${v.user_id}`,
+        );
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || "Failed to approve" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/collector-verifications/:id/reject",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        const reviewer = token ? await storage.validateSession(token) : null;
+        if (
+          !reviewer ||
+          (reviewer.role !== "admin" && reviewer.role !== "moderator")
+        ) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+
+        const { id } = req.params;
+        await db.execute(
+          sql`UPDATE pokescan_collector_verifications SET status = 'rejected', reviewed_by = ${reviewer?.id || null}, reviewed_at = NOW() WHERE id = ${id}`,
+        );
+        res.json({ success: true });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message || "Failed to reject" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/admin/subscription-stats",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const caller = await storage.validateSession(token);
+        if (!caller) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        if (caller.role !== "admin") {
+          res.status(403).json({ error: "Admin required" });
+          return;
+        }
+
+        const MONTHLY_PRICE = 4.99;
+        const ANNUAL_PRICE = 49.99;
+        const MONTHLY_ID = "price_1TM7D8K7N6BNdayAPnuINUuU";
+        const ANNUAL_ID = "price_1TM7D8K7N6BNdayAB1PFakyH";
+
+        const result = await db.execute(
+          sql`SELECT id, username, display_name, stripe_price_id, subscription_status, subscription_period_end, created_at
+            FROM pokescan_users
+            WHERE is_premium = true AND subscription_status IS NOT NULL
+            ORDER BY subscription_period_end DESC NULLS LAST`,
+        );
+
+        const subscribers = (result.rows as any[]).map((r) => {
+          const plan =
+            r.stripe_price_id === MONTHLY_ID
+              ? "monthly"
+              : r.stripe_price_id === ANNUAL_ID
+                ? "annual"
+                : "unknown";
+          return {
+            id: r.id,
+            username: r.username,
+            displayName: r.display_name,
+            plan,
+            price:
+              plan === "monthly"
+                ? MONTHLY_PRICE
+                : plan === "annual"
+                  ? ANNUAL_PRICE
+                  : 0,
+            status: r.subscription_status,
+            periodEnd: r.subscription_period_end,
+            createdAt: r.created_at,
+          };
+        });
+
+        const now = new Date();
+        const dayStart = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+        );
+        const weekStart = new Date(dayStart);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const yearStart = new Date(now.getFullYear(), 0, 1);
+
+        let dailyRevenue = 0,
+          weeklyRevenue = 0,
+          monthlyRevenue = 0,
+          yearlyRevenue = 0;
+        let totalActive = 0,
+          monthlyCount = 0,
+          annualCount = 0;
+
+        for (const s of subscribers) {
+          if (s.status === "active" || s.status === "canceling") {
+            totalActive++;
+            if (s.plan === "monthly") monthlyCount++;
+            else annualCount++;
+          }
+
+          if (s.periodEnd) {
+            const pEnd = new Date(s.periodEnd);
+            const periodStart =
+              s.plan === "monthly"
+                ? new Date(pEnd.getTime() - 30 * 24 * 60 * 60 * 1000)
+                : new Date(pEnd.getTime() - 365 * 24 * 60 * 60 * 1000);
+
+            if (periodStart >= dayStart) dailyRevenue += s.price;
+            if (periodStart >= weekStart) weeklyRevenue += s.price;
+            if (periodStart >= monthStart) monthlyRevenue += s.price;
+            if (periodStart >= yearStart) yearlyRevenue += s.price;
+          }
+        }
+
+        const monthlyRecurring =
+          monthlyCount * MONTHLY_PRICE + annualCount * (ANNUAL_PRICE / 12);
+
+        res.json({
+          subscribers,
+          stats: {
+            totalActive,
+            monthlyCount,
+            annualCount,
+            dailyRevenue,
+            weeklyRevenue,
+            monthlyRevenue,
+            yearlyRevenue,
+            monthlyRecurring: Math.round(monthlyRecurring * 100) / 100,
+          },
+        });
+      } catch (error: any) {
+        console.error("Subscription stats error:", error);
+        res
+          .status(500)
+          .json({ error: error.message || "Failed to fetch stats" });
+      }
+    },
+  );
 
   app.get("/api/auth/users", async (req: Request, res: Response) => {
     try {
@@ -4113,8 +5221,17 @@ matches must be true or false.`;
   // Superadmin-authenticated user edit endpoint (no session token needed)
   app.patch("/api/admin/edit-user", async (req: Request, res: Response) => {
     try {
-      const { superadminPassword, userId, displayName, email, mobileNumber, password, isPremium, role } = req.body;
-      if (!await isSuperadminAuthorized(req)) {
+      const {
+        superadminPassword,
+        userId,
+        displayName,
+        email,
+        mobileNumber,
+        password,
+        isPremium,
+        role,
+      } = req.body;
+      if (!(await isSuperadminAuthorized(req))) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -4123,16 +5240,24 @@ matches must be true or false.`;
         return;
       }
       const callerToken = req.headers.authorization?.replace("Bearer ", "");
-      const caller = callerToken ? await storage.validateSession(callerToken) : null;
+      const caller = callerToken
+        ? await storage.validateSession(callerToken)
+        : null;
       const callerId = caller?.id || "system";
 
       const before = await storage.getUserById(userId);
-      if (!before) { res.status(404).json({ error: "User not found" }); return; }
+      if (!before) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
 
       const profileUpdates: Record<string, any> = {};
-      if (displayName !== undefined && displayName.trim()) profileUpdates.displayName = displayName.trim();
-      if (email !== undefined && email.trim()) profileUpdates.email = email.trim().toLowerCase();
-      if (mobileNumber !== undefined) profileUpdates.mobileNumber = mobileNumber.trim();
+      if (displayName !== undefined && displayName.trim())
+        profileUpdates.displayName = displayName.trim();
+      if (email !== undefined && email.trim())
+        profileUpdates.email = email.trim().toLowerCase();
+      if (mobileNumber !== undefined)
+        profileUpdates.mobileNumber = mobileNumber.trim();
       if (isPremium !== undefined) profileUpdates.isPremium = isPremium;
       if (role !== undefined) profileUpdates.role = role;
 
@@ -4146,7 +5271,10 @@ matches must be true or false.`;
         await cancelStripeForUser(userId, true);
       }
 
-      let updated = Object.keys(profileUpdates).length > 0 ? await storage.updateUser(userId, profileUpdates) : await storage.getUserById(userId);
+      let updated =
+        Object.keys(profileUpdates).length > 0
+          ? await storage.updateUser(userId, profileUpdates)
+          : await storage.getUserById(userId);
       if (!updated) {
         res.status(404).json({ error: "User not found" });
         return;
@@ -4159,9 +5287,12 @@ matches must be true or false.`;
 
       // Audit log
       const changes: string[] = [];
-      if (displayName !== undefined && displayName !== before.displayName) changes.push(`name: "${before.displayName}" → "${displayName}"`);
-      if (email !== undefined && email.toLowerCase() !== before.email) changes.push(`email: "${before.email}" → "${email.toLowerCase()}"`);
-      if (mobileNumber !== undefined && mobileNumber !== before.mobileNumber) changes.push(`mobile changed`);
+      if (displayName !== undefined && displayName !== before.displayName)
+        changes.push(`name: "${before.displayName}" → "${displayName}"`);
+      if (email !== undefined && email.toLowerCase() !== before.email)
+        changes.push(`email: "${before.email}" → "${email.toLowerCase()}"`);
+      if (mobileNumber !== undefined && mobileNumber !== before.mobileNumber)
+        changes.push(`mobile changed`);
       if (password) changes.push("password reset");
       if (isPremium !== undefined && isPremium !== before.isPremium) {
         await logModAction({
@@ -4169,7 +5300,9 @@ matches must be true or false.`;
           performedBy: callerId,
           targetUserId: userId,
           targetUsername: before.username,
-          note: isPremium ? "Premium granted by admin" : "Premium revoked by admin (Stripe cancelled)",
+          note: isPremium
+            ? "Premium granted by admin"
+            : "Premium revoked by admin (Stripe cancelled)",
         });
       }
       if (role !== undefined && role !== before.role) {
@@ -4205,10 +5338,20 @@ matches must be true or false.`;
   // via the regular email+password flow (POST /api/auth/login). Stubs below
   // return a clear error so older APKs prompt the user to update.
   app.post("/api/admin/request-otp", (_req: Request, res: Response) => {
-    res.status(410).json({ error: "Admin code login has been removed. Please update the app and use the email + password login." });
+    res
+      .status(410)
+      .json({
+        error:
+          "Admin code login has been removed. Please update the app and use the email + password login.",
+      });
   });
   app.post("/api/admin/verify-otp", (_req: Request, res: Response) => {
-    res.status(410).json({ error: "Admin code login has been removed. Please update the app and use the email + password login." });
+    res
+      .status(410)
+      .json({
+        error:
+          "Admin code login has been removed. Please update the app and use the email + password login.",
+      });
   });
 
   // Validate a stored superadmin token (used by client to check if it's still good).
@@ -4219,31 +5362,51 @@ matches must be true or false.`;
   // Legacy endpoint kept as a stub so older APKs get a clear error.
   app.post("/api/admin/superadmin-login", (_req: Request, res: Response) => {
     res.status(410).json({
-      error: "This sign-in method has been disabled. Please update the app and use the email code login.",
+      error:
+        "This sign-in method has been disabled. Please update the app and use the email code login.",
     });
   });
 
   app.post("/api/admin/create-user", async (req: Request, res: Response) => {
     try {
-      const { superadminPassword, username, displayName, email, mobileNumber, password, isPremium, role } = req.body;
-      if (!await isSuperadminAuthorized(req)) {
+      const {
+        superadminPassword,
+        username,
+        displayName,
+        email,
+        mobileNumber,
+        password,
+        isPremium,
+        role,
+      } = req.body;
+      if (!(await isSuperadminAuthorized(req))) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
       if (!username || !displayName || !email || !password) {
-        res.status(400).json({ error: "Username, display name, email and password are required" });
+        res
+          .status(400)
+          .json({
+            error: "Username, display name, email and password are required",
+          });
         return;
       }
       if (password.length < 6) {
-        res.status(400).json({ error: "Password must be at least 6 characters" });
+        res
+          .status(400)
+          .json({ error: "Password must be at least 6 characters" });
         return;
       }
       const existing = await storage.getUserByEmail(email.toLowerCase().trim());
       if (existing) {
-        res.status(409).json({ error: "An account with this email already exists" });
+        res
+          .status(409)
+          .json({ error: "An account with this email already exists" });
         return;
       }
-      const existingUser = await storage.getUserByUsername(username.toLowerCase().trim());
+      const existingUser = await storage.getUserByUsername(
+        username.toLowerCase().trim(),
+      );
       if (existingUser) {
         res.status(409).json({ error: "Username is already taken" });
         return;
@@ -4271,7 +5434,7 @@ matches must be true or false.`;
   app.get("/api/admin/users", async (req: Request, res: Response) => {
     try {
       const pwd = req.query.superadminPassword as string;
-      if (!await isSuperadminAuthorized(req)) {
+      if (!(await isSuperadminAuthorized(req))) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -4286,7 +5449,7 @@ matches must be true or false.`;
   app.delete("/api/admin/delete-user", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, userId } = req.body;
-      if (!await isSuperadminAuthorized(req)) {
+      if (!(await isSuperadminAuthorized(req))) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -4295,21 +5458,36 @@ matches must be true or false.`;
         return;
       }
       const callerToken = req.headers.authorization?.replace("Bearer ", "");
-      const caller = callerToken ? await storage.validateSession(callerToken) : null;
+      const caller = callerToken
+        ? await storage.validateSession(callerToken)
+        : null;
       const callerId = caller?.id || "system";
 
       const before = await storage.getUserById(userId);
-      if (!before) { res.status(404).json({ error: "User not found" }); return; }
+      if (!before) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
 
       // Cancel any active Stripe subscription immediately
       await cancelStripeForUser(userId, true);
 
       // Add email + mobile to blocklist so they can't claim a new trial
-      await addBlockedCredential(before.email || null, before.mobileNumber || null, "deleted", callerId);
+      await addBlockedCredential(
+        before.email || null,
+        before.mobileNumber || null,
+        "deleted",
+        callerId,
+      );
 
       // Delete user's sessions first, then the user
-      await db.delete(pokescanSessions).where(eq(pokescanSessions.userId, userId));
-      const deleted = await db.delete(pokescanUsers).where(eq(pokescanUsers.id, userId)).returning();
+      await db
+        .delete(pokescanSessions)
+        .where(eq(pokescanSessions.userId, userId));
+      const deleted = await db
+        .delete(pokescanUsers)
+        .where(eq(pokescanUsers.id, userId))
+        .returning();
       if (!deleted.length) {
         res.status(404).json({ error: "User not found" });
         return;
@@ -4332,28 +5510,41 @@ matches must be true or false.`;
   app.post("/api/admin/users/:id/ban", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!caller) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
       if (caller.role !== "admin" && caller.role !== "moderator") {
-        res.status(403).json({ error: "Staff only" }); return;
+        res.status(403).json({ error: "Staff only" });
+        return;
       }
       const { id } = req.params;
       const { reason, durationHours, banChat } = req.body || {};
       const target = await storage.getUserById(id);
-      if (!target) { res.status(404).json({ error: "User not found" }); return; }
+      if (!target) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
       if (target.role === "admin" || target.role === "moderator") {
-        res.status(403).json({ error: "Cannot ban staff members" }); return;
+        res.status(403).json({ error: "Cannot ban staff members" });
+        return;
       }
       const permanent = durationHours == null || durationHours <= 0;
       const bannedUntil = permanent
         ? new Date("9999-12-31T23:59:59Z")
         : new Date(Date.now() + Number(durationHours) * 3600 * 1000);
-      const banReason = (reason && String(reason).trim()) || "Violation of community guidelines";
+      const banReason =
+        (reason && String(reason).trim()) ||
+        "Violation of community guidelines";
 
       await pool.query(
         `UPDATE pokescan_users SET banned_until = $1, ban_reason = $2, banned_at = NOW(), banned_by = $3 ${banChat ? `, chat_banned_until = $1` : ""} WHERE id = $4`,
-        [bannedUntil, banReason, caller.id, id]
+        [bannedUntil, banReason, caller.id, id],
       );
 
       // Auto-cancel any active Stripe subscription on ban
@@ -4370,62 +5561,97 @@ matches must be true or false.`;
         note: `${permanent ? "Permanent" : `${durationHours}h`} ban — Reason: ${banReason}${target.isPremium ? "; Stripe sub cancelled" : ""}`,
       });
 
-      res.json({ success: true, bannedUntil: bannedUntil.toISOString(), permanent, banReason });
+      res.json({
+        success: true,
+        bannedUntil: bannedUntil.toISOString(),
+        permanent,
+        banReason,
+      });
     } catch (error: any) {
       console.error("Ban error:", error);
       res.status(500).json({ error: error.message || "Ban failed" });
     }
   });
 
-  app.post("/api/admin/users/:id/unban", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (caller.role !== "admin" && caller.role !== "moderator") {
-        res.status(403).json({ error: "Staff only" }); return;
+  app.post(
+    "/api/admin/users/:id/unban",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const caller = await storage.validateSession(token);
+        if (!caller) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        if (caller.role !== "admin" && caller.role !== "moderator") {
+          res.status(403).json({ error: "Staff only" });
+          return;
+        }
+        const { id } = req.params;
+        const target = await storage.getUserById(id);
+        if (!target) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+        await pool.query(
+          `UPDATE pokescan_users SET banned_until = NULL, ban_reason = NULL, banned_at = NULL, banned_by = NULL, chat_banned_until = NULL WHERE id = $1`,
+          [id],
+        );
+        await logModAction({
+          action: "user_unbanned",
+          performedBy: caller.id,
+          targetUserId: id,
+          targetUsername: target.username,
+        });
+        res.json({ success: true });
+      } catch (error: any) {
+        console.error("Unban error:", error);
+        res.status(500).json({ error: error.message || "Unban failed" });
       }
-      const { id } = req.params;
-      const target = await storage.getUserById(id);
-      if (!target) { res.status(404).json({ error: "User not found" }); return; }
-      await pool.query(
-        `UPDATE pokescan_users SET banned_until = NULL, ban_reason = NULL, banned_at = NULL, banned_by = NULL, chat_banned_until = NULL WHERE id = $1`,
-        [id]
-      );
-      await logModAction({
-        action: "user_unbanned",
-        performedBy: caller.id,
-        targetUserId: id,
-        targetUsername: target.username,
-      });
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error("Unban error:", error);
-      res.status(500).json({ error: error.message || "Unban failed" });
-    }
-  });
+    },
+  );
 
   app.post("/api/admin/users/:id/mute", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!caller) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
       if (caller.role !== "admin" && caller.role !== "moderator") {
-        res.status(403).json({ error: "Staff only" }); return;
+        res.status(403).json({ error: "Staff only" });
+        return;
       }
       const { id } = req.params;
       const { minutes } = req.body || {};
       const target = await storage.getUserById(id);
-      if (!target) { res.status(404).json({ error: "User not found" }); return; }
+      if (!target) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
       if (target.role === "admin" || target.role === "moderator") {
-        res.status(403).json({ error: "Cannot mute staff" }); return;
+        res.status(403).json({ error: "Cannot mute staff" });
+        return;
       }
       const mins = Number(minutes);
-      if (!mins || mins < 1) { res.status(400).json({ error: "minutes (positive) required" }); return; }
+      if (!mins || mins < 1) {
+        res.status(400).json({ error: "minutes (positive) required" });
+        return;
+      }
       const mutedUntil = new Date(Date.now() + mins * 60 * 1000);
-      await pool.query(`UPDATE pokescan_users SET chat_muted_until = $1 WHERE id = $2`, [mutedUntil, id]);
+      await pool.query(
+        `UPDATE pokescan_users SET chat_muted_until = $1 WHERE id = $2`,
+        [mutedUntil, id],
+      );
       await logModAction({
         action: "user_muted",
         performedBy: caller.id,
@@ -4440,54 +5666,79 @@ matches must be true or false.`;
     }
   });
 
-  app.post("/api/admin/users/:id/unmute", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (caller.role !== "admin" && caller.role !== "moderator") {
-        res.status(403).json({ error: "Staff only" }); return;
+  app.post(
+    "/api/admin/users/:id/unmute",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const caller = await storage.validateSession(token);
+        if (!caller) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        if (caller.role !== "admin" && caller.role !== "moderator") {
+          res.status(403).json({ error: "Staff only" });
+          return;
+        }
+        const { id } = req.params;
+        const target = await storage.getUserById(id);
+        if (!target) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+        await pool.query(
+          `UPDATE pokescan_users SET chat_muted_until = NULL WHERE id = $1`,
+          [id],
+        );
+        await logModAction({
+          action: "user_unmuted",
+          performedBy: caller.id,
+          targetUserId: id,
+          targetUsername: target.username,
+        });
+        res.json({ success: true });
+      } catch (error: any) {
+        console.error("Unmute error:", error);
+        res.status(500).json({ error: error.message || "Unmute failed" });
       }
-      const { id } = req.params;
-      const target = await storage.getUserById(id);
-      if (!target) { res.status(404).json({ error: "User not found" }); return; }
-      await pool.query(`UPDATE pokescan_users SET chat_muted_until = NULL WHERE id = $1`, [id]);
-      await logModAction({
-        action: "user_unmuted",
-        performedBy: caller.id,
-        targetUserId: id,
-        targetUsername: target.username,
-      });
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error("Unmute error:", error);
-      res.status(500).json({ error: error.message || "Unmute failed" });
-    }
-  });
+    },
+  );
 
   // ─── Bulk listing moderation ────────────────────────────────────────────────
   app.post("/api/admin/listings/bulk", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!caller) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
       if (caller.role !== "admin" && caller.role !== "moderator") {
-        res.status(403).json({ error: "Staff only" }); return;
+        res.status(403).json({ error: "Staff only" });
+        return;
       }
       const { ids, action, reviewNote } = req.body || {};
       if (!Array.isArray(ids) || ids.length === 0) {
-        res.status(400).json({ error: "ids array required" }); return;
+        res.status(400).json({ error: "ids array required" });
+        return;
       }
       if (action !== "approve" && action !== "reject" && action !== "delete") {
-        res.status(400).json({ error: "action must be approve|reject|delete" }); return;
+        res.status(400).json({ error: "action must be approve|reject|delete" });
+        return;
       }
       let updated = 0;
       if (action === "delete") {
         const r = await pool.query(
           `DELETE FROM pokescan_market_listings WHERE id = ANY($1::text[]) RETURNING id, card_name`,
-          [ids]
+          [ids],
         );
         updated = r.rowCount || 0;
         for (const row of r.rows) {
@@ -4506,7 +5757,7 @@ matches must be true or false.`;
               SET status = $1, reviewed_by = $2, reviewed_at = NOW(), review_note = COALESCE($3, review_note)
             WHERE id = ANY($4::text[])
           RETURNING id, card_name`,
-          [status, caller.id, reviewNote ?? null, ids]
+          [status, caller.id, reviewNote ?? null, ids],
         );
         updated = r.rowCount || 0;
         for (const row of r.rows) {
@@ -4530,34 +5781,55 @@ matches must be true or false.`;
   app.get("/api/admin/chatroom", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (caller.role !== "admin" && caller.role !== "moderator") {
-        res.status(403).json({ error: "Staff only" }); return;
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
       }
-      const limit = Math.min(500, Math.max(1, parseInt((req.query.limit as string) || "200", 10)));
-      const msgs = await db.select().from(pokescanChatroomMessages)
+      const caller = await storage.validateSession(token);
+      if (!caller) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
+      if (caller.role !== "admin" && caller.role !== "moderator") {
+        res.status(403).json({ error: "Staff only" });
+        return;
+      }
+      const limit = Math.min(
+        500,
+        Math.max(1, parseInt((req.query.limit as string) || "200", 10)),
+      );
+      const msgs = await db
+        .select()
+        .from(pokescanChatroomMessages)
         .orderBy(desc(pokescanChatroomMessages.createdAt))
         .limit(limit);
       res.json({ messages: msgs.reverse() });
     } catch (error: any) {
       console.error("Admin chatroom view error:", error);
-      res.status(500).json({ error: error.message || "Failed to load chatroom" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to load chatroom" });
     }
   });
 
   app.get("/api/admin/messages", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (caller.role !== "admin" && caller.role !== "moderator") {
-        res.status(403).json({ error: "Staff only" }); return;
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
       }
-      const userA = (req.query.userA as string || "").trim();
-      const userB = (req.query.userB as string || "").trim();
+      const caller = await storage.validateSession(token);
+      if (!caller) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
+      if (caller.role !== "admin" && caller.role !== "moderator") {
+        res.status(403).json({ error: "Staff only" });
+        return;
+      }
+      const userA = ((req.query.userA as string) || "").trim();
+      const userB = ((req.query.userB as string) || "").trim();
       if (!userA) {
         // List recent DM threads involving any user
         const r = await pool.query(
@@ -4567,7 +5839,7 @@ matches must be true or false.`;
              LEFT JOIN pokescan_users su ON su.id = m.sender_id
              LEFT JOIN pokescan_users ru ON ru.id = m.recipient_id
             ORDER BY m.created_at DESC
-            LIMIT 200`
+            LIMIT 200`,
         );
         res.json({ messages: r.rows });
         return;
@@ -4584,7 +5856,7 @@ matches must be true or false.`;
                OR (m.sender_id = $2 AND m.recipient_id = $1)
             ORDER BY m.created_at ASC
             LIMIT 500`,
-          [userA, userB]
+          [userA, userB],
         );
       } else {
         q = await pool.query(
@@ -4596,40 +5868,57 @@ matches must be true or false.`;
             WHERE m.sender_id = $1 OR m.recipient_id = $1
             ORDER BY m.created_at DESC
             LIMIT 500`,
-          [userA]
+          [userA],
         );
       }
       res.json({ messages: q.rows });
     } catch (error: any) {
       console.error("Admin messages view error:", error);
-      res.status(500).json({ error: error.message || "Failed to load messages" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to load messages" });
     }
   });
 
   // ─── Blocked credentials list (superadmin) ──────────────────────────────────
-  app.get("/api/admin/blocked-credentials", async (req: Request, res: Response) => {
-    try {
-      if (!await isSuperadminAuthorized(req)) { res.status(403).json({ error: "Forbidden" }); return; }
-      const r = await pool.query(
-        `SELECT * FROM pokescan_blocked_credentials ORDER BY created_at DESC LIMIT 500`
-      );
-      res.json({ blocked: r.rows });
-    } catch (error: any) {
-      console.error("Blocked creds list error:", error);
-      res.status(500).json({ error: error.message || "Failed to load" });
-    }
-  });
+  app.get(
+    "/api/admin/blocked-credentials",
+    async (req: Request, res: Response) => {
+      try {
+        if (!(await isSuperadminAuthorized(req))) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+        const r = await pool.query(
+          `SELECT * FROM pokescan_blocked_credentials ORDER BY created_at DESC LIMIT 500`,
+        );
+        res.json({ blocked: r.rows });
+      } catch (error: any) {
+        console.error("Blocked creds list error:", error);
+        res.status(500).json({ error: error.message || "Failed to load" });
+      }
+    },
+  );
 
-  app.delete("/api/admin/blocked-credentials/:id", async (req: Request, res: Response) => {
-    try {
-      if (!await isSuperadminAuthorized(req)) { res.status(403).json({ error: "Forbidden" }); return; }
-      await pool.query(`DELETE FROM pokescan_blocked_credentials WHERE id = $1`, [req.params.id]);
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error("Blocked creds delete error:", error);
-      res.status(500).json({ error: error.message || "Failed to remove" });
-    }
-  });
+  app.delete(
+    "/api/admin/blocked-credentials/:id",
+    async (req: Request, res: Response) => {
+      try {
+        if (!(await isSuperadminAuthorized(req))) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+        await pool.query(
+          `DELETE FROM pokescan_blocked_credentials WHERE id = $1`,
+          [req.params.id],
+        );
+        res.json({ success: true });
+      } catch (error: any) {
+        console.error("Blocked creds delete error:", error);
+        res.status(500).json({ error: error.message || "Failed to remove" });
+      }
+    },
+  );
 
   // ─── Scrydex Sync ────────────────────────────────────────────────────────────
   // POST /api/admin/scrydex-sync  — triggers scrydex.com data sync (superadmin only).
@@ -4638,7 +5927,7 @@ matches must be true or false.`;
   app.post("/api/admin/scrydex-sync", async (req: Request, res: Response) => {
     try {
       const { superadminPassword } = req.body;
-      if (!await isSuperadminAuthorized(req)) {
+      if (!(await isSuperadminAuthorized(req))) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -4664,7 +5953,7 @@ matches must be true or false.`;
       console.error("Scrydex sync error:", error);
       try {
         res.write(
-          `data: ${JSON.stringify({ phase: "error", message: error.message || "Sync failed", done: true })}\n\n`
+          `data: ${JSON.stringify({ phase: "error", message: error.message || "Sync failed", done: true })}\n\n`,
         );
         res.end();
       } catch {}
@@ -4674,48 +5963,66 @@ matches must be true or false.`;
   // ─── Asian Set Sync ──────────────────────────────────────────────────────────
   // POST /api/admin/sync-asian-sets — inserts JP (211 sets from Scrydex) + KO + ZH sets.
   // Uses Server-Sent Events so the client can see real-time progress.
-  app.post("/api/admin/sync-asian-sets", async (req: Request, res: Response) => {
-    try {
-      const { superadminPassword } = req.body;
-      if (!await isSuperadminAuthorized(req)) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
-
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.flushHeaders();
-
-      const send = (data: object) => res.write(`data: ${JSON.stringify(data)}\n\n`);
-
-      const { seedAsianSets } = await import("./asian-set-seed");
-      const result = await seedAsianSets((msg: string) => {
-        send({ phase: "progress", message: msg });
-      });
-
-      send({ phase: "seeding-cards", message: "Seeding KO/ZH cards from JP sources…" });
-      const { seedKoZhCards } = await import("./ko-zh-seed");
-      const koZhResult = await seedKoZhCards((msg: string) => {
-        send({ phase: "progress", message: msg });
-      });
-      send({ phase: "progress", message: `KO/ZH cards: ${koZhResult.inserted} inserted, ${koZhResult.skipped} skipped` });
-
-      send({ phase: "done", ...result, koZhInserted: koZhResult.inserted, koZhSkipped: koZhResult.skipped, done: true });
-      res.end();
-    } catch (error: any) {
-      console.error("Asian set sync error:", error);
+  app.post(
+    "/api/admin/sync-asian-sets",
+    async (req: Request, res: Response) => {
       try {
-        res.write(`data: ${JSON.stringify({ phase: "error", message: error.message || "Sync failed", done: true })}\n\n`);
+        const { superadminPassword } = req.body;
+        if (!(await isSuperadminAuthorized(req))) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+
+        const send = (data: object) =>
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+        const { seedAsianSets } = await import("./asian-set-seed");
+        const result = await seedAsianSets((msg: string) => {
+          send({ phase: "progress", message: msg });
+        });
+
+        send({
+          phase: "seeding-cards",
+          message: "Seeding KO/ZH cards from JP sources…",
+        });
+        const { seedKoZhCards } = await import("./ko-zh-seed");
+        const koZhResult = await seedKoZhCards((msg: string) => {
+          send({ phase: "progress", message: msg });
+        });
+        send({
+          phase: "progress",
+          message: `KO/ZH cards: ${koZhResult.inserted} inserted, ${koZhResult.skipped} skipped`,
+        });
+
+        send({
+          phase: "done",
+          ...result,
+          koZhInserted: koZhResult.inserted,
+          koZhSkipped: koZhResult.skipped,
+          done: true,
+        });
         res.end();
-      } catch {}
-    }
-  });
+      } catch (error: any) {
+        console.error("Asian set sync error:", error);
+        try {
+          res.write(
+            `data: ${JSON.stringify({ phase: "error", message: error.message || "Sync failed", done: true })}\n\n`,
+          );
+          res.end();
+        } catch {}
+      }
+    },
+  );
 
   app.get("/api/admin/sets", async (req: Request, res: Response) => {
     try {
       const pw = req.query.superadminPassword as string;
-      if (!await isSuperadminAuthorized(req)) {
+      if (!(await isSuperadminAuthorized(req))) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -4729,9 +6036,21 @@ matches must be true or false.`;
           cardCount: sql<number>`count(${pokemonCards.id})::int`,
         })
         .from(pokemonSets)
-        .leftJoin(pokemonCards, and(eq(pokemonCards.setId, pokemonSets.id), isNull(pokemonCards.deletedAt)))
+        .leftJoin(
+          pokemonCards,
+          and(
+            eq(pokemonCards.setId, pokemonSets.id),
+            isNull(pokemonCards.deletedAt),
+          ),
+        )
         .where(isNull(pokemonSets.deletedAt))
-        .groupBy(pokemonSets.id, pokemonSets.name, pokemonSets.series, pokemonSets.hidden, pokemonSets.releaseDate)
+        .groupBy(
+          pokemonSets.id,
+          pokemonSets.name,
+          pokemonSets.series,
+          pokemonSets.hidden,
+          pokemonSets.releaseDate,
+        )
         .orderBy(desc(pokemonSets.releaseDate));
 
       res.json({
@@ -4746,39 +6065,49 @@ matches must be true or false.`;
     }
   });
 
-  app.patch("/api/admin/sets/visibility", async (req: Request, res: Response) => {
-    try {
-      const { superadminPassword, setIds, hidden } = req.body;
-      if (!await isSuperadminAuthorized(req)) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
+  app.patch(
+    "/api/admin/sets/visibility",
+    async (req: Request, res: Response) => {
+      try {
+        const { superadminPassword, setIds, hidden } = req.body;
+        if (!(await isSuperadminAuthorized(req))) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+        if (!Array.isArray(setIds) || setIds.length === 0) {
+          res.status(400).json({ error: "setIds is required" });
+          return;
+        }
+        for (const id of setIds) {
+          await db
+            .update(pokemonSets)
+            .set({ hidden: !!hidden })
+            .where(eq(pokemonSets.id, id));
+        }
+        res.json({ updated: setIds.length, hidden: !!hidden });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ error: error.message || "Failed to update visibility" });
       }
-      if (!Array.isArray(setIds) || setIds.length === 0) {
-        res.status(400).json({ error: "setIds is required" });
-        return;
-      }
-      for (const id of setIds) {
-        await db.update(pokemonSets).set({ hidden: !!hidden }).where(eq(pokemonSets.id, id));
-      }
-      res.json({ updated: setIds.length, hidden: !!hidden });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message || "Failed to update visibility" });
-    }
-  });
+    },
+  );
 
   // GET /api/admin/scrydex-preview — dry-run: returns what would be added
   // without writing anything to the database.
   app.get("/api/admin/scrydex-preview", async (req: Request, res: Response) => {
     try {
       const pw = req.query.superadminPassword as string;
-      if (!await isSuperadminAuthorized(req)) {
+      if (!(await isSuperadminAuthorized(req))) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
 
-      const { scrapeScrydexSets, scrapeScrydexTcgPocketSets, scrapeScrydexJpSets } = await import(
-        "./scrydex-scraper"
-      );
+      const {
+        scrapeScrydexSets,
+        scrapeScrydexTcgPocketSets,
+        scrapeScrydexJpSets,
+      } = await import("./scrydex-scraper");
       const [enSets, pocketSets, jpSets] = await Promise.all([
         scrapeScrydexSets(),
         scrapeScrydexTcgPocketSets(),
@@ -4793,17 +6122,26 @@ matches must be true or false.`;
 
       // Find which sets are NOT currently in the DB or have no cards yet
       const existingRows = await db
-        .select({ id: pokemonSets.id, card_count: sql<string>`COUNT(${pokemonCards.id})` })
+        .select({
+          id: pokemonSets.id,
+          card_count: sql<string>`COUNT(${pokemonCards.id})`,
+        })
         .from(pokemonSets)
         .leftJoin(pokemonCards, eq(pokemonCards.setId, pokemonSets.id))
         .groupBy(pokemonSets.id);
-      const existingIds   = new Set(existingRows.map((r) => r.id));
+      const existingIds = new Set(existingRows.map((r) => r.id));
       const setsWithCards = new Set(
-        existingRows.filter((r) => parseInt(r.card_count, 10) > 0).map((r) => r.id)
+        existingRows
+          .filter((r) => parseInt(r.card_count, 10) > 0)
+          .map((r) => r.id),
       );
-      const missingSets  = allSets.filter((s) => !existingIds.has(s.id));
-      const emptySets    = allSets.filter((s) => existingIds.has(s.id) && !setsWithCards.has(s.id));
-      const setsToProcess = allSets.filter((s) => !existingIds.has(s.id) || !setsWithCards.has(s.id));
+      const missingSets = allSets.filter((s) => !existingIds.has(s.id));
+      const emptySets = allSets.filter(
+        (s) => existingIds.has(s.id) && !setsWithCards.has(s.id),
+      );
+      const setsToProcess = allSets.filter(
+        (s) => !existingIds.has(s.id) || !setsWithCards.has(s.id),
+      );
 
       res.json({
         scrydexSetCount: allSets.length,
@@ -4811,8 +6149,16 @@ matches must be true or false.`;
         newSetsFound: missingSets.length,
         emptySetsFound: emptySets.length,
         setsToProcess: setsToProcess.length,
-        newSets: missingSets.map((s) => ({ id: s.id, name: s.name, series: s.series })),
-        emptySets: emptySets.map((s) => ({ id: s.id, name: s.name, series: s.series })),
+        newSets: missingSets.map((s) => ({
+          id: s.id,
+          name: s.name,
+          series: s.series,
+        })),
+        emptySets: emptySets.map((s) => ({
+          id: s.id,
+          name: s.name,
+          series: s.series,
+        })),
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message || "Preview failed" });
@@ -4822,7 +6168,7 @@ matches must be true or false.`;
   app.post("/api/admin/import-users", async (req: Request, res: Response) => {
     try {
       const { superadminPassword, users } = req.body;
-      if (!await isSuperadminAuthorized(req)) {
+      if (!(await isSuperadminAuthorized(req))) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
@@ -4830,7 +6176,8 @@ matches must be true or false.`;
         res.status(400).json({ error: "users array required" });
         return;
       }
-      const results: { username: string; status: string; reason?: string }[] = [];
+      const results: { username: string; status: string; reason?: string }[] =
+        [];
       for (const u of users) {
         try {
           const result = await storage.importUser({
@@ -4847,7 +6194,11 @@ matches must be true or false.`;
           });
           results.push({ username: u.username, status: result.status });
         } catch (err: any) {
-          results.push({ username: u.username, status: "error", reason: err.message });
+          results.push({
+            username: u.username,
+            status: "error",
+            reason: err.message,
+          });
         }
       }
       res.json({ results });
@@ -4858,100 +6209,235 @@ matches must be true or false.`;
   });
 
   // ─── Social helpers ──────────────────────────────────────────────────────────
-  async function getUserFromToken(req: Request): Promise<{ id: string; username: string; displayName: string } | null> {
+  async function getUserFromToken(
+    req: Request,
+  ): Promise<{ id: string; username: string; displayName: string } | null> {
     const token = req.headers.authorization?.replace("Bearer ", "");
     if (!token) return null;
     const user = await storage.validateSession(token);
     if (!user) return null;
-    return { id: user.id, username: user.username, displayName: user.displayName };
+    return {
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+    };
   }
 
   // ─── Friends ─────────────────────────────────────────────────────────────────
   app.get("/api/social/friends", async (req: Request, res: Response) => {
     const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const rows = await db.select().from(pokescanFriendships).where(
-      or(eq(pokescanFriendships.requesterId, me.id), eq(pokescanFriendships.addresseeId, me.id))
-    );
+    if (!me) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const rows = await db
+      .select()
+      .from(pokescanFriendships)
+      .where(
+        or(
+          eq(pokescanFriendships.requesterId, me.id),
+          eq(pokescanFriendships.addresseeId, me.id),
+        ),
+      );
     const friendIds = new Set<string>();
     for (const r of rows) {
       if (r.status === "accepted") {
         friendIds.add(r.requesterId === me.id ? r.addresseeId : r.requesterId);
       }
     }
-    const friendFields = { id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl, isPremium: pokescanUsers.isPremium, collectionVisible: pokescanUsers.collectionVisible };
-    const friends = friendIds.size > 0
-      ? await db.select(friendFields)
-          .from(pokescanUsers).where(or(...[...friendIds].map(id => eq(pokescanUsers.id, id))))
-      : [];
-    const pendingReceived = rows.filter(r => r.addresseeId === me.id && r.status === "pending");
-    const pendingSent = rows.filter(r => r.requesterId === me.id && r.status === "pending");
-    const pendingUsers = pendingReceived.length > 0
-      ? await db.select(friendFields)
-          .from(pokescanUsers).where(or(...pendingReceived.map(r => eq(pokescanUsers.id, r.requesterId))))
-      : [];
-    const sentUsers = pendingSent.length > 0
-      ? await db.select(friendFields)
-          .from(pokescanUsers).where(or(...pendingSent.map(r => eq(pokescanUsers.id, r.addresseeId))))
-      : [];
-    res.json({ friends, pendingReceived: pendingUsers, pendingSent: sentUsers });
+    const friendFields = {
+      id: pokescanUsers.id,
+      username: pokescanUsers.username,
+      displayName: pokescanUsers.displayName,
+      avatarUrl: pokescanUsers.avatarUrl,
+      isPremium: pokescanUsers.isPremium,
+      collectionVisible: pokescanUsers.collectionVisible,
+    };
+    const friends =
+      friendIds.size > 0
+        ? await db
+            .select(friendFields)
+            .from(pokescanUsers)
+            .where(or(...[...friendIds].map((id) => eq(pokescanUsers.id, id))))
+        : [];
+    const pendingReceived = rows.filter(
+      (r) => r.addresseeId === me.id && r.status === "pending",
+    );
+    const pendingSent = rows.filter(
+      (r) => r.requesterId === me.id && r.status === "pending",
+    );
+    const pendingUsers =
+      pendingReceived.length > 0
+        ? await db
+            .select(friendFields)
+            .from(pokescanUsers)
+            .where(
+              or(
+                ...pendingReceived.map((r) =>
+                  eq(pokescanUsers.id, r.requesterId),
+                ),
+              ),
+            )
+        : [];
+    const sentUsers =
+      pendingSent.length > 0
+        ? await db
+            .select(friendFields)
+            .from(pokescanUsers)
+            .where(
+              or(
+                ...pendingSent.map((r) => eq(pokescanUsers.id, r.addresseeId)),
+              ),
+            )
+        : [];
+    res.json({
+      friends,
+      pendingReceived: pendingUsers,
+      pendingSent: sentUsers,
+    });
   });
 
-  app.post("/api/social/friend-request", async (req: Request, res: Response) => {
-    const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const { targetUserId } = req.body;
-    if (!targetUserId || targetUserId === me.id) { res.status(400).json({ error: "Invalid target" }); return; }
-    const existing = await db.select().from(pokescanFriendships).where(
-      or(
-        and(eq(pokescanFriendships.requesterId, me.id), eq(pokescanFriendships.addresseeId, targetUserId)),
-        and(eq(pokescanFriendships.requesterId, targetUserId), eq(pokescanFriendships.addresseeId, me.id))
-      )
-    );
-    if (existing.length > 0) { res.status(400).json({ error: "Request already exists" }); return; }
-    const [row] = await db.insert(pokescanFriendships).values({ requesterId: me.id, addresseeId: targetUserId, status: "pending" }).returning();
-    res.json({ friendship: row });
-  });
+  app.post(
+    "/api/social/friend-request",
+    async (req: Request, res: Response) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const { targetUserId } = req.body;
+      if (!targetUserId || targetUserId === me.id) {
+        res.status(400).json({ error: "Invalid target" });
+        return;
+      }
+      const existing = await db
+        .select()
+        .from(pokescanFriendships)
+        .where(
+          or(
+            and(
+              eq(pokescanFriendships.requesterId, me.id),
+              eq(pokescanFriendships.addresseeId, targetUserId),
+            ),
+            and(
+              eq(pokescanFriendships.requesterId, targetUserId),
+              eq(pokescanFriendships.addresseeId, me.id),
+            ),
+          ),
+        );
+      if (existing.length > 0) {
+        res.status(400).json({ error: "Request already exists" });
+        return;
+      }
+      const [row] = await db
+        .insert(pokescanFriendships)
+        .values({
+          requesterId: me.id,
+          addresseeId: targetUserId,
+          status: "pending",
+        })
+        .returning();
+      res.json({ friendship: row });
+    },
+  );
 
-  app.post("/api/social/friend-respond", async (req: Request, res: Response) => {
-    const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const { requesterId, action } = req.body;
-    if (!requesterId || !["accept", "decline"].includes(action)) { res.status(400).json({ error: "Bad request" }); return; }
-    const rows = await db.select().from(pokescanFriendships).where(
-      and(eq(pokescanFriendships.requesterId, requesterId), eq(pokescanFriendships.addresseeId, me.id), eq(pokescanFriendships.status, "pending"))
-    );
-    if (!rows.length) { res.status(404).json({ error: "Request not found" }); return; }
-    if (action === "accept") {
-      await db.update(pokescanFriendships).set({ status: "accepted" }).where(eq(pokescanFriendships.id, rows[0].id));
-      res.json({ status: "accepted" });
-    } else {
-      await db.delete(pokescanFriendships).where(eq(pokescanFriendships.id, rows[0].id));
-      res.json({ status: "declined" });
-    }
-  });
+  app.post(
+    "/api/social/friend-respond",
+    async (req: Request, res: Response) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const { requesterId, action } = req.body;
+      if (!requesterId || !["accept", "decline"].includes(action)) {
+        res.status(400).json({ error: "Bad request" });
+        return;
+      }
+      const rows = await db
+        .select()
+        .from(pokescanFriendships)
+        .where(
+          and(
+            eq(pokescanFriendships.requesterId, requesterId),
+            eq(pokescanFriendships.addresseeId, me.id),
+            eq(pokescanFriendships.status, "pending"),
+          ),
+        );
+      if (!rows.length) {
+        res.status(404).json({ error: "Request not found" });
+        return;
+      }
+      if (action === "accept") {
+        await db
+          .update(pokescanFriendships)
+          .set({ status: "accepted" })
+          .where(eq(pokescanFriendships.id, rows[0].id));
+        res.json({ status: "accepted" });
+      } else {
+        await db
+          .delete(pokescanFriendships)
+          .where(eq(pokescanFriendships.id, rows[0].id));
+        res.json({ status: "declined" });
+      }
+    },
+  );
 
-  app.delete("/api/social/friend-remove", async (req: Request, res: Response) => {
-    const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const { friendId } = req.body;
-    await db.delete(pokescanFriendships).where(
-      or(
-        and(eq(pokescanFriendships.requesterId, me.id), eq(pokescanFriendships.addresseeId, friendId)),
-        and(eq(pokescanFriendships.requesterId, friendId), eq(pokescanFriendships.addresseeId, me.id))
-      )
-    );
-    res.json({ success: true });
-  });
+  app.delete(
+    "/api/social/friend-remove",
+    async (req: Request, res: Response) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const { friendId } = req.body;
+      await db
+        .delete(pokescanFriendships)
+        .where(
+          or(
+            and(
+              eq(pokescanFriendships.requesterId, me.id),
+              eq(pokescanFriendships.addresseeId, friendId),
+            ),
+            and(
+              eq(pokescanFriendships.requesterId, friendId),
+              eq(pokescanFriendships.addresseeId, me.id),
+            ),
+          ),
+        );
+      res.json({ success: true });
+    },
+  );
 
   app.get("/api/social/user-search", async (req: Request, res: Response) => {
     const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const q = (req.query.q as string || "").trim();
-    if (q.length < 2) { res.json({ users: [] }); return; }
-    const users = await db.select({ id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl })
+    if (!me) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const q = ((req.query.q as string) || "").trim();
+    if (q.length < 2) {
+      res.json({ users: [] });
+      return;
+    }
+    const users = await db
+      .select({
+        id: pokescanUsers.id,
+        username: pokescanUsers.username,
+        displayName: pokescanUsers.displayName,
+        avatarUrl: pokescanUsers.avatarUrl,
+      })
       .from(pokescanUsers)
-      .where(and(ne(pokescanUsers.id, me.id), or(ilike(pokescanUsers.username, `%${q}%`), ilike(pokescanUsers.displayName, `%${q}%`))))
+      .where(
+        and(
+          ne(pokescanUsers.id, me.id),
+          or(
+            ilike(pokescanUsers.username, `%${q}%`),
+            ilike(pokescanUsers.displayName, `%${q}%`),
+          ),
+        ),
+      )
       .limit(20);
     res.json({ users });
   });
@@ -4960,7 +6446,11 @@ matches must be true or false.`;
   app.get("/api/support/admin", async (_req: Request, res: Response) => {
     try {
       const admins = await db
-        .select({ id: pokescanUsers.id, displayName: pokescanUsers.displayName, username: pokescanUsers.username })
+        .select({
+          id: pokescanUsers.id,
+          displayName: pokescanUsers.displayName,
+          username: pokescanUsers.username,
+        })
         .from(pokescanUsers)
         .where(eq(pokescanUsers.role, "admin"))
         .limit(1);
@@ -4977,99 +6467,212 @@ matches must be true or false.`;
   // ─── Messages ────────────────────────────────────────────────────────────────
   app.get("/api/social/messages/inbox", async (req: Request, res: Response) => {
     const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const rows = await db.select({
-      id: pokescanMessages.id, subject: pokescanMessages.subject, body: pokescanMessages.body,
-      isRead: pokescanMessages.isRead, createdAt: pokescanMessages.createdAt,
-      senderId: pokescanMessages.senderId,
-      senderUsername: pokescanUsers.username, senderDisplayName: pokescanUsers.displayName, senderAvatarUrl: pokescanUsers.avatarUrl,
-    }).from(pokescanMessages)
+    if (!me) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const rows = await db
+      .select({
+        id: pokescanMessages.id,
+        subject: pokescanMessages.subject,
+        body: pokescanMessages.body,
+        isRead: pokescanMessages.isRead,
+        createdAt: pokescanMessages.createdAt,
+        senderId: pokescanMessages.senderId,
+        senderUsername: pokescanUsers.username,
+        senderDisplayName: pokescanUsers.displayName,
+        senderAvatarUrl: pokescanUsers.avatarUrl,
+      })
+      .from(pokescanMessages)
       .innerJoin(pokescanUsers, eq(pokescanMessages.senderId, pokescanUsers.id))
-      .where(and(eq(pokescanMessages.recipientId, me.id), eq(pokescanMessages.deletedByRecipient, false)))
+      .where(
+        and(
+          eq(pokescanMessages.recipientId, me.id),
+          eq(pokescanMessages.deletedByRecipient, false),
+        ),
+      )
       .orderBy(desc(pokescanMessages.createdAt));
     res.json({ messages: rows });
   });
 
   app.get("/api/social/messages/sent", async (req: Request, res: Response) => {
     const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const rows = await db.select({
-      id: pokescanMessages.id, subject: pokescanMessages.subject, body: pokescanMessages.body,
-      isRead: pokescanMessages.isRead, createdAt: pokescanMessages.createdAt,
-      recipientId: pokescanMessages.recipientId,
-      recipientUsername: pokescanUsers.username, recipientDisplayName: pokescanUsers.displayName, recipientAvatarUrl: pokescanUsers.avatarUrl,
-    }).from(pokescanMessages)
-      .innerJoin(pokescanUsers, eq(pokescanMessages.recipientId, pokescanUsers.id))
-      .where(and(eq(pokescanMessages.senderId, me.id), eq(pokescanMessages.deletedBySender, false)))
+    if (!me) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const rows = await db
+      .select({
+        id: pokescanMessages.id,
+        subject: pokescanMessages.subject,
+        body: pokescanMessages.body,
+        isRead: pokescanMessages.isRead,
+        createdAt: pokescanMessages.createdAt,
+        recipientId: pokescanMessages.recipientId,
+        recipientUsername: pokescanUsers.username,
+        recipientDisplayName: pokescanUsers.displayName,
+        recipientAvatarUrl: pokescanUsers.avatarUrl,
+      })
+      .from(pokescanMessages)
+      .innerJoin(
+        pokescanUsers,
+        eq(pokescanMessages.recipientId, pokescanUsers.id),
+      )
+      .where(
+        and(
+          eq(pokescanMessages.senderId, me.id),
+          eq(pokescanMessages.deletedBySender, false),
+        ),
+      )
       .orderBy(desc(pokescanMessages.createdAt));
     res.json({ messages: rows });
   });
 
-  app.get("/api/social/messages/unread-count", async (req: Request, res: Response) => {
-    const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const result = await db.select({ count: sql<number>`count(*)::int` }).from(pokescanMessages)
-      .where(and(eq(pokescanMessages.recipientId, me.id), eq(pokescanMessages.isRead, false), eq(pokescanMessages.deletedByRecipient, false)));
-    res.json({ count: result[0]?.count ?? 0 });
-  });
+  app.get(
+    "/api/social/messages/unread-count",
+    async (req: Request, res: Response) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const result = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(pokescanMessages)
+        .where(
+          and(
+            eq(pokescanMessages.recipientId, me.id),
+            eq(pokescanMessages.isRead, false),
+            eq(pokescanMessages.deletedByRecipient, false),
+          ),
+        );
+      res.json({ count: result[0]?.count ?? 0 });
+    },
+  );
 
   app.post("/api/social/messages/send", async (req: Request, res: Response) => {
     const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!me) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
     const { recipientId, subject, body } = req.body;
-    if (!recipientId || !body?.trim()) { res.status(400).json({ error: "recipientId and body required" }); return; }
+    if (!recipientId || !body?.trim()) {
+      res.status(400).json({ error: "recipientId and body required" });
+      return;
+    }
     const target = await storage.getUserById(recipientId);
-    if (!target) { res.status(404).json({ error: "Recipient not found" }); return; }
-    const [msg] = await db.insert(pokescanMessages).values({
-      senderId: me.id, recipientId, subject: (subject || "").trim(), body: body.trim(),
-    }).returning();
+    if (!target) {
+      res.status(404).json({ error: "Recipient not found" });
+      return;
+    }
+    const [msg] = await db
+      .insert(pokescanMessages)
+      .values({
+        senderId: me.id,
+        recipientId,
+        subject: (subject || "").trim(),
+        body: body.trim(),
+      })
+      .returning();
     res.json({ message: msg });
   });
 
-  app.patch("/api/social/messages/:id/read", async (req: Request, res: Response) => {
-    const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    await db.update(pokescanMessages).set({ isRead: true }).where(
-      and(eq(pokescanMessages.id, req.params.id), eq(pokescanMessages.recipientId, me.id))
-    );
-    res.json({ success: true });
-  });
+  app.patch(
+    "/api/social/messages/:id/read",
+    async (req: Request, res: Response) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      await db
+        .update(pokescanMessages)
+        .set({ isRead: true })
+        .where(
+          and(
+            eq(pokescanMessages.id, req.params.id),
+            eq(pokescanMessages.recipientId, me.id),
+          ),
+        );
+      res.json({ success: true });
+    },
+  );
 
-  app.delete("/api/social/messages/:id", async (req: Request, res: Response) => {
-    const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const [msg] = await db.select().from(pokescanMessages).where(eq(pokescanMessages.id, req.params.id));
-    if (!msg) { res.status(404).json({ error: "Not found" }); return; }
-    if (msg.senderId === me.id) {
-      await db.update(pokescanMessages).set({ deletedBySender: true }).where(eq(pokescanMessages.id, msg.id));
-    } else if (msg.recipientId === me.id) {
-      await db.update(pokescanMessages).set({ deletedByRecipient: true }).where(eq(pokescanMessages.id, msg.id));
-    }
-    res.json({ success: true });
-  });
+  app.delete(
+    "/api/social/messages/:id",
+    async (req: Request, res: Response) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const [msg] = await db
+        .select()
+        .from(pokescanMessages)
+        .where(eq(pokescanMessages.id, req.params.id));
+      if (!msg) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      if (msg.senderId === me.id) {
+        await db
+          .update(pokescanMessages)
+          .set({ deletedBySender: true })
+          .where(eq(pokescanMessages.id, msg.id));
+      } else if (msg.recipientId === me.id) {
+        await db
+          .update(pokescanMessages)
+          .set({ deletedByRecipient: true })
+          .where(eq(pokescanMessages.id, msg.id));
+      }
+      res.json({ success: true });
+    },
+  );
 
   // ─── Reports ─────────────────────────────────────────────────────────────────
   app.post("/api/social/report", async (req: Request, res: Response) => {
     const me = await getUserFromToken(req);
-    if (!me) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const { contentType, contentId, reason, contentSnapshot, reportedUserId } = req.body;
+    if (!me) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const { contentType, contentId, reason, contentSnapshot, reportedUserId } =
+      req.body;
     if (!contentType || !contentId || !reason?.trim()) {
-      res.status(400).json({ error: "contentType, contentId, and reason are required" });
+      res
+        .status(400)
+        .json({ error: "contentType, contentId, and reason are required" });
       return;
     }
     // prevent duplicate pending reports from same user for same content
-    const existing = await db.select().from(pokescanReports).where(
-      and(eq(pokescanReports.reporterId, me.id), eq(pokescanReports.contentId, contentId), eq(pokescanReports.status, "pending"))
-    );
-    if (existing.length > 0) { res.status(400).json({ error: "You already reported this content" }); return; }
-    const [report] = await db.insert(pokescanReports).values({
-      reporterId: me.id,
-      reportedUserId: reportedUserId || null,
-      contentType,
-      contentId,
-      reason: reason.trim(),
-      contentSnapshot: contentSnapshot ? JSON.stringify(contentSnapshot) : null,
-    }).returning();
+    const existing = await db
+      .select()
+      .from(pokescanReports)
+      .where(
+        and(
+          eq(pokescanReports.reporterId, me.id),
+          eq(pokescanReports.contentId, contentId),
+          eq(pokescanReports.status, "pending"),
+        ),
+      );
+    if (existing.length > 0) {
+      res.status(400).json({ error: "You already reported this content" });
+      return;
+    }
+    const [report] = await db
+      .insert(pokescanReports)
+      .values({
+        reporterId: me.id,
+        reportedUserId: reportedUserId || null,
+        contentType,
+        contentId,
+        reason: reason.trim(),
+        contentSnapshot: contentSnapshot
+          ? JSON.stringify(contentSnapshot)
+          : null,
+      })
+      .returning();
     res.json({ report });
   });
 
@@ -5080,30 +6683,44 @@ matches must be true or false.`;
     let isAuthorized = await isSuperadminAuthorized(req);
     if (!isAuthorized && token) {
       const user = await storage.validateSession(token);
-      if (user && (user.role === "admin" || user.role === "moderator")) isAuthorized = true;
+      if (user && (user.role === "admin" || user.role === "moderator"))
+        isAuthorized = true;
     }
-    if (!isAuthorized) { res.status(401).json({ error: "Unauthorized" }); return; }
-    const reports = await db.select({
-      id: pokescanReports.id,
-      contentType: pokescanReports.contentType,
-      contentId: pokescanReports.contentId,
-      reason: pokescanReports.reason,
-      contentSnapshot: pokescanReports.contentSnapshot,
-      status: pokescanReports.status,
-      reviewNote: pokescanReports.reviewNote,
-      reviewedAt: pokescanReports.reviewedAt,
-      createdAt: pokescanReports.createdAt,
-      reporterUsername: sql<string>`r_user.username`,
-      reporterDisplayName: sql<string>`r_user.display_name`,
-      reportedUserUsername: sql<string | null>`ru_user.username`,
-      reportedUserDisplayName: sql<string | null>`ru_user.display_name`,
-      reviewedByUsername: sql<string | null>`rev_user.username`,
-    })
-    .from(pokescanReports)
-    .leftJoin(sql`pokescan_users AS r_user`, sql`r_user.id = pokescan_reports.reporter_id`)
-    .leftJoin(sql`pokescan_users AS ru_user`, sql`ru_user.id = pokescan_reports.reported_user_id`)
-    .leftJoin(sql`pokescan_users AS rev_user`, sql`rev_user.id = pokescan_reports.reviewed_by`)
-    .orderBy(desc(pokescanReports.createdAt));
+    if (!isAuthorized) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const reports = await db
+      .select({
+        id: pokescanReports.id,
+        contentType: pokescanReports.contentType,
+        contentId: pokescanReports.contentId,
+        reason: pokescanReports.reason,
+        contentSnapshot: pokescanReports.contentSnapshot,
+        status: pokescanReports.status,
+        reviewNote: pokescanReports.reviewNote,
+        reviewedAt: pokescanReports.reviewedAt,
+        createdAt: pokescanReports.createdAt,
+        reporterUsername: sql<string>`r_user.username`,
+        reporterDisplayName: sql<string>`r_user.display_name`,
+        reportedUserUsername: sql<string | null>`ru_user.username`,
+        reportedUserDisplayName: sql<string | null>`ru_user.display_name`,
+        reviewedByUsername: sql<string | null>`rev_user.username`,
+      })
+      .from(pokescanReports)
+      .leftJoin(
+        sql`pokescan_users AS r_user`,
+        sql`r_user.id = pokescan_reports.reporter_id`,
+      )
+      .leftJoin(
+        sql`pokescan_users AS ru_user`,
+        sql`ru_user.id = pokescan_reports.reported_user_id`,
+      )
+      .leftJoin(
+        sql`pokescan_users AS rev_user`,
+        sql`rev_user.id = pokescan_reports.reviewed_by`,
+      )
+      .orderBy(desc(pokescanReports.createdAt));
     res.json({ reports });
   });
 
@@ -5119,16 +6736,31 @@ matches must be true or false.`;
         reviewerId = user.id;
       }
     }
-    if (!isAuthorized) { res.status(401).json({ error: "Unauthorized" }); return; }
+    if (!isAuthorized) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
     const { status, reviewNote } = req.body;
-    if (!["reviewed", "dismissed"].includes(status)) { res.status(400).json({ error: "status must be 'reviewed' or 'dismissed'" }); return; }
-    const [updated] = await db.update(pokescanReports).set({
-      status,
-      reviewNote: reviewNote?.trim() || null,
-      reviewedBy: reviewerId || null,
-      reviewedAt: new Date(),
-    }).where(eq(pokescanReports.id, req.params.id)).returning();
-    if (!updated) { res.status(404).json({ error: "Report not found" }); return; }
+    if (!["reviewed", "dismissed"].includes(status)) {
+      res
+        .status(400)
+        .json({ error: "status must be 'reviewed' or 'dismissed'" });
+      return;
+    }
+    const [updated] = await db
+      .update(pokescanReports)
+      .set({
+        status,
+        reviewNote: reviewNote?.trim() || null,
+        reviewedBy: reviewerId || null,
+        reviewedAt: new Date(),
+      })
+      .where(eq(pokescanReports.id, req.params.id))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: "Report not found" });
+      return;
+    }
     res.json({ report: updated });
   });
 
@@ -5136,7 +6768,7 @@ matches must be true or false.`;
   // Fire-and-forget: returns immediately and runs in the background.
   app.post("/api/admin/card-reseed", async (req: Request, res: Response) => {
     const { superadminPassword } = req.body;
-    if (!await isSuperadminAuthorized(req)) {
+    if (!(await isSuperadminAuthorized(req))) {
       res.status(403).json({ error: "Forbidden" });
       return;
     }
@@ -5146,18 +6778,35 @@ matches must be true or false.`;
       return;
     }
     // Run without force so it only seeds sets that have 0 cards
-    runFullSync(false).catch((err) => console.error("[CardReseed] Error:", err));
-    res.json({ message: "Card reseed started in background — monitor server logs for progress.", running: true });
+    runFullSync(false).catch((err) =>
+      console.error("[CardReseed] Error:", err),
+    );
+    res.json({
+      message:
+        "Card reseed started in background — monitor server logs for progress.",
+      running: true,
+    });
   });
 
-  app.post("/api/grade", express.json({ limit: "25mb" }), async (req: Request, res: Response) => {
-    try {
-      const { centering, cornerDamage, edgeDamage, surfaceDamage, frontImageBase64, backImageBase64, imageBase64 } = req.body;
+  app.post(
+    "/api/grade",
+    express.json({ limit: "25mb" }),
+    async (req: Request, res: Response) => {
+      try {
+        const {
+          centering,
+          cornerDamage,
+          edgeDamage,
+          surfaceDamage,
+          frontImageBase64,
+          backImageBase64,
+          imageBase64,
+        } = req.body;
 
-      const frontImg = frontImageBase64 || imageBase64;
+        const frontImg = frontImageBase64 || imageBase64;
 
-      if (frontImg) {
-        const prompt = `You are an expert Pokémon TCG card grader with experience equivalent to PSA/BGS professional grading. You have been given ${backImageBase64 ? "TWO images: the FRONT of the card followed by the BACK of the card" : "ONE image: the FRONT of the card"}. Analyse both surfaces thoroughly.
+        if (frontImg) {
+          const prompt = `You are an expert Pokémon TCG card grader with experience equivalent to PSA/BGS professional grading. You have been given ${backImageBase64 ? "TWO images: the FRONT of the card followed by the BACK of the card" : "ONE image: the FRONT of the card"}. Analyse both surfaces thoroughly.
 
 Score each criterion 0–5 (0 = perfect, 5 = severe damage):
 - centering: how off-centre the print is on the card stock
@@ -5189,109 +6838,164 @@ Return ONLY valid JSON in exactly this format with no markdown:
   "overallNotes": "one sentence summary"
 }`;
 
-        const imageContent: any[] = [
-          { type: "text", text: prompt },
-          { type: "image_url", image_url: { url: frontImg, detail: "high" } },
-        ];
-        if (backImageBase64) {
-          imageContent.push({ type: "image_url", image_url: { url: backImageBase64, detail: "high" } });
+          const imageContent: any[] = [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: frontImg, detail: "high" } },
+          ];
+          if (backImageBase64) {
+            imageContent.push({
+              type: "image_url",
+              image_url: { url: backImageBase64, detail: "high" },
+            });
+          }
+
+          const aiRes = await openai.chat.completions.create({
+            model: "gpt-4o",
+            max_tokens: 800,
+            messages: [{ role: "user", content: imageContent }],
+          });
+
+          const raw = aiRes.choices[0]?.message?.content?.trim() || "";
+          const jsonMatch = raw.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) throw new Error("AI returned invalid response");
+          const parsed = JSON.parse(jsonMatch[0]);
+
+          const result = calculateGrade({
+            centering: Math.max(0, Math.min(5, parsed.centering ?? 0)),
+            cornerDamage: Math.max(0, Math.min(5, parsed.cornerDamage ?? 0)),
+            edgeDamage: Math.max(0, Math.min(5, parsed.edgeDamage ?? 0)),
+            surfaceDamage: Math.max(0, Math.min(5, parsed.surfaceDamage ?? 0)),
+          });
+
+          const cr = parsed.centeringRatios;
+          const centeringRatios = cr
+            ? {
+                topPct: Math.round(Math.max(1, Math.min(99, cr.topPct ?? 50))),
+                bottomPct: Math.round(
+                  Math.max(1, Math.min(99, cr.bottomPct ?? 50)),
+                ),
+                leftPct: Math.round(
+                  Math.max(1, Math.min(99, cr.leftPct ?? 50)),
+                ),
+                rightPct: Math.round(
+                  Math.max(1, Math.min(99, cr.rightPct ?? 50)),
+                ),
+              }
+            : null;
+
+          return res.json({
+            ...result,
+            aiAssessed: true,
+            aiNotes: parsed.overallNotes ?? null,
+            centeringRatios,
+            findings: parsed.findings ?? null,
+            gradingComments: parsed.gradingComments ?? null,
+          });
         }
 
-        const aiRes = await openai.chat.completions.create({
-          model: "gpt-4o",
-          max_tokens: 800,
-          messages: [{ role: "user", content: imageContent }],
-        });
-
-        const raw = aiRes.choices[0]?.message?.content?.trim() || "";
-        const jsonMatch = raw.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error("AI returned invalid response");
-        const parsed = JSON.parse(jsonMatch[0]);
-
+        // Manual mode
         const result = calculateGrade({
-          centering:    Math.max(0, Math.min(5, parsed.centering    ?? 0)),
-          cornerDamage: Math.max(0, Math.min(5, parsed.cornerDamage ?? 0)),
-          edgeDamage:   Math.max(0, Math.min(5, parsed.edgeDamage   ?? 0)),
-          surfaceDamage: Math.max(0, Math.min(5, parsed.surfaceDamage ?? 0)),
+          centering,
+          cornerDamage,
+          edgeDamage,
+          surfaceDamage,
         });
-
-        const cr = parsed.centeringRatios;
-        const centeringRatios = cr ? {
-          topPct:    Math.round(Math.max(1, Math.min(99, cr.topPct    ?? 50))),
-          bottomPct: Math.round(Math.max(1, Math.min(99, cr.bottomPct ?? 50))),
-          leftPct:   Math.round(Math.max(1, Math.min(99, cr.leftPct   ?? 50))),
-          rightPct:  Math.round(Math.max(1, Math.min(99, cr.rightPct  ?? 50))),
-        } : null;
-
-        return res.json({
-          ...result,
-          aiAssessed: true,
-          aiNotes: parsed.overallNotes ?? null,
-          centeringRatios,
-          findings: parsed.findings ?? null,
-          gradingComments: parsed.gradingComments ?? null,
-        });
+        res.json(result);
+      } catch (err) {
+        console.error("Grading error:", err);
+        res.status(500).json({ error: "Grading failed" });
       }
-
-      // Manual mode
-      const result = calculateGrade({ centering, cornerDamage, edgeDamage, surfaceDamage });
-      res.json(result);
-    } catch (err) {
-      console.error("Grading error:", err);
-      res.status(500).json({ error: "Grading failed" });
-    }
-  });
+    },
+  );
 
   cleanupOldChatroomMessages();
   setInterval(cleanupOldChatroomMessages, 60 * 60 * 1000);
 
-  const isStaffRole = (role: string) => role === "admin" || role === "moderator";
+  const isStaffRole = (role: string) =>
+    role === "admin" || role === "moderator";
 
   app.get("/api/chatroom/messages", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!caller) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
       if (!caller.isPremium && !isStaffRole(caller.role)) {
         res.status(403).json({ error: "Premium membership required" });
         return;
       }
 
-      if (caller.chatBannedUntil && new Date(caller.chatBannedUntil) > new Date()) {
-        res.status(403).json({ error: "You are banned from the chat", bannedUntil: caller.chatBannedUntil });
+      if (
+        caller.chatBannedUntil &&
+        new Date(caller.chatBannedUntil) > new Date()
+      ) {
+        res
+          .status(403)
+          .json({
+            error: "You are banned from the chat",
+            bannedUntil: caller.chatBannedUntil,
+          });
         return;
       }
 
-      const msgs = await db.select().from(pokescanChatroomMessages)
+      const msgs = await db
+        .select()
+        .from(pokescanChatroomMessages)
         .orderBy(desc(pokescanChatroomMessages.createdAt))
         .limit(200);
 
       res.json({ messages: msgs.reverse() });
     } catch (error: any) {
       console.error("Chatroom get error:", error);
-      res.status(500).json({ error: error.message || "Failed to load chatroom" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to load chatroom" });
     }
   });
 
   app.post("/api/chatroom/messages", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
+      if (!caller) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
       if (!caller.isPremium && !isStaffRole(caller.role)) {
         res.status(403).json({ error: "Premium membership required" });
         return;
       }
 
-      if (caller.chatBannedUntil && new Date(caller.chatBannedUntil) > new Date()) {
-        res.status(403).json({ error: "You are banned from the chat", bannedUntil: caller.chatBannedUntil });
+      if (
+        caller.chatBannedUntil &&
+        new Date(caller.chatBannedUntil) > new Date()
+      ) {
+        res
+          .status(403)
+          .json({
+            error: "You are banned from the chat",
+            bannedUntil: caller.chatBannedUntil,
+          });
         return;
       }
 
-      if (caller.chatMutedUntil && new Date(caller.chatMutedUntil) > new Date()) {
-        res.status(403).json({ error: "You are muted", mutedUntil: caller.chatMutedUntil });
+      if (
+        caller.chatMutedUntil &&
+        new Date(caller.chatMutedUntil) > new Date()
+      ) {
+        res
+          .status(403)
+          .json({ error: "You are muted", mutedUntil: caller.chatMutedUntil });
         return;
       }
 
@@ -5303,74 +7007,127 @@ Return ONLY valid JSON in exactly this format with no markdown:
 
       const trimmed = body.trim().substring(0, 2000);
 
-      const [msg] = await db.insert(pokescanChatroomMessages).values({
-        senderId: caller.id,
-        senderUsername: caller.username,
-        senderDisplayName: caller.displayName || caller.username,
-        senderAvatarUrl: caller.avatarUrl || null,
-        body: trimmed,
-      }).returning();
+      const [msg] = await db
+        .insert(pokescanChatroomMessages)
+        .values({
+          senderId: caller.id,
+          senderUsername: caller.username,
+          senderDisplayName: caller.displayName || caller.username,
+          senderAvatarUrl: caller.avatarUrl || null,
+          body: trimmed,
+        })
+        .returning();
 
       res.json({ message: msg });
     } catch (error: any) {
       console.error("Chatroom send error:", error);
-      res.status(500).json({ error: error.message || "Failed to send message" });
+      res
+        .status(500)
+        .json({ error: error.message || "Failed to send message" });
     }
   });
 
-  app.delete("/api/chatroom/messages/:id", async (req: Request, res: Response) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (!caller.isPremium && !isStaffRole(caller.role)) {
-        res.status(403).json({ error: "Premium membership required" });
-        return;
+  app.delete(
+    "/api/chatroom/messages/:id",
+    async (req: Request, res: Response) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const caller = await storage.validateSession(token);
+        if (!caller) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        if (!caller.isPremium && !isStaffRole(caller.role)) {
+          res.status(403).json({ error: "Premium membership required" });
+          return;
+        }
+
+        if (
+          caller.chatBannedUntil &&
+          new Date(caller.chatBannedUntil) > new Date() &&
+          !isStaffRole(caller.role)
+        ) {
+          res
+            .status(403)
+            .json({
+              error: "You are banned from the chat",
+              bannedUntil: caller.chatBannedUntil,
+            });
+          return;
+        }
+
+        const msgId = req.params.id;
+        const [existing] = await db
+          .select()
+          .from(pokescanChatroomMessages)
+          .where(eq(pokescanChatroomMessages.id, msgId));
+        if (!existing) {
+          res.status(404).json({ error: "Message not found" });
+          return;
+        }
+
+        if (existing.senderId !== caller.id && !isStaffRole(caller.role)) {
+          res.status(403).json({ error: "Not allowed" });
+          return;
+        }
+
+        await db
+          .delete(pokescanChatroomMessages)
+          .where(eq(pokescanChatroomMessages.id, msgId));
+        res.json({ success: true });
+      } catch (error: any) {
+        console.error("Chatroom delete error:", error);
+        res
+          .status(500)
+          .json({ error: error.message || "Failed to delete message" });
       }
-
-      if (caller.chatBannedUntil && new Date(caller.chatBannedUntil) > new Date() && !isStaffRole(caller.role)) {
-        res.status(403).json({ error: "You are banned from the chat", bannedUntil: caller.chatBannedUntil });
-        return;
-      }
-
-      const msgId = req.params.id;
-      const [existing] = await db.select().from(pokescanChatroomMessages).where(eq(pokescanChatroomMessages.id, msgId));
-      if (!existing) { res.status(404).json({ error: "Message not found" }); return; }
-
-      if (existing.senderId !== caller.id && !isStaffRole(caller.role)) {
-        res.status(403).json({ error: "Not allowed" });
-        return;
-      }
-
-      await db.delete(pokescanChatroomMessages).where(eq(pokescanChatroomMessages.id, msgId));
-      res.json({ success: true });
-    } catch (error: any) {
-      console.error("Chatroom delete error:", error);
-      res.status(500).json({ error: error.message || "Failed to delete message" });
-    }
-  });
+    },
+  );
 
   app.post("/api/chatroom/mute", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (!isStaffRole(caller.role)) { res.status(403).json({ error: "Staff only" }); return; }
+      if (!caller) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
+      if (!isStaffRole(caller.role)) {
+        res.status(403).json({ error: "Staff only" });
+        return;
+      }
 
       const { userId, minutes } = req.body;
       if (!userId || !minutes || typeof minutes !== "number" || minutes < 1) {
-        res.status(400).json({ error: "userId and minutes (positive number) required" });
+        res
+          .status(400)
+          .json({ error: "userId and minutes (positive number) required" });
         return;
       }
 
       const target = await storage.getUserById(userId);
-      if (!target) { res.status(404).json({ error: "User not found" }); return; }
-      if (isStaffRole(target.role)) { res.status(403).json({ error: "Cannot mute staff members" }); return; }
+      if (!target) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      if (isStaffRole(target.role)) {
+        res.status(403).json({ error: "Cannot mute staff members" });
+        return;
+      }
 
       const mutedUntil = new Date(Date.now() + minutes * 60 * 1000);
-      await pool.query("UPDATE pokescan_users SET chat_muted_until = $1 WHERE id = $2", [mutedUntil, userId]);
+      await pool.query(
+        "UPDATE pokescan_users SET chat_muted_until = $1 WHERE id = $2",
+        [mutedUntil, userId],
+      );
       res.json({ success: true, mutedUntil: mutedUntil.toISOString() });
     } catch (error: any) {
       console.error("Mute error:", error);
@@ -5381,15 +7138,30 @@ Return ONLY valid JSON in exactly this format with no markdown:
   app.post("/api/chatroom/unmute", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (!isStaffRole(caller.role)) { res.status(403).json({ error: "Staff only" }); return; }
+      if (!caller) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
+      if (!isStaffRole(caller.role)) {
+        res.status(403).json({ error: "Staff only" });
+        return;
+      }
 
       const { userId } = req.body;
-      if (!userId) { res.status(400).json({ error: "userId required" }); return; }
+      if (!userId) {
+        res.status(400).json({ error: "userId required" });
+        return;
+      }
 
-      await pool.query("UPDATE pokescan_users SET chat_muted_until = NULL WHERE id = $1", [userId]);
+      await pool.query(
+        "UPDATE pokescan_users SET chat_muted_until = NULL WHERE id = $1",
+        [userId],
+      );
       res.json({ success: true });
     } catch (error: any) {
       console.error("Unmute error:", error);
@@ -5400,23 +7172,43 @@ Return ONLY valid JSON in exactly this format with no markdown:
   app.post("/api/chatroom/ban", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (!isStaffRole(caller.role)) { res.status(403).json({ error: "Staff only" }); return; }
+      if (!caller) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
+      if (!isStaffRole(caller.role)) {
+        res.status(403).json({ error: "Staff only" });
+        return;
+      }
 
       const { userId, minutes } = req.body;
       if (!userId || !minutes || typeof minutes !== "number" || minutes < 1) {
-        res.status(400).json({ error: "userId and minutes (positive number) required" });
+        res
+          .status(400)
+          .json({ error: "userId and minutes (positive number) required" });
         return;
       }
 
       const target = await storage.getUserById(userId);
-      if (!target) { res.status(404).json({ error: "User not found" }); return; }
-      if (isStaffRole(target.role)) { res.status(403).json({ error: "Cannot ban staff members" }); return; }
+      if (!target) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
+      if (isStaffRole(target.role)) {
+        res.status(403).json({ error: "Cannot ban staff members" });
+        return;
+      }
 
       const bannedUntil = new Date(Date.now() + minutes * 60 * 1000);
-      await pool.query("UPDATE pokescan_users SET chat_banned_until = $1 WHERE id = $2", [bannedUntil, userId]);
+      await pool.query(
+        "UPDATE pokescan_users SET chat_banned_until = $1 WHERE id = $2",
+        [bannedUntil, userId],
+      );
       res.json({ success: true, bannedUntil: bannedUntil.toISOString() });
     } catch (error: any) {
       console.error("Ban error:", error);
@@ -5427,15 +7219,30 @@ Return ONLY valid JSON in exactly this format with no markdown:
   app.post("/api/chatroom/unban", async (req: Request, res: Response) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) { res.status(401).json({ error: "Unauthorized" }); return; }
+      if (!token) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
       const caller = await storage.validateSession(token);
-      if (!caller) { res.status(401).json({ error: "Invalid session" }); return; }
-      if (!isStaffRole(caller.role)) { res.status(403).json({ error: "Staff only" }); return; }
+      if (!caller) {
+        res.status(401).json({ error: "Invalid session" });
+        return;
+      }
+      if (!isStaffRole(caller.role)) {
+        res.status(403).json({ error: "Staff only" });
+        return;
+      }
 
       const { userId } = req.body;
-      if (!userId) { res.status(400).json({ error: "userId required" }); return; }
+      if (!userId) {
+        res.status(400).json({ error: "userId required" });
+        return;
+      }
 
-      await pool.query("UPDATE pokescan_users SET chat_banned_until = NULL WHERE id = $1", [userId]);
+      await pool.query(
+        "UPDATE pokescan_users SET chat_banned_until = NULL WHERE id = $1",
+        [userId],
+      );
       res.json({ success: true });
     } catch (error: any) {
       console.error("Unban error:", error);
@@ -5446,280 +7253,521 @@ Return ONLY valid JSON in exactly this format with no markdown:
   // ─── Admin DB Editor ─────────────────────────────────────────────────────────
 
   app.get("/api/admin/db/cards", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!(await isSuperadminSessionOnly(req))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
-    const pageSize = Math.min(100, Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)));
-    const search = (req.query.search as string || "").trim();
-    const setIdFilter = (req.query.setId as string || "").trim();
+    const pageSize = Math.min(
+      100,
+      Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)),
+    );
+    const search = ((req.query.search as string) || "").trim();
+    const setIdFilter = ((req.query.setId as string) || "").trim();
     const trash = (req.query.trash as string) === "1";
     const offset = (page - 1) * pageSize;
-    const deletedFilter = trash ? isNotNull(pokemonCards.deletedAt) : isNull(pokemonCards.deletedAt);
+    const deletedFilter = trash
+      ? isNotNull(pokemonCards.deletedAt)
+      : isNull(pokemonCards.deletedAt);
     let condition;
     if (search && setIdFilter) {
       condition = and(
         deletedFilter,
-        or(ilike(pokemonCards.name, `%${search}%`), ilike(pokemonCards.id, `%${search}%`)),
-        eq(pokemonCards.setId, setIdFilter)
+        or(
+          ilike(pokemonCards.name, `%${search}%`),
+          ilike(pokemonCards.id, `%${search}%`),
+        ),
+        eq(pokemonCards.setId, setIdFilter),
       );
     } else if (search) {
-      condition = and(deletedFilter, or(ilike(pokemonCards.name, `%${search}%`), ilike(pokemonCards.id, `%${search}%`)));
+      condition = and(
+        deletedFilter,
+        or(
+          ilike(pokemonCards.name, `%${search}%`),
+          ilike(pokemonCards.id, `%${search}%`),
+        ),
+      );
     } else if (setIdFilter) {
       condition = and(deletedFilter, eq(pokemonCards.setId, setIdFilter));
     } else {
       condition = deletedFilter;
     }
     const [countResult, rows] = await Promise.all([
-      db.select({ count: sql<number>`count(*)::int` }).from(pokemonCards).where(condition),
-      db.select({
-        id: pokemonCards.id,
-        setId: pokemonCards.setId,
-        setName: pokemonSets.name,
-        name: pokemonCards.name,
-        number: pokemonCards.number,
-        rarity: pokemonCards.rarity,
-        supertype: pokemonCards.supertype,
-        subtypes: pokemonCards.subtypes,
-        imageSmall: pokemonCards.imageSmall,
-        imageLarge: pokemonCards.imageLarge,
-        artist: pokemonCards.artist,
-        hp: pokemonCards.hp,
-        nationalPokedexNumbers: pokemonCards.nationalPokedexNumbers,
-        description: pokemonCards.description,
-        deletedAt: pokemonCards.deletedAt,
-      }).from(pokemonCards)
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(pokemonCards)
+        .where(condition),
+      db
+        .select({
+          id: pokemonCards.id,
+          setId: pokemonCards.setId,
+          setName: pokemonSets.name,
+          name: pokemonCards.name,
+          number: pokemonCards.number,
+          rarity: pokemonCards.rarity,
+          supertype: pokemonCards.supertype,
+          subtypes: pokemonCards.subtypes,
+          imageSmall: pokemonCards.imageSmall,
+          imageLarge: pokemonCards.imageLarge,
+          artist: pokemonCards.artist,
+          hp: pokemonCards.hp,
+          nationalPokedexNumbers: pokemonCards.nationalPokedexNumbers,
+          description: pokemonCards.description,
+          deletedAt: pokemonCards.deletedAt,
+        })
+        .from(pokemonCards)
         .leftJoin(pokemonSets, eq(pokemonCards.setId, pokemonSets.id))
-        .where(condition).orderBy(pokemonCards.number).limit(pageSize).offset(offset),
+        .where(condition)
+        .orderBy(pokemonCards.number)
+        .limit(pageSize)
+        .offset(offset),
     ]);
-    res.json({ cards: rows, total: countResult[0]?.count ?? 0, page, pageSize });
+    res.json({
+      cards: rows,
+      total: countResult[0]?.count ?? 0,
+      page,
+      pageSize,
+    });
   });
 
   app.patch("/api/admin/db/cards/:id", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!(await isSuperadminSessionOnly(req))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const { id } = req.params;
-    const { name, number, rarity, imageSmall, imageLarge, artist, hp, supertype, subtypes, description } = req.body;
+    const {
+      name,
+      number,
+      rarity,
+      imageSmall,
+      imageLarge,
+      artist,
+      hp,
+      supertype,
+      subtypes,
+      description,
+    } = req.body;
     const updates: Record<string, any> = {};
-    if (typeof name === "string") { if (!name.trim()) { res.status(400).json({ error: "Card name cannot be empty" }); return; } updates.name = name.trim(); }
+    if (typeof name === "string") {
+      if (!name.trim()) {
+        res.status(400).json({ error: "Card name cannot be empty" });
+        return;
+      }
+      updates.name = name.trim();
+    }
     if (typeof number === "string") updates.number = number.trim() || undefined;
-    if (Object.prototype.hasOwnProperty.call(req.body, "rarity")) updates.rarity = typeof rarity === "string" ? (rarity.trim() || null) : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "imageSmall")) updates.image_small = typeof imageSmall === "string" ? (imageSmall.trim() || null) : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "imageLarge")) updates.image_large = typeof imageLarge === "string" ? (imageLarge.trim() || null) : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "artist")) updates.artist = typeof artist === "string" ? (artist.trim() || null) : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "hp")) updates.hp = typeof hp === "string" ? (hp.trim() || null) : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "supertype")) updates.supertype = typeof supertype === "string" ? (supertype.trim() || null) : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "subtypes")) updates.subtypes = typeof subtypes === "string" ? (subtypes.trim() || null) : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "description")) updates.description = typeof description === "string" ? (description.trim() || null) : null;
-    if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
+    if (Object.prototype.hasOwnProperty.call(req.body, "rarity"))
+      updates.rarity =
+        typeof rarity === "string" ? rarity.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "imageSmall"))
+      updates.image_small =
+        typeof imageSmall === "string" ? imageSmall.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "imageLarge"))
+      updates.image_large =
+        typeof imageLarge === "string" ? imageLarge.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "artist"))
+      updates.artist =
+        typeof artist === "string" ? artist.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "hp"))
+      updates.hp = typeof hp === "string" ? hp.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "supertype"))
+      updates.supertype =
+        typeof supertype === "string" ? supertype.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "subtypes"))
+      updates.subtypes =
+        typeof subtypes === "string" ? subtypes.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "description"))
+      updates.description =
+        typeof description === "string" ? description.trim() || null : null;
+    if (Object.keys(updates).length === 0) {
+      res.status(400).json({ error: "No valid fields to update" });
+      return;
+    }
     const drizzleUpdates: Partial<typeof pokemonCards.$inferInsert> = {};
     if (updates.name !== undefined) drizzleUpdates.name = updates.name;
     if (updates.number !== undefined) drizzleUpdates.number = updates.number;
-    if (Object.prototype.hasOwnProperty.call(updates, "rarity")) drizzleUpdates.rarity = updates.rarity;
-    if (Object.prototype.hasOwnProperty.call(updates, "image_small")) drizzleUpdates.imageSmall = updates.image_small;
-    if (Object.prototype.hasOwnProperty.call(updates, "image_large")) drizzleUpdates.imageLarge = updates.image_large;
-    if (Object.prototype.hasOwnProperty.call(updates, "artist")) drizzleUpdates.artist = updates.artist;
-    if (Object.prototype.hasOwnProperty.call(updates, "hp")) drizzleUpdates.hp = updates.hp;
-    if (Object.prototype.hasOwnProperty.call(updates, "supertype")) drizzleUpdates.supertype = updates.supertype;
-    if (Object.prototype.hasOwnProperty.call(updates, "subtypes")) drizzleUpdates.subtypes = updates.subtypes;
-    if (Object.prototype.hasOwnProperty.call(updates, "description")) drizzleUpdates.description = updates.description;
-    const [updated] = await db.update(pokemonCards).set(drizzleUpdates).where(and(eq(pokemonCards.id, id), isNull(pokemonCards.deletedAt))).returning();
-    if (!updated) { res.status(404).json({ error: "Card not found" }); return; }
+    if (Object.prototype.hasOwnProperty.call(updates, "rarity"))
+      drizzleUpdates.rarity = updates.rarity;
+    if (Object.prototype.hasOwnProperty.call(updates, "image_small"))
+      drizzleUpdates.imageSmall = updates.image_small;
+    if (Object.prototype.hasOwnProperty.call(updates, "image_large"))
+      drizzleUpdates.imageLarge = updates.image_large;
+    if (Object.prototype.hasOwnProperty.call(updates, "artist"))
+      drizzleUpdates.artist = updates.artist;
+    if (Object.prototype.hasOwnProperty.call(updates, "hp"))
+      drizzleUpdates.hp = updates.hp;
+    if (Object.prototype.hasOwnProperty.call(updates, "supertype"))
+      drizzleUpdates.supertype = updates.supertype;
+    if (Object.prototype.hasOwnProperty.call(updates, "subtypes"))
+      drizzleUpdates.subtypes = updates.subtypes;
+    if (Object.prototype.hasOwnProperty.call(updates, "description"))
+      drizzleUpdates.description = updates.description;
+    const [updated] = await db
+      .update(pokemonCards)
+      .set(drizzleUpdates)
+      .where(and(eq(pokemonCards.id, id), isNull(pokemonCards.deletedAt)))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: "Card not found" });
+      return;
+    }
     res.json({ card: updated });
   });
 
   app.get("/api/admin/db/sets", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!(await isSuperadminSessionOnly(req))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
-    const pageSize = Math.min(50, Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)));
-    const search = (req.query.search as string || "").trim();
+    const pageSize = Math.min(
+      50,
+      Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)),
+    );
+    const search = ((req.query.search as string) || "").trim();
     const trash = (req.query.trash as string) === "1";
     const offset = (page - 1) * pageSize;
-    const deletedFilter = trash ? isNotNull(pokemonSets.deletedAt) : isNull(pokemonSets.deletedAt);
+    const deletedFilter = trash
+      ? isNotNull(pokemonSets.deletedAt)
+      : isNull(pokemonSets.deletedAt);
     const condition = search
-      ? and(deletedFilter, or(ilike(pokemonSets.name, `%${search}%`), ilike(pokemonSets.id, `%${search}%`)))
+      ? and(
+          deletedFilter,
+          or(
+            ilike(pokemonSets.name, `%${search}%`),
+            ilike(pokemonSets.id, `%${search}%`),
+          ),
+        )
       : deletedFilter;
     const [countResult, sets] = await Promise.all([
-      db.select({ count: sql<number>`count(*)::int` }).from(pokemonSets).where(condition),
-      db.select({
-        id: pokemonSets.id, name: pokemonSets.name, series: pokemonSets.series,
-        releaseDate: pokemonSets.releaseDate, hidden: pokemonSets.hidden, total: pokemonSets.total,
-        deletedAt: pokemonSets.deletedAt,
-        cardCount: sql<number>`count(${pokemonCards.id})::int`,
-      }).from(pokemonSets)
-        .leftJoin(pokemonCards, and(eq(pokemonCards.setId, pokemonSets.id), isNull(pokemonCards.deletedAt)))
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(pokemonSets)
+        .where(condition),
+      db
+        .select({
+          id: pokemonSets.id,
+          name: pokemonSets.name,
+          series: pokemonSets.series,
+          releaseDate: pokemonSets.releaseDate,
+          hidden: pokemonSets.hidden,
+          total: pokemonSets.total,
+          deletedAt: pokemonSets.deletedAt,
+          cardCount: sql<number>`count(${pokemonCards.id})::int`,
+        })
+        .from(pokemonSets)
+        .leftJoin(
+          pokemonCards,
+          and(
+            eq(pokemonCards.setId, pokemonSets.id),
+            isNull(pokemonCards.deletedAt),
+          ),
+        )
         .where(condition)
         .groupBy(pokemonSets.id)
         .orderBy(desc(pokemonSets.releaseDate))
-        .limit(pageSize).offset(offset),
+        .limit(pageSize)
+        .offset(offset),
     ]);
     res.json({ sets, total: countResult[0]?.count ?? 0, page, pageSize });
   });
 
   app.patch("/api/admin/db/sets/:id", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!(await isSuperadminSessionOnly(req))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const { id } = req.params;
     const { name, releaseDate, hidden } = req.body;
     const updates: Partial<typeof pokemonSets.$inferInsert> = {};
-    if (typeof name === "string") { if (!name.trim()) { res.status(400).json({ error: "Set name cannot be empty" }); return; } updates.name = name.trim(); }
-    if (typeof releaseDate === "string") updates.releaseDate = releaseDate.trim() || null;
+    if (typeof name === "string") {
+      if (!name.trim()) {
+        res.status(400).json({ error: "Set name cannot be empty" });
+        return;
+      }
+      updates.name = name.trim();
+    }
+    if (typeof releaseDate === "string")
+      updates.releaseDate = releaseDate.trim() || null;
     if (typeof hidden === "boolean") updates.hidden = hidden;
-    if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No valid fields to update" }); return; }
-    const [updated] = await db.update(pokemonSets).set(updates).where(and(eq(pokemonSets.id, id), isNull(pokemonSets.deletedAt))).returning();
-    if (!updated) { res.status(404).json({ error: "Set not found" }); return; }
+    if (Object.keys(updates).length === 0) {
+      res.status(400).json({ error: "No valid fields to update" });
+      return;
+    }
+    const [updated] = await db
+      .update(pokemonSets)
+      .set(updates)
+      .where(and(eq(pokemonSets.id, id), isNull(pokemonSets.deletedAt)))
+      .returning();
+    if (!updated) {
+      res.status(404).json({ error: "Set not found" });
+      return;
+    }
     res.json({ set: updated });
   });
 
   app.delete("/api/admin/db/cards/:id", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!(await isSuperadminSessionOnly(req))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const { id } = req.params;
-    const existing = await db.select({ id: pokemonCards.id }).from(pokemonCards).where(and(eq(pokemonCards.id, id), isNull(pokemonCards.deletedAt))).limit(1);
-    if (existing.length === 0) { res.status(404).json({ error: "Card not found" }); return; }
-    await db.update(pokemonCards).set({ deletedAt: new Date() }).where(eq(pokemonCards.id, id));
+    const existing = await db
+      .select({ id: pokemonCards.id })
+      .from(pokemonCards)
+      .where(and(eq(pokemonCards.id, id), isNull(pokemonCards.deletedAt)))
+      .limit(1);
+    if (existing.length === 0) {
+      res.status(404).json({ error: "Card not found" });
+      return;
+    }
+    await db
+      .update(pokemonCards)
+      .set({ deletedAt: new Date() })
+      .where(eq(pokemonCards.id, id));
     res.json({ success: true });
   });
 
-  app.post("/api/admin/db/cards/:id/restore", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
-    const { id } = req.params;
-    const existing = await db.select({ id: pokemonCards.id }).from(pokemonCards).where(and(eq(pokemonCards.id, id), isNotNull(pokemonCards.deletedAt))).limit(1);
-    if (existing.length === 0) { res.status(404).json({ error: "Card not found in trash" }); return; }
-    await db.update(pokemonCards).set({ deletedAt: null }).where(eq(pokemonCards.id, id));
-    res.json({ success: true });
-  });
+  app.post(
+    "/api/admin/db/cards/:id/restore",
+    async (req: Request, res: Response) => {
+      if (!(await isSuperadminSessionOnly(req))) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const { id } = req.params;
+      const existing = await db
+        .select({ id: pokemonCards.id })
+        .from(pokemonCards)
+        .where(and(eq(pokemonCards.id, id), isNotNull(pokemonCards.deletedAt)))
+        .limit(1);
+      if (existing.length === 0) {
+        res.status(404).json({ error: "Card not found in trash" });
+        return;
+      }
+      await db
+        .update(pokemonCards)
+        .set({ deletedAt: null })
+        .where(eq(pokemonCards.id, id));
+      res.json({ success: true });
+    },
+  );
 
   app.delete("/api/admin/db/sets/:id", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (!(await isSuperadminSessionOnly(req))) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
     const { id } = req.params;
-    const existing = await db.select({ id: pokemonSets.id }).from(pokemonSets).where(and(eq(pokemonSets.id, id), isNull(pokemonSets.deletedAt))).limit(1);
-    if (existing.length === 0) { res.status(404).json({ error: "Set not found" }); return; }
+    const existing = await db
+      .select({ id: pokemonSets.id })
+      .from(pokemonSets)
+      .where(and(eq(pokemonSets.id, id), isNull(pokemonSets.deletedAt)))
+      .limit(1);
+    if (existing.length === 0) {
+      res.status(404).json({ error: "Set not found" });
+      return;
+    }
     const now = new Date();
     await db.transaction(async (tx) => {
-      await tx.update(pokemonCards).set({ deletedAt: now }).where(eq(pokemonCards.setId, id));
-      await tx.update(pokemonSets).set({ deletedAt: now }).where(eq(pokemonSets.id, id));
+      await tx
+        .update(pokemonCards)
+        .set({ deletedAt: now })
+        .where(eq(pokemonCards.setId, id));
+      await tx
+        .update(pokemonSets)
+        .set({ deletedAt: now })
+        .where(eq(pokemonSets.id, id));
     });
     res.json({ success: true });
   });
 
-  app.post("/api/admin/db/sets/:id/restore", async (req: Request, res: Response) => {
-    if (!await isSuperadminSessionOnly(req)) { res.status(403).json({ error: "Forbidden" }); return; }
-    const { id } = req.params;
-    const existing = await db.select({ id: pokemonSets.id }).from(pokemonSets).where(and(eq(pokemonSets.id, id), isNotNull(pokemonSets.deletedAt))).limit(1);
-    if (existing.length === 0) { res.status(404).json({ error: "Set not found in trash" }); return; }
-    await db.transaction(async (tx) => {
-      await tx.update(pokemonCards).set({ deletedAt: null }).where(and(eq(pokemonCards.setId, id), isNotNull(pokemonCards.deletedAt)));
-      await tx.update(pokemonSets).set({ deletedAt: null }).where(eq(pokemonSets.id, id));
-    });
-    res.json({ success: true });
-  });
+  app.post(
+    "/api/admin/db/sets/:id/restore",
+    async (req: Request, res: Response) => {
+      if (!(await isSuperadminSessionOnly(req))) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const { id } = req.params;
+      const existing = await db
+        .select({ id: pokemonSets.id })
+        .from(pokemonSets)
+        .where(and(eq(pokemonSets.id, id), isNotNull(pokemonSets.deletedAt)))
+        .limit(1);
+      if (existing.length === 0) {
+        res.status(404).json({ error: "Set not found in trash" });
+        return;
+      }
+      await db.transaction(async (tx) => {
+        await tx
+          .update(pokemonCards)
+          .set({ deletedAt: null })
+          .where(
+            and(eq(pokemonCards.setId, id), isNotNull(pokemonCards.deletedAt)),
+          );
+        await tx
+          .update(pokemonSets)
+          .set({ deletedAt: null })
+          .where(eq(pokemonSets.id, id));
+      });
+      res.json({ success: true });
+    },
+  );
 
-               // ─────────────────────────────────────────────────────────────────────────────
-               // ADMIN DATABASE ENDPOINTS
-               // MARKER: ADMIN_DB_START
-               // ─────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  // ADMIN DATABASE ENDPOINTS
+  // MARKER: ADMIN_DB_START
+  // ─────────────────────────────────────────────────────────────────────────────
 
-               const ADMIN_DB_TABLES: Record<string, { pk: string; searchCols: string[] }> = {
-                 pokescan_users:                   { pk: "id",    searchCols: ["username", "email", "display_name"] },
-                 pokescan_blocked_credentials:     { pk: "id",    searchCols: ["email", "mobile_number", "reason"] },
-                 pokescan_sessions:                { pk: "token", searchCols: ["user_id"] },
-                 pokemon_sets:                     { pk: "id",    searchCols: ["name", "series"] },
-                 pokemon_cards:                    { pk: "id",    searchCols: ["name", "set_id"] },
-                 card_pricing:                     { pk: "id",    searchCols: ["card_id"] },
-                 ebay_prices:                      { pk: "id",    searchCols: ["card_id", "title"] },
-                 pokescan_friendships:             { pk: "id",    searchCols: ["requester_id", "addressee_id", "status"] },
-                 pokescan_messages:                { pk: "id",    searchCols: ["sender_id", "recipient_id", "subject", "body"] },
-                 pokescan_reports:                 { pk: "id",    searchCols: ["reason", "content_type", "status"] },
-                 pokescan_market_listings:         { pk: "id",    searchCols: ["card_name", "user_name", "status"] },
-                 pokescan_collections:             { pk: "id",    searchCols: ["card_name", "user_id", "set_name"] },
-                 pokescan_chatroom_messages:       { pk: "id",    searchCols: ["sender_username", "body"] },
-                 pokescan_admin_activity_log:      { pk: "id",    searchCols: ["action", "target_username", "listing_name"] },
-                 pokescan_collector_verifications: { pk: "id",    searchCols: ["user_id", "card_name", "status"] },
-                 pokescan_scan_history:            { pk: "id",    searchCols: ["card_name", "set_name"] },
-                 sync_status:                      { pk: "id",    searchCols: [] },
-                 users:                            { pk: "id",    searchCols: ["username"] },
-               };
+  const ADMIN_DB_TABLES: Record<string, { pk: string; searchCols: string[] }> =
+    {
+      pokescan_users: {
+        pk: "id",
+        searchCols: ["username", "email", "display_name"],
+      },
+      pokescan_blocked_credentials: {
+        pk: "id",
+        searchCols: ["email", "mobile_number", "reason"],
+      },
+      pokescan_sessions: { pk: "token", searchCols: ["user_id"] },
+      pokemon_sets: { pk: "id", searchCols: ["name", "series"] },
+      pokemon_cards: { pk: "id", searchCols: ["name", "set_id"] },
+      card_pricing: { pk: "id", searchCols: ["card_id"] },
+      ebay_prices: { pk: "id", searchCols: ["card_id", "title"] },
+      pokescan_friendships: {
+        pk: "id",
+        searchCols: ["requester_id", "addressee_id", "status"],
+      },
+      pokescan_messages: {
+        pk: "id",
+        searchCols: ["sender_id", "recipient_id", "subject", "body"],
+      },
+      pokescan_reports: {
+        pk: "id",
+        searchCols: ["reason", "content_type", "status"],
+      },
+      pokescan_market_listings: {
+        pk: "id",
+        searchCols: ["card_name", "user_name", "status"],
+      },
+      pokescan_collections: {
+        pk: "id",
+        searchCols: ["card_name", "user_id", "set_name"],
+      },
+      pokescan_chatroom_messages: {
+        pk: "id",
+        searchCols: ["sender_username", "body"],
+      },
+      pokescan_admin_activity_log: {
+        pk: "id",
+        searchCols: ["action", "target_username", "listing_name"],
+      },
+      pokescan_collector_verifications: {
+        pk: "id",
+        searchCols: ["user_id", "card_name", "status"],
+      },
+      pokescan_scan_history: {
+        pk: "id",
+        searchCols: ["card_name", "set_name"],
+      },
+      sync_status: { pk: "id", searchCols: [] },
+      users: { pk: "id", searchCols: ["username"] },
+    };
 
-               // ─────────────────────────────────────────────────────────────────────────────
-               // TABLE SCHEMA
-               // MARKER: ADMIN_DB_SCHEMA
-               // ─────────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────────
+  // TABLE SCHEMA
+  // MARKER: ADMIN_DB_SCHEMA
+  // ─────────────────────────────────────────────────────────────────────────────
 
-               app.get("/api/admin/db/table/:tableName/schema", async (req: Request, res: Response) => {
-                 try {
-                   if (!(await isSuperadminSessionOnly(req))) {
-                     return res.status(403).json({ error: "Forbidden" });
-                   }
+  app.get(
+    "/api/admin/db/table/:tableName/schema",
+    async (req: Request, res: Response) => {
+      try {
+        if (!(await isSuperadminSessionOnly(req))) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
 
-                   const { tableName } = req.params;
+        const { tableName } = req.params;
 
-                   if (!ADMIN_DB_TABLES[tableName]) {
-                     return res.status(400).json({ error: "Unknown table" });
-                   }
+        if (!ADMIN_DB_TABLES[tableName]) {
+          return res.status(400).json({ error: "Unknown table" });
+        }
 
-                   const result = await pool.query(
-                     `
+        const result = await pool.query(
+          `
                      SELECT column_name, data_type, is_nullable, column_default
                      FROM information_schema.columns
                      WHERE table_name = $1
                      AND table_schema = 'public'
                      ORDER BY ordinal_position
                      `,
-                     [tableName]
-                   );
+          [tableName],
+        );
 
-                   return res.json({
-                     columns: result.rows,
-                     pk: ADMIN_DB_TABLES[tableName].pk,
-                   });
+        return res.json({
+          columns: result.rows,
+          pk: ADMIN_DB_TABLES[tableName].pk,
+        });
+      } catch (err) {
+        console.error("[ADMIN_DB_SCHEMA]", err);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    },
+  );
 
-                 } catch (err) {
-                   console.error("[ADMIN_DB_SCHEMA]", err);
-                   return res.status(500).json({ error: "Internal server error" });
-                 }
-               });
+  // ─────────────────────────────────────────────────────────────────────────────
+  // TABLE DATA
+  // MARKER: ADMIN_DB_TABLE_DATA
+  // ─────────────────────────────────────────────────────────────────────────────
 
-               // ─────────────────────────────────────────────────────────────────────────────
-               // TABLE DATA
-               // MARKER: ADMIN_DB_TABLE_DATA
-               // ─────────────────────────────────────────────────────────────────────────────
+  app.get(
+    "/api/admin/db/table/:tableName",
+    async (req: Request, res: Response) => {
+      try {
+        if (!(await isSuperadminSessionOnly(req))) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
 
-               app.get("/api/admin/db/table/:tableName", async (req: Request, res: Response) => {
-                 try {
-                   if (!(await isSuperadminSessionOnly(req))) {
-                     return res.status(403).json({ error: "Forbidden" });
-                   }
+        const { tableName } = req.params;
+        const tbl = ADMIN_DB_TABLES[tableName];
 
-                   const { tableName } = req.params;
-                   const tbl = ADMIN_DB_TABLES[tableName];
+        if (!tbl) {
+          return res.status(400).json({ error: "Unknown table" });
+        }
 
-                   if (!tbl) {
-                     return res.status(400).json({ error: "Unknown table" });
-                   }
+        const page = Math.max(
+          1,
+          parseInt((req.query.page as string) || "1", 10),
+        );
+        const pageSize = Math.min(
+          100,
+          Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)),
+        );
+        const search = ((req.query.search as string) || "").trim();
+        const offset = (page - 1) * pageSize;
 
-                   const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
-                   const pageSize = Math.min(100, Math.max(1, parseInt((req.query.pageSize as string) || "50", 10)));
-                   const search = ((req.query.search as string) || "").trim();
-                   const offset = (page - 1) * pageSize;
+        const values: any[] = [];
+        let whereClause = "";
 
-                   const values: any[] = [];
-                   let whereClause = "";
+        if (search && tbl.searchCols.length > 0) {
+          const conditions = tbl.searchCols.map(
+            (col, i) => `"${col}"::text ILIKE $${i + 1}`,
+          );
 
-                   if (search && tbl.searchCols.length > 0) {
-                     const conditions = tbl.searchCols.map(
-                       (col, i) => `"${col}"::text ILIKE $${i + 1}`
-                     );
+          whereClause = `WHERE (${conditions.join(" OR ")})`;
 
-                     whereClause = `WHERE (${conditions.join(" OR ")})`;
+          values.push(...tbl.searchCols.map(() => `%${search}%`));
+        }
 
-                     values.push(
-                       ...tbl.searchCols.map(() => `%${search}%`)
-                     );
-                   }
+        const countResult = await pool.query(
+          `SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`,
+          values,
+        );
 
-                   const countResult = await pool.query(
-                     `SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`,
-                     values
-                   );
-
-                   const dataResult = await pool.query(
-                     `
+        const dataResult = await pool.query(
+          `
                      SELECT *
                      FROM "${tableName}"
                      ${whereClause}
@@ -5727,111 +7775,108 @@ Return ONLY valid JSON in exactly this format with no markdown:
                      LIMIT $${values.length + 1}
                      OFFSET $${values.length + 2}
                      `,
-                     [...values, pageSize, offset]
-                   );
+          [...values, pageSize, offset],
+        );
 
-                   return res.json({
-                     rows: dataResult.rows,
-                     total: parseInt(countResult.rows[0].count, 10),
-                     page,
-                     pageSize,
-                   });
-
-                 } catch (err) {
-                   console.error("[ADMIN_DB_TABLE]", err);
-                   return res.status(500).json({ error: "Internal server error" });
-                 }
-               });
-
-               // ─────────────────────────────────────────────────────────────────────────────
-               // TABLE LIST
-               // MARKER: ADMIN_DB_TABLES_LIST
-               // ─────────────────────────────────────────────────────────────────────────────
-
-               app.get("/api/admin/db/tables", async (req: Request, res: Response) => {
-                 try {
-                   if (!(await isSuperadminSessionOnly(req))) {
-                     return res.status(403).json({ error: "Forbidden" });
-                   }
-
-                   const tables = await Promise.all(
-                     Object.keys(ADMIN_DB_TABLES).map(async (t) => {
-                       const r = await pool.query(
-                         `SELECT COUNT(*) as count FROM "${t}"`
-                       );
-
-                       return {
-                         name: t,
-                         rowCount: parseInt(r.rows[0].count, 10),
-                       };
-                     })
-                   );
-
-                   return res.json({ tables });
-
-                 } catch (err) {
-                   console.error("[ADMIN_DB_TABLES]", err);
-                   return res.status(500).json({ error: "Internal server error" });
-                 }
-               });
-
-               // ─────────────────────────────────────────────────────────────────────────────
-               // HTTP SERVER
-               // MARKER: HTTP_SERVER
-               // ─────────────────────────────────────────────────────────────────────────────
-
-               const httpServer = createServer(app);
-
-               // ─────────────────────────────────────────────────────────────────────────────
-               // RESYNC PROGRESS
-               // MARKER: RESYNC_PROGRESS
-               // ─────────────────────────────────────────────────────────────────────────────
-
-               app.get("/api/admin/resync-progress", (_req: Request, res: Response) => {
-                 return res.json(resyncState);
-               });
-
-               // ─────────────────────────────────────────────────────────────────────────────
-               // FULL RESYNC
-               // MARKER: FULL_RESYNC
-               // ─────────────────────────────────────────────────────────────────────────────
-
-      app.post("/api/admin/full-resync", async (_req: Request, res: Response) => {
-      if (resyncState.running) {
-        return res.status(409).json({
-          success: false,
-          error: "Resync already running",
+        return res.json({
+          rows: dataResult.rows,
+          total: parseInt(countResult.rows[0].count, 10),
+          page,
+          pageSize,
         });
+      } catch (err) {
+        console.error("[ADMIN_DB_TABLE]", err);
+        return res.status(500).json({ error: "Internal server error" });
+      }
+    },
+  );
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // TABLE LIST
+  // MARKER: ADMIN_DB_TABLES_LIST
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/admin/db/tables", async (req: Request, res: Response) => {
+    try {
+      if (!(await isSuperadminSessionOnly(req))) {
+        return res.status(403).json({ error: "Forbidden" });
       }
 
-      resyncState = {
-        running: true,
-        progress: null,
-        error: null,
-        startedAt: new Date(),
-        finishedAt: null,
-      };
+      const tables = await Promise.all(
+        Object.keys(ADMIN_DB_TABLES).map(async (t) => {
+          const r = await pool.query(`SELECT COUNT(*) as count FROM "${t}"`);
 
-      res.json({
-        success: true,
-        message: "Full resync started",
+          return {
+            name: t,
+            rowCount: parseInt(r.rows[0].count, 10),
+          };
+        }),
+      );
+
+      return res.json({ tables });
+    } catch (err) {
+      console.error("[ADMIN_DB_TABLES]", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // HTTP SERVER
+  // MARKER: HTTP_SERVER
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const httpServer = createServer(app);
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RESYNC PROGRESS
+  // MARKER: RESYNC_PROGRESS
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/admin/resync-progress", (_req: Request, res: Response) => {
+    return res.json(resyncState);
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // FULL RESYNC
+  // MARKER: FULL_RESYNC
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  app.post("/api/admin/full-resync", async (_req: Request, res: Response) => {
+    if (resyncState.running) {
+      return res.status(409).json({
+        success: false,
+        error: "Resync already running",
       });
+    }
 
-      void runFullResync((p) => {
-        resyncState.progress = p;
-      })
-        .then(() => {
-          resyncState.running = false;
-          resyncState.finishedAt = new Date();
-        })
-        .catch((err: any) => {
-          console.error("[FullResync] failed:", err);
+    resyncState = {
+      running: true,
+      progress: null,
+      error: null,
+      startedAt: new Date(),
+      finishedAt: null,
+    };
 
-          resyncState.running = false;
-          resyncState.error = err?.message || "Full resync failed";
-          resyncState.finishedAt = new Date();
-        });
+    res.json({
+      success: true,
+      message: "Full resync started",
     });
+
+    void runFullResync((p) => {
+      resyncState.progress = p;
+    })
+      .then(() => {
+        resyncState.running = false;
+        resyncState.finishedAt = new Date();
+      })
+      .catch((err: any) => {
+        console.error("[FullResync] failed:", err);
+
+        resyncState.running = false;
+        resyncState.error = err?.message || "Full resync failed";
+        resyncState.finishedAt = new Date();
+      });
+  });
 
   return httpServer;
 }

@@ -360,10 +360,9 @@ export const cardPriceHistory = pgTable("card_price_history", {
   id: serial("id").primaryKey(),
 
   variantId: text("variant_id")
-    .notNull()
-    .references(() => pokemonCardVariants.id, {
-      onDelete: "cascade",
-    }),
+  .references(() => pokemonCardVariants.id, {
+    onDelete: "set null",
+  }),
 
   source: text("source").notNull(),
 
