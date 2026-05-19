@@ -29,7 +29,6 @@ import {
   createVariantId,
 } from "./utils/card-normalizers";
 
-
 const BASE_URL = "https://scrydex.com";
 const IMAGE_BASE = "https://images.scrydex.com/pokemon";
 
@@ -48,24 +47,23 @@ export interface ScrydexSet {
   symbolUrl: string;
 }
 
-  export interface ScrydexCard {
-    id: string;
-    setId: string;
-    name: string;
-    number: string;
+export interface ScrydexCard {
+  id: string;
+  setId: string;
+  name: string;
+  number: string;
 
-    finishType: string;
-    editionType: string;
-    language: string;
+  finishType: string;
+  editionType: string;
+  language: string;
 
-    variantId: string;
+  variantId: string;
 
-    imageSmall: string;
-    imageLarge: string;
+  imageSmall: string;
+  imageLarge: string;
 
-    priceUsd: number | null;
-  }
-
+  priceUsd: number | null;
+}
 
 export interface ScrydexSyncProgress {
   phase: "sets" | "cards" | "done" | "error";
@@ -140,8 +138,7 @@ function parseSetsFromHtml(html: string): ScrydexSet[] {
   const seen = new Set<string>();
 
   // Each expansion link: /pokemon/expansions/{slug}/{setId}
-  const linkRe =
-    /href="\/pokemon\/expansions\/([^"/]+)\/([^"/?\s]+)"/g;
+  const linkRe = /href="\/pokemon\/expansions\/([^"/]+)\/([^"/?\s]+)"/g;
   let m: RegExpExecArray | null;
 
   while ((m = linkRe.exec(html)) !== null) {
@@ -175,7 +172,16 @@ function parseSetsFromHtml(html: string): ScrydexSet[] {
     const logoUrl = `${IMAGE_BASE}/${id}-logo/logo`;
     const symbolUrl = `${IMAGE_BASE}/${id}-symbol/symbol`;
 
-    sets.push({ id, slug, name, series, releaseDate, total, logoUrl, symbolUrl });
+    sets.push({
+      id,
+      slug,
+      name,
+      series,
+      releaseDate,
+      total,
+      logoUrl,
+      symbolUrl,
+    });
   }
 
   return sets;
@@ -184,19 +190,19 @@ function parseSetsFromHtml(html: string): ScrydexSet[] {
 /** Fetches an individual expansion page to get accurate name, series, date, total */
 export async function scrapeScrydexSetDetail(
   slug: string,
-  id: string
+  id: string,
 ): Promise<ScrydexSet> {
   const html = await fetchPage(`/pokemon/expansions/${slug}/${id}`);
 
   // Set name from h1 with text-heading-32
   const nameM = html.match(
-    /<h1[^>]*class="[^"]*text-heading-32[^"]*"[^>]*>([^<]+)<\/h1>/
+    /<h1[^>]*class="[^"]*text-heading-32[^"]*"[^>]*>([^<]+)<\/h1>/,
   );
   const name = nameM ? htmlDecode(nameM[1].trim()) : slugToName(slug);
 
   // Series and total from the badge row (series • total)
   const seriesM = html.match(
-    /<span[^>]*text-heading-16[^>]*>([^<]+)<\/span>[^<]*<span[^>]*text-mono-2[^>]*>[^<]*<\/span>[^<]*<span[^>]*text-heading-16[^>]*>(\d+)\s*cards?<\/span>/
+    /<span[^>]*text-heading-16[^>]*>([^<]+)<\/span>[^<]*<span[^>]*text-mono-2[^>]*>[^<]*<\/span>[^<]*<span[^>]*text-heading-16[^>]*>(\d+)\s*cards?<\/span>/,
   );
   const series = seriesM ? htmlDecode(seriesM[1].trim()) : inferSeries(id);
   const total = seriesM ? parseInt(seriesM[2], 10) : 0;
@@ -215,21 +221,17 @@ export async function scrapeScrydexSetDetail(
 
 export async function scrapeScrydexSetCards(
   slug: string,
-  setId: string
+  setId: string,
 ): Promise<ScrydexCard[]> {
   const html = await fetchPage(`/pokemon/expansions/${slug}/${setId}`);
   return parseCardsFromSetHtml(html, setId);
 }
 
-function parseCardsFromSetHtml(
-  html: string,
-  setId: string
-): ScrydexCard[] {
+function parseCardsFromSetHtml(html: string, setId: string): ScrydexCard[] {
   const cards: ScrydexCard[] = [];
   const seen = new Set<string>();
 
-  const linkRe =
-    /href="\/pokemon\/cards\/([^/]+)\/([^?"]+)\?variant=([^"]+)"/g;
+  const linkRe = /href="\/pokemon\/cards\/([^/]+)\/([^?"]+)\?variant=([^"]+)"/g;
 
   let m: RegExpExecArray | null;
 
@@ -250,16 +252,16 @@ function parseCardsFromSetHtml(
     const language = setId.includes("_ja")
       ? "japanese"
       : setId.includes("_ko")
-      ? "korean"
-      : setId.includes("_zh")
-      ? "chinese"
-      : "english";
+        ? "korean"
+        : setId.includes("_zh")
+          ? "chinese"
+          : "english";
 
     const variantId = createVariantId(
       cardId,
       finishType,
       editionType,
-      language
+      language,
     );
 
     const uniqueKey = `${cardId}:${variantId}`;
@@ -279,17 +281,12 @@ function parseCardsFromSetHtml(
     // ─────────────────────────────────────────────────────────
 
     const imgM = block.match(
-      /src="(https:\/\/images\.scrydex\.com\/pokemon\/[^"]+\/medium)"/
+      /src="(https:\/\/images\.scrydex\.com\/pokemon\/[^"]+\/medium)"/,
     );
 
-    const imageSmall = imgM
-      ? imgM[1]
-      : `${IMAGE_BASE}/${cardId}/medium`;
+    const imageSmall = imgM ? imgM[1] : `${IMAGE_BASE}/${cardId}/medium`;
 
-    const imageLarge = imageSmall.replace(
-      "/medium",
-      "/large"
-    );
+    const imageLarge = imageSmall.replace("/medium", "/large");
 
     // ─────────────────────────────────────────────────────────
     // Name + number
@@ -300,7 +297,7 @@ function parseCardsFromSetHtml(
     let number = cardId.replace(`${setId}-`, "");
 
     const nameM = block.match(
-      /class="[^"]*text-body-12[^"]*text-white[^"]*"[^>]*>([^<]+)<\/span>/
+      /class="[^"]*text-body-12[^"]*text-white[^"]*"[^>]*>([^<]+)<\/span>/,
     );
 
     if (nameM) {
@@ -322,9 +319,7 @@ function parseCardsFromSetHtml(
 
     const priceM = block.match(/\$(\d+\.\d+)/);
 
-    const priceUsd = priceM
-      ? parseFloat(priceM[1])
-      : null;
+    const priceUsd = priceM ? parseFloat(priceM[1]) : null;
 
     // ─────────────────────────────────────────────────────────
     // Push card
@@ -368,7 +363,8 @@ function inferSeries(id: string): string {
   if (lower.startsWith("xy")) return "XY";
   if (lower.startsWith("bw")) return "Black & White";
   if (/^me\d/.test(lower)) return "Mega Evolution";
-  if (lower.startsWith("rsv") || lower.startsWith("zsv")) return "Scarlet & Violet";
+  if (lower.startsWith("rsv") || lower.startsWith("zsv"))
+    return "Scarlet & Violet";
   if (lower.startsWith("me")) return "Mega Evolution";
   if (lower.startsWith("neo")) return "Neo";
   if (lower.startsWith("ecard")) return "E-Card";
@@ -400,7 +396,7 @@ function inferSeries(id: string): string {
  * onProgress is called with status updates throughout the run.
  */
 export async function runScrydexSync(
-  onProgress?: (p: ScrydexSyncProgress) => void
+  onProgress?: (p: ScrydexSyncProgress) => void,
 ): Promise<ScrydexSyncProgress> {
   const progress: ScrydexSyncProgress = {
     phase: "sets",
@@ -433,7 +429,10 @@ export async function runScrydexSync(
       if (!allSetsMap.has(s.id)) allSetsMap.set(s.id, s);
     }
     const allSets = [...allSetsMap.values()];
-    report({ setsTotal: allSets.length, message: `Found ${allSets.length} sets on scrydex.com (EN + TCG Pocket + JP)` });
+    report({
+      setsTotal: allSets.length,
+      message: `Found ${allSets.length} sets on scrydex.com (EN + TCG Pocket + JP)`,
+    });
 
     // ── Phase 2: Get existing sets and their card counts from DB ─────────
     const existingSetRows = await db
@@ -441,8 +440,8 @@ export async function runScrydexSync(
       .from(pokemonSets)
       .leftJoin(pokemonCards, eq(pokemonCards.setId, pokemonSets.id))
       .groupBy(pokemonSets.id);
-    const existingSetIds    = new Set<string>();
-    const setsWithCards     = new Set<string>(); // sets that already have cards
+    const existingSetIds = new Set<string>();
+    const setsWithCards = new Set<string>(); // sets that already have cards
     for (const row of existingSetRows) {
       existingSetIds.add(row.id);
       if (row.cardCount > 0) setsWithCards.add(row.id);
@@ -471,21 +470,27 @@ export async function runScrydexSync(
           await delay(DELAY_MS);
           const detail = await scrapeScrydexSetDetail(set.slug, set.id);
 
-          await db.insert(pokemonSets).values({
-            id: detail.id,
-            name: detail.name,
-            series: detail.series,
-            printedTotal: detail.total,
-            total: detail.total,
-            releaseDate: detail.releaseDate || null,
-            logoUrl: detail.logoUrl,
-            symbolUrl: detail.symbolUrl,
-            imageUrl: detail.logoUrl,
-          }).onConflictDoNothing();
+          await db
+            .insert(pokemonSets)
+            .values({
+              id: detail.id,
+              name: detail.name,
+              series: detail.series,
+              printedTotal: detail.total,
+              total: detail.total,
+              releaseDate: detail.releaseDate || null,
+              logoUrl: detail.logoUrl,
+              symbolUrl: detail.symbolUrl,
+              imageUrl: detail.logoUrl,
+            })
+            .onConflictDoNothing();
           existingSetIds.add(setId);
           report({ setsAdded: progress.setsAdded + 1 });
         } catch (err: any) {
-          console.error(`[Scrydex] Failed to insert set ${setId}:`, err.message);
+          console.error(
+            `[Scrydex] Failed to insert set ${setId}:`,
+            err.message,
+          );
         }
       }
 
@@ -506,16 +511,16 @@ export async function runScrydexSync(
           .from(pokemonCards)
           .where(inArray(pokemonCards.id, cardIds));
         const existingCards = new Map<string, string | null>(
-          existingCardsRes.map((r) => [r.id, r.imageSmall])
+          existingCardsRes.map((r) => [r.id, r.imageSmall]),
         );
 
         for (const card of cards) {
           if (card.priceUsd !== null) {
-            const convertedValue =
-              Math.round(card.priceUsd * 0.79 * 100) / 100;
+            const convertedValue = Math.round(card.priceUsd * 0.79 * 100) / 100;
 
             try {
-              await db.insert(cardPricing)
+              await db
+                .insert(cardPricing)
                 .values({
                   variantId: card.variantId,
                   priceGBP: convertedValue,
@@ -525,7 +530,7 @@ export async function runScrydexSync(
             } catch (err) {
               console.error(
                 `[Scrydex] Failed pricing sync for ${card.id}`,
-                err
+                err,
               );
             }
           }
@@ -536,30 +541,34 @@ export async function runScrydexSync(
             // New card — insert if its set is in the DB
             if (!existingSetIds.has(setId)) continue;
             try {
-              await db.insert(pokemonCards).values({
-                id: card.id,
-                setId: card.setId,
-                name: card.name,
-                number: card.number,
-                imageSmall: card.imageSmall,
-                imageLarge: card.imageLarge,
-              }).onConflictDoNothing();
+              await db
+                .insert(pokemonCards)
+                .values({
+                  id: card.id,
+                  setId: card.setId,
+                  name: card.name,
+                  number: card.number,
+                  imageSmall: card.imageSmall,
+                  imageLarge: card.imageLarge,
+                })
+                .onConflictDoNothing();
               if (card.priceUsd !== null) {
                 const convertedValue =
                   Math.round(card.priceUsd * 0.79 * 100) / 100;
 
                 try {
-                      await db.insert(cardPricing)
-                      .values({
-                        variantId: card.variantId,
-                        priceGBP: convertedValue,
-                        updatedAt: new Date(),
-                      })
-                      .onConflictDoNothing();
-                      } catch (err) {
+                  await db
+                    .insert(cardPricing)
+                    .values({
+                      variantId: card.variantId,
+                      priceGBP: convertedValue,
+                      updatedAt: new Date(),
+                    })
+                    .onConflictDoNothing();
+                } catch (err) {
                   console.error(
                     `[Scrydex] Price insert failed for ${card.id}`,
-                    err
+                    err,
                   );
                 }
               }
@@ -573,13 +582,20 @@ export async function runScrydexSync(
             const existingImg = existingCards.get(card.id);
             if (!existingImg || existingImg === "") {
               try {
-                await db.update(pokemonCards)
-                  .set({ imageSmall: card.imageSmall, imageLarge: card.imageLarge })
+                await db
+                  .update(pokemonCards)
+                  .set({
+                    imageSmall: card.imageSmall,
+                    imageLarge: card.imageLarge,
+                  })
                   .where(
                     and(
                       eq(pokemonCards.id, card.id),
-                      or(isNull(pokemonCards.imageSmall), eq(pokemonCards.imageSmall, ""))
-                    )
+                      or(
+                        isNull(pokemonCards.imageSmall),
+                        eq(pokemonCards.imageSmall, ""),
+                      ),
+                    ),
                   );
                 progress.cardsUpdated++;
               } catch (err: any) {
@@ -587,35 +603,34 @@ export async function runScrydexSync(
               }
             }
           }
+
+          // Always upsert the variant row — this is what populates pokemon_card_variants
+          try {
+            await db
+              .insert(pokemonCardVariants)
+              .values({
+                id: card.variantId,
+                cardId: card.id,
+                finishType: card.finishType,
+                editionType: card.editionType,
+                language: card.language,
+                imageUrl: card.imageLarge,
+                variantLabel: `${card.finishType} ${card.editionType}`.trim(),
+              })
+              .onConflictDoNothing();
+          } catch (err) {
+            // ignore constraint errors
+          }
         }
 
         report({ setsProcessed: progress.setsProcessed + 1 });
       } catch (err: any) {
-        console.error(`[Scrydex] Failed to process cards for ${setId}:`, err.message);
+        console.error(
+          `[Scrydex] Failed to process cards for ${setId}:`,
+          err.message,
+        );
         report({ setsProcessed: progress.setsProcessed + 1 });
       }
-    }
-    try {
-      await db.insert(pokemonCardVariants)
-        .values({
-          id: `${card.id}-holo`,
-
-          cardId: card.id,
-
-          finishType: card.finishType,
-
-          editionType: card.editionType,
-
-          language: card.language,
-
-          imageUrl: card.imageLarge,
-
-          variantLabel:
-            `${card.finishType} ${card.editionType}`,
-        })
-        .onConflictDoNothing();
-    } catch (err) {
-      console.error("Variant insert failed", err);
     }
     report({
       phase: "done",
