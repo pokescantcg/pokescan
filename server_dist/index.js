@@ -3147,7 +3147,7 @@ async function runPriceRefresh() {
     console.error("[CardSync] Pricing refresh error:", err);
   }
 }
-async function runFastCardSeed() {
+//async function runFastCardSeed() {
   console.log("[CardSync] Starting fast card seed (basic data, no pricing)...");
   const allSets = await db.select({ id: pokemonSets.id, name: pokemonSets.name }).from(pokemonSets);
   const alreadySeededRows = await db.select({ setId: pokemonCards.setId }).from(pokemonCards).groupBy(pokemonCards.setId);

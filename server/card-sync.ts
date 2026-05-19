@@ -8,7 +8,11 @@ import {
   pokemonCardVariants,
 } from "@shared/schema";
 import { eq, inArray, sql, and } from "drizzle-orm";
-import { scrapeCardSearch, generateEbaySearchUrl, generateEbaySoldUrl } from "./pokecardvalues-scraper";
+import {
+  scrapeCardSearch,
+  generateEbaySearchUrl,
+  generateEbaySoldUrl,
+} from "./pokecardvalues-scraper";
 import * as cheerio from "cheerio";
 
 const POKEMON_API = "https://api.pokemontcg.io/v2";
@@ -88,21 +92,38 @@ interface EbayListing {
 const SYNC_STATUS_ID = 1;
 
 async function getOrCreateSyncStatus() {
-  const rows = await db.select().from(syncStatus).where(eq(syncStatus.id, SYNC_STATUS_ID)).limit(1);
+  const rows = await db
+    .select()
+    .from(syncStatus)
+    .where(eq(syncStatus.id, SYNC_STATUS_ID))
+    .limit(1);
   if (rows.length === 0) {
     const inserted = await db
       .insert(syncStatus)
-      .values({ id: SYNC_STATUS_ID, totalSets: 0, syncedSets: 0, totalCards: 0, syncedCards: 0, isRunning: false })
+      .values({
+        id: SYNC_STATUS_ID,
+        totalSets: 0,
+        syncedSets: 0,
+        totalCards: 0,
+        syncedCards: 0,
+        isRunning: false,
+      })
       .onConflictDoNothing()
       .returning();
     if (inserted.length > 0) return inserted[0];
-    const refetched = await db.select().from(syncStatus).where(eq(syncStatus.id, SYNC_STATUS_ID)).limit(1);
+    const refetched = await db
+      .select()
+      .from(syncStatus)
+      .where(eq(syncStatus.id, SYNC_STATUS_ID))
+      .limit(1);
     return refetched[0];
   }
   return rows[0];
 }
 
-async function updateSyncStatus(patch: Partial<typeof syncStatus.$inferInsert>) {
+async function updateSyncStatus(
+  patch: Partial<typeof syncStatus.$inferInsert>,
+) {
   await db
     .insert(syncStatus)
     .values({ id: SYNC_STATUS_ID, ...patch })
@@ -124,7 +145,10 @@ async function fetchJson(url: string, retries = 2): Promise<unknown> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 20000);
     try {
-      const res = await fetch(url, { headers: buildTcgHeaders(), signal: controller.signal });
+      const res = await fetch(url, {
+        headers: buildTcgHeaders(),
+        signal: controller.signal,
+      });
       clearTimeout(timer);
       if (res.status === 429 || res.status === 503 || res.status === 504) {
         // Rate limited or server error — wait and retry
@@ -138,7 +162,10 @@ async function fetchJson(url: string, retries = 2): Promise<unknown> {
       return res.json();
     } catch (err: any) {
       clearTimeout(timer);
-      if (attempt < retries && (err.name === "AbortError" || err.message?.includes("fetch"))) {
+      if (
+        attempt < retries &&
+        (err.name === "AbortError" || err.message?.includes("fetch"))
+      ) {
         await sleep(5000 * (attempt + 1));
         continue;
       }
@@ -154,14 +181,16 @@ function sleep(ms: number): Promise<void> {
 
 async function syncAllSets(): Promise<void> {
   console.log("[CardSync] Fetching all sets from Pokemon TCG API...");
-  const responseData = await fetchJson(`${POKEMON_API}/sets?orderBy=-releaseDate&pageSize=250`);
+  const responseData = await fetchJson(
+    `${POKEMON_API}/sets?orderBy=-releaseDate&pageSize=250`,
+  );
   const sets = (responseData as { data?: PokemonTcgSet[] }).data ?? [];
   console.log(`[CardSync] Got ${sets.length} sets.`);
 
   await updateSyncStatus({ totalSets: sets.length });
 
-    for (const set of sets) {
-    await new Promise(r => setTimeout(r, 10));
+  for (const set of sets) {
+    await new Promise((r) => setTimeout(r, 10));
     try {
       await db
         .insert(pokemonSets)
@@ -197,13 +226,17 @@ async function syncAllSets(): Promise<void> {
   }
 }
 
-async function syncCardsForSet(setId: string, setName: string, force = false): Promise<number> {
+async function syncCardsForSet(
+  setId: string,
+  setName: string,
+  force = false,
+): Promise<number> {
   let allCards: PokemonTcgCard[] = [];
   let page = 1;
 
   while (true) {
     const data = await fetchJson(
-      `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=250`
+      `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=250`,
     );
     const typed = data as { data?: PokemonTcgCard[]; totalCount?: number };
     const cards = typed.data ?? [];
@@ -278,13 +311,11 @@ async function syncCardsForSet(setId: string, setName: string, force = false): P
           existingPricing[0]?.cardmarketAvg;
 
         if (!hasAnyPrice) {
-          console.log(`[PricingFallback] Using PokecardValues for ${card.name}`);
-
-          await syncGbpPricingForCard(
-            card.id,
-            card.name,
-            card.number
+          console.log(
+            `[PricingFallback] Using PokecardValues for ${card.name}`,
           );
+
+          await syncGbpPricingForCard(card.id, card.name, card.number);
         }
 
         await sleep(GBP_THROTTLE_MS);
@@ -354,18 +385,23 @@ async function syncPricingForCard(card: PokemonTcgCard): Promise<void> {
         },
       });
   } catch (err) {
-    console.error(`[CardSync] Failed to upsert pricing for card ${card.id}:`, err);
+    console.error(
+      `[CardSync] Failed to upsert pricing for card ${card.id}:`,
+      err,
+    );
   }
 }
 
-async function syncGbpPricingForCard(cardId: string, cardName: string, cardNumber: string): Promise<void> {
+async function syncGbpPricingForCard(
+  cardId: string,
+  cardName: string,
+  cardNumber: string,
+): Promise<void> {
   try {
     const results = await scrapeCardSearch(cardName);
     if (!results || results.length === 0) return;
 
-    const numOnly = String(cardNumber)
-      .split("/")[0]
-      .replace(/^0+/, "");
+    const numOnly = String(cardNumber).split("/")[0].replace(/^0+/, "");
 
     const exactMatch = results.find((c) => {
       const cNum = String(c.number || "")
@@ -376,26 +412,24 @@ async function syncGbpPricingForCard(cardId: string, cardName: string, cardNumbe
     });
 
     const fuzzyMatch = results.find((c) =>
-      c.name?.toLowerCase().includes(cardName.toLowerCase())
+      c.name?.toLowerCase().includes(cardName.toLowerCase()),
     );
 
-    const match =
-      exactMatch ||
-      fuzzyMatch ||
-      results[0];
+    const match = exactMatch || fuzzyMatch || results[0];
 
     if (!match) return;
 
-    const fallbackPrice =
-      match.priceGBP ??
-      match.price ??
-      null;
+    const fallbackPrice = match.priceGBP ?? match.price ?? null;
 
     if (fallbackPrice === null) return;
 
     await db
       .insert(cardPricing)
-      .values({ variantId: cardId, priceGBP: match.priceGBP, updatedAt: new Date() })
+      .values({
+        variantId: cardId,
+        priceGBP: match.priceGBP,
+        updatedAt: new Date(),
+      })
       .onConflictDoUpdate({
         target: cardPricing.variantId,
         set: { priceGBP: fallbackPrice, updatedAt: new Date() },
@@ -405,12 +439,16 @@ async function syncGbpPricingForCard(cardId: string, cardName: string, cardNumbe
   }
 }
 
-async function scrapeEbayListings(url: string, isSold: boolean): Promise<EbayListing[]> {
+async function scrapeEbayListings(
+  url: string,
+  isSold: boolean,
+): Promise<EbayListing[]> {
   try {
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "text/html,application/xhtml+xml",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Accept: "text/html,application/xhtml+xml",
         "Accept-Language": "en-GB,en;q=0.9",
       },
     });
@@ -431,8 +469,8 @@ async function scrapeEbayListings(url: string, isSold: boolean): Promise<EbayLis
       const currency = priceText.startsWith("£")
         ? "GBP"
         : priceText.startsWith("$")
-        ? "USD"
-        : "EUR";
+          ? "USD"
+          : "EUR";
 
       const soldDate = $el
         .find(".s-item__caption--row, .POSITIVE, .s-item__endedDate")
@@ -455,7 +493,7 @@ async function syncEbayPricesForCard(
   cardId: string,
   cardName: string,
   setName?: string,
-  cardNumber?: string
+  cardNumber?: string,
 ): Promise<void> {
   try {
     const soldUrl = generateEbaySoldUrl(cardName, setName, cardNumber);
@@ -466,7 +504,10 @@ async function syncEbayPricesForCard(
       scrapeEbayListings(activeUrl, false),
     ]);
 
-    const allListings = [...soldListings.slice(0, 10), ...activeListings.slice(0, 5)];
+    const allListings = [
+      ...soldListings.slice(0, 10),
+      ...activeListings.slice(0, 5),
+    ];
     if (allListings.length === 0) return;
 
     const existingRows = await db
@@ -474,7 +515,7 @@ async function syncEbayPricesForCard(
       .from(ebayPrices)
       .where(eq(ebayPrices.cardId, cardId));
     const existingKeys = new Set(
-      existingRows.map((r) => `${r.listingUrl ?? ""}|${r.isSold ? "1" : "0"}`)
+      existingRows.map((r) => `${r.listingUrl ?? ""}|${r.isSold ? "1" : "0"}`),
     );
 
     for (const listing of allListings) {
@@ -517,13 +558,18 @@ export async function runFullSync(force = false): Promise<void> {
     let syncedSetsCount = 0;
 
     for (const set of sets) {
-    await new Promise(r => setTimeout(r, 10));
-       try {
+      await new Promise((r) => setTimeout(r, 10));
+      try {
         const count = await syncCardsForSet(set.id, set.name, force);
         totalSynced += count;
         syncedSetsCount++;
-        await updateSyncStatus({ syncedSets: syncedSetsCount, syncedCards: totalSynced });
-        console.log(`[CardSync] Set ${set.id} (${set.name}): ${count} cards synced.`);
+        await updateSyncStatus({
+          syncedSets: syncedSetsCount,
+          syncedCards: totalSynced,
+        });
+        console.log(
+          `[CardSync] Set ${set.id} (${set.name}): ${count} cards synced.`,
+        );
       } catch (err) {
         console.error(`[CardSync] Error syncing set ${set.id}:`, err);
       }
@@ -535,7 +581,9 @@ export async function runFullSync(force = false): Promise<void> {
       totalCards: totalSynced,
       syncedCards: totalSynced,
     });
-    console.log(`[CardSync] Full sync complete. ${totalSynced} cards across ${syncedSetsCount} sets.`);
+    console.log(
+      `[CardSync] Full sync complete. ${totalSynced} cards across ${syncedSetsCount} sets.`,
+    );
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[CardSync] Sync failed:", err);
@@ -548,7 +596,9 @@ export async function runFullSync(force = false): Promise<void> {
 export async function runPriceRefresh(): Promise<void> {
   console.log("[CardSync] Starting pricing refresh...");
   try {
-    const allSets = await db.select({ id: pokemonSets.id, name: pokemonSets.name }).from(pokemonSets);
+    const allSets = await db
+      .select({ id: pokemonSets.id, name: pokemonSets.name })
+      .from(pokemonSets);
 
     for (const set of allSets) {
       const cards = await db
@@ -575,7 +625,12 @@ export async function runPriceRefresh(): Promise<void> {
           await syncGbpPricingForCard(card.id, card.name, card.number);
 
           await sleep(EBAY_THROTTLE_MS);
-          await syncEbayPricesForCard(card.id, card.name, set.name, card.number);
+          await syncEbayPricesForCard(
+            card.id,
+            card.name,
+            set.name,
+            card.number,
+          );
         } catch (err) {
           console.error(`[CardSync] Price refresh failed for ${card.id}:`, err);
         }
@@ -589,307 +644,18 @@ export async function runPriceRefresh(): Promise<void> {
   }
 }
 
-// Fast card seed — basic data only, no pricing/eBay, runs in background
+/* =========================================================
+   FAST CARD SEED
+   TEMPORARILY DISABLED FOR PRODUCTION STABILITY
+   ========================================================= */
+
 async function runFastCardSeed(): Promise<void> {
-  console.log("[CardSync] Starting fast card seed (basic data, no pricing)...");
-  const allSets = await db.select({ id: pokemonSets.id, name: pokemonSets.name }).from(pokemonSets);
-
-  // Find which sets already have cards seeded so we can resume mid-seed
-  const alreadySeededRows = await db
-    .select({ setId: pokemonCards.setId })
-    .from(pokemonCards)
-    .groupBy(pokemonCards.setId);
-  const alreadySeeded = new Set(alreadySeededRows.map((r) => r.setId));
-  const sets = allSets.filter((s) => !alreadySeeded.has(s.id));
-  console.log(`[CardSync] ${alreadySeeded.size} sets already seeded, ${sets.length} remaining...`);
-
-  let totalInserted = 0;
-
-  // Sets known to have no cards in the TCG API
-  // Note: me*, zsv*, rsv* sets DO have cards — they are not skipped
-  const NO_CARD_PREFIXES: string[] = [];
-
-  // Language suffix check — KO, ZH, CN, and JP sets are never in the TCG API
-  const isNonTcgApiSet = (id: string) =>
-    id.endsWith("_ko") ||
-    id.endsWith("_zh") ||
-    id.endsWith("_cn") ||
-    id.endsWith("_ja") ||
-    id.startsWith("babanuki-") ||
-    id.startsWith("mengka-");
-
-  for (const set of sets) {
-  await new Promise(r => setTimeout(r, 10));
-
-    // Instantly skip non-English sets that are handled by other seeders
-    if (isNonTcgApiSet(set.id)) {
-      // no log noise — these are silently handled by Scrydex / KoZhSeed
-      continue;
-    }
-
-    // Skip regional sets with no TCG API card data immediately
-    if (NO_CARD_PREFIXES.some((p) => set.id.startsWith(p))) {
-      console.log(`[CardSync] Skipped set ${set.id} (regional set, no TCG API cards)`);
-      await sleep(200);
-      continue;
-    }
-
-    try {
-      let allCards: PokemonTcgCard[] = [];
-      let page = 1;
-      while (true) {
-        let pageData: { data?: PokemonTcgCard[]; totalCount?: number } | null = null;
-        // Single attempt per page — fail fast, no retry (saves API quota for user requests)
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 12000); // 12s timeout — fail fast
-        try {
-          const res = await fetch(
-            `${POKEMON_API}/cards?q=set.id:${set.id}&orderBy=number&page=${page}&pageSize=250`,
-            { headers: buildTcgHeaders(), signal: ctrl.signal }
-          );
-          clearTimeout(timer);
-          if (res.status === 429) {
-            // Rate limited — back off and let user requests through
-            console.log(`[CardSync] Rate limited for ${set.id}, waiting 20s...`);
-            await sleep(20000);
-            // don't retry this set — skip it
-          } else if (res.ok) {
-            const ct = res.headers.get("content-type") || "";
-            if (ct.includes("application/json")) {
-              pageData = await res.json();
-            }
-          }
-          // Any non-ok, non-429 status: leave pageData null → skip set
-        } catch (fetchErr: any) {
-          clearTimeout(timer);
-          // Timeout or network error — skip this set immediately
-          if (fetchErr.name === "AbortError") {
-            console.log(`[CardSync] Timeout for ${set.id} page ${page}, skipping set`);
-          }
-        }
-        if (!pageData) break; // couldn't fetch this page — skip set
-        const cards = pageData.data ?? [];
-        allCards = allCards.concat(cards);
-        if (allCards.length >= (pageData.totalCount ?? 0) || cards.length < 250) break;
-        page++;
-        await sleep(1500); // pause between pages to avoid rate limiting
-      }
-
-      for (const card of allCards) {
-        try {
-          /* =========================================================
-             INSERT BASE CARD
-             ========================================================= */
-
-          await db.insert(pokemonCards).values({
-            id: card.id,
-
-            setId:
-              card.set?.id ?? set.id,
-
-            name: card.name,
-
-            number: card.number,
-
-            rarity:
-              card.rarity ?? null,
-
-            supertype:
-              card.supertype ?? null,
-
-            subtypes: card.subtypes
-              ? card.subtypes.join(",")
-              : null,
-
-            imageSmall:
-              card.images?.small ?? null,
-
-            imageLarge:
-              card.images?.large ?? null,
-
-            artist:
-              card.artist ?? null,
-
-            hp:
-              card.hp ?? null,
-
-            nationalPokedexNumbers:
-              card.nationalPokedexNumbers
-                ? card.nationalPokedexNumbers.join(",")
-                : null,
-
-            syncedAt: new Date(),
-          }).onConflictDoNothing();
-
-          /* =========================================================
-             CREATE VARIANTS
-             ========================================================= */
-
-          const prices =
-            card.tcgplayer?.prices || {};
-
-          const variantsToInsert: any[] = [];
-
-          /**
-           * NORMAL
-           */
-          if (prices.normal) {
-            variantsToInsert.push({
-              id: `${card.id}-normal`,
-
-              cardId: card.id,
-
-              finishType: "Non-Holo",
-
-              editionType: "Unlimited",
-
-              language: "English",
-
-              variantLabel: "Non-Holo",
-
-              imageUrl:
-                card.images?.large ||
-                card.images?.small ||
-                null,
-
-              isPromo:
-                card.rarity === "Promo",
-
-              isStamped: false,
-            });
-          }
-
-          /**
-           * HOLO
-           */
-          if (prices.holofoil) {
-            variantsToInsert.push({
-              id: `${card.id}-holo`,
-
-              cardId: card.id,
-
-              finishType: "Holo",
-
-              editionType: "Unlimited",
-
-              language: "English",
-
-              variantLabel: "Holo",
-
-              imageUrl:
-                card.images?.large ||
-                card.images?.small ||
-                null,
-
-              isPromo:
-                card.rarity === "Promo",
-
-              isStamped: false,
-            });
-          }
-
-          /**
-           * REVERSE HOLO
-           */
-          if (prices.reverseHolofoil) {
-            variantsToInsert.push({
-              id: `${card.id}-reverse`,
-
-              cardId: card.id,
-
-              finishType:
-                "Reverse Holo",
-
-              editionType: "Unlimited",
-
-              language: "English",
-
-              variantLabel:
-                "Reverse Holo",
-
-              imageUrl:
-                card.images?.large ||
-                card.images?.small ||
-                null,
-
-              isPromo:
-                card.rarity === "Promo",
-
-              isStamped: false,
-            });
-          }
-
-          /**
-           * FALLBACK
-           * If no pricing variants exist,
-           * still create a standard variant
-           */
-          if (
-            variantsToInsert.length === 0
-          ) {
-            variantsToInsert.push({
-              id: `${card.id}-default`,
-
-              cardId: card.id,
-
-              finishType: "Non-Holo",
-
-              editionType: "Unlimited",
-
-              language: "English",
-
-              variantLabel: "Standard",
-
-              imageUrl:
-                card.images?.large ||
-                card.images?.small ||
-                null,
-
-              isPromo:
-                card.rarity === "Promo",
-
-              isStamped: false,
-            });
-          }
-
-          /* =========================================================
-             INSERT VARIANTS
-             ========================================================= */
-
-          await db.insert(
-            pokemonCardVariants
-          )
-          .values(variantsToInsert)
-          .onConflictDoNothing();
-
-          totalInserted++;
-
-        } catch (err) {
-          console.error(
-            `[CardSync] Card insert failed ${card.id}`,
-            err
-          );
-        }
-      }
-
-      if (allCards.length > 0) {
-        console.log(`[CardSync] Fast seeded ${allCards.length} cards for set ${set.id} (${set.name})`);
-      } else {
-        console.log(`[CardSync] Skipped set ${set.id} (no cards available)`);
-      }
-      await sleep(5000); // Be polite to the TCG API — 5s gap protects user request quota
-    } catch (err) {
-      console.error(`[CardSync] Fast seed error for set ${set.id}:`, err);
-      await sleep(1000);
-    }
-  }
-
-  await updateSyncStatus({ totalCards: totalInserted, syncedCards: totalInserted, lastCardSyncAt: new Date() });
-  console.log(`[CardSync] Fast card seed complete — ${totalInserted} cards in DB.`);
+  console.log(
+    "[CardSync] Fast card seed temporarily disabled for production stability.",
+  );
+
+  return;
 }
-
-/** After TCG API seeding, fill any still-empty sets from Scrydex (Japanese, TCG Pocket, etc.) */
-// Scrydex startup sync intentionally disabled
 
 export async function startSyncService(): Promise<void> {
   console.log("[CardSync] Sync service starting...");
@@ -900,7 +666,7 @@ export async function startSyncService(): Promise<void> {
 
   priceRefreshTimer = setInterval(() => {
     runPriceRefresh().catch((err) =>
-      console.error("[CardSync] Price refresh interval error:", err)
+      console.error("[CardSync] Price refresh interval error:", err),
     );
   }, PRICE_REFRESH_INTERVAL_MS);
 
@@ -908,13 +674,17 @@ export async function startSyncService(): Promise<void> {
   setTimeout(async () => {
     try {
       const [totalSetRows, seededSetRows] = await Promise.all([
-        db.select({
-          count: sql<number>`count(*)::int`,
-        }).from(pokemonSets),
+        db
+          .select({
+            count: sql<number>`count(*)::int`,
+          })
+          .from(pokemonSets),
 
-        db.select({
-          count: sql<number>`count(distinct set_id)::int`,
-        }).from(pokemonCards),
+        db
+          .select({
+            count: sql<number>`count(distinct set_id)::int`,
+          })
+          .from(pokemonCards),
       ]);
 
       const totalSets = totalSetRows[0]?.count ?? 0;
@@ -926,8 +696,8 @@ export async function startSyncService(): Promise<void> {
           seedAsianSets()
             .then((r) =>
               console.log(
-                `[AsianSeed] Done — inserted ${r.inserted}, skipped ${r.skipped}, errors ${r.errors}`
-              )
+                `[AsianSeed] Done — inserted ${r.inserted}, skipped ${r.skipped}, errors ${r.errors}`,
+              ),
             )
             .catch(console.error);
         })
@@ -939,8 +709,8 @@ export async function startSyncService(): Promise<void> {
           seedNonTcgSets()
             .then((r) =>
               console.log(
-                `[NonTcgSeed] Done — inserted ${r.inserted}, skipped ${r.skipped}, errors ${r.errors}`
-              )
+                `[NonTcgSeed] Done — inserted ${r.inserted}, skipped ${r.skipped}, errors ${r.errors}`,
+              ),
             )
             .catch(console.error);
         })
@@ -948,8 +718,9 @@ export async function startSyncService(): Promise<void> {
 
       async function runKoZhAndJpFix() {
         try {
-          const { seedKoZhCards, fixEmptyJpSets } =
-            await import("./ko-zh-seed");
+          const { seedKoZhCards, fixEmptyJpSets } = await import(
+            "./ko-zh-seed"
+          );
 
           const [jpFix, koZh] = await Promise.all([
             fixEmptyJpSets(),
@@ -958,17 +729,17 @@ export async function startSyncService(): Promise<void> {
 
           if (jpFix.inserted > 0) {
             console.log(
-              `[JpFix] Inserted ${jpFix.inserted} cards for empty JP sets`
+              `[JpFix] Inserted ${jpFix.inserted} cards for empty JP sets`,
             );
           }
 
           if (koZh.inserted > 0) {
             console.log(
-              `[KoZhSeed] Done — ${koZh.setsProcessed} sets, ${koZh.inserted} cards inserted`
+              `[KoZhSeed] Done — ${koZh.setsProcessed} sets, ${koZh.inserted} cards inserted`,
             );
           } else {
             console.log(
-              `[KoZhSeed] Nothing new to insert (${koZh.skipped} sets skipped — JP source not ready yet)`
+              `[KoZhSeed] Nothing new to insert (${koZh.skipped} sets skipped — JP source not ready yet)`,
             );
           }
         } catch (err: any) {
@@ -982,30 +753,27 @@ export async function startSyncService(): Promise<void> {
         await syncAllSets();
 
         console.log(
-          "[CardSync] Sets seeded. Starting fast card seed in background..."
+          "[CardSync] Sets seeded. Starting fast card seed in background...",
         );
 
         await runFastCardSeed();
 
         await runKoZhAndJpFix();
-
       } else if (seededSets < totalSets) {
         console.log(
-          `[CardSync] ${seededSets}/${totalSets} sets have cards — seeding missing sets...`
+          `[CardSync] ${seededSets}/${totalSets} sets have cards — seeding missing sets...`,
         );
 
         await runFastCardSeed();
 
         await runKoZhAndJpFix();
-
       } else {
         console.log(
-          `[CardSync] DB fully seeded: ${seededSets}/${totalSets} sets with cards — OK.`
+          `[CardSync] DB fully seeded: ${seededSets}/${totalSets} sets with cards — OK.`,
         );
 
         await runKoZhAndJpFix();
       }
-
     } catch (err) {
       console.error("[CardSync] Auto-seed check failed:", err);
     }
