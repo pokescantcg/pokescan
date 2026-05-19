@@ -1595,65 +1595,60 @@ async function runScrydexSync(onProgress) {
         const existingCards = new Map(
           existingCardsRes.map((r) => [r.id, r.imageSmall])
         );
-        for (const card2 of cards) {
-          if (card2.priceUsd !== null) {
-            const convertedValue = Math.round(card2.priceUsd * 0.79 * 100) / 100;
-            try {
-              await db.insert(cardPricing).values({
-                variantId: card2.variantId,
-                priceGBP: convertedValue,
-                updatedAt: /* @__PURE__ */ new Date()
-              }).onConflictDoNothing();
-            } catch (err) {
-              console.error(
-                `[Scrydex] Failed pricing sync for ${card2.id}`,
-                err
-              );
-            }
-          }
+        for (const card of cards) {
           progress.cardsProcessed++;
-          if (!existingCards.has(card2.id)) {
+          if (!existingCards.has(card.id)) {
             if (!existingSetIds.has(setId)) continue;
             try {
               await db.insert(pokemonCards).values({
-                id: card2.id,
-                setId: card2.setId,
-                name: card2.name,
-                number: card2.number,
-                imageSmall: card2.imageSmall,
-                imageLarge: card2.imageLarge
+                id: card.id,
+                setId: card.setId,
+                name: card.name,
+                number: card.number,
+                imageSmall: card.imageSmall,
+                imageLarge: card.imageLarge
               }).onConflictDoNothing();
-              if (card2.priceUsd !== null) {
-                const convertedValue = Math.round(card2.priceUsd * 0.79 * 100) / 100;
-                try {
-                  await db.insert(cardPricing).values({
-                    variantId: card2.variantId,
-                    priceGBP: convertedValue,
-                    updatedAt: /* @__PURE__ */ new Date()
-                  }).onConflictDoNothing();
-                } catch (err) {
-                  console.error(
-                    `[Scrydex] Price insert failed for ${card2.id}`,
-                    err
-                  );
-                }
-              }
+              existingCards.set(card.id, card.imageSmall);
               progress.cardsAdded++;
             } catch (err) {
+              console.error(`[Scrydex] Card insert failed for ${card.id}:`, err.message);
+              continue;
             }
           } else {
-            const existingImg = existingCards.get(card2.id);
+            const existingImg = existingCards.get(card.id);
             if (!existingImg || existingImg === "") {
               try {
-                await db.update(pokemonCards).set({ imageSmall: card2.imageSmall, imageLarge: card2.imageLarge }).where(
-                  and(
-                    eq(pokemonCards.id, card2.id),
-                    or(isNull(pokemonCards.imageSmall), eq(pokemonCards.imageSmall, ""))
-                  )
-                );
+                await db.update(pokemonCards).set({ imageSmall: card.imageSmall, imageLarge: card.imageLarge }).where(and(
+                  eq(pokemonCards.id, card.id),
+                  or(isNull(pokemonCards.imageSmall), eq(pokemonCards.imageSmall, ""))
+                ));
                 progress.cardsUpdated++;
               } catch (err) {
               }
+            }
+          }
+          try {
+            await db.insert(pokemonCardVariants).values({
+              id: card.variantId,
+              cardId: card.id,
+              finishType: card.finishType,
+              editionType: card.editionType,
+              language: card.language,
+              imageUrl: card.imageLarge,
+              variantLabel: `${card.finishType} ${card.editionType}`.trim()
+            }).onConflictDoNothing();
+          } catch (err) {
+            console.error(`[Scrydex] Variant insert failed for ${card.id} variant=${card.variantId}:`, err.message);
+          }
+          if (card.priceUsd !== null) {
+            try {
+              await db.insert(cardPricing).values({
+                variantId: card.variantId,
+                priceGBP: Math.round(card.priceUsd * 0.79 * 100) / 100,
+                updatedAt: /* @__PURE__ */ new Date()
+              }).onConflictDoNothing();
+            } catch (err) {
+              console.error(`[Scrydex] Price insert failed for ${card.id}:`, err.message);
             }
           }
         }
@@ -1662,19 +1657,6 @@ async function runScrydexSync(onProgress) {
         console.error(`[Scrydex] Failed to process cards for ${setId}:`, err.message);
         report({ setsProcessed: progress.setsProcessed + 1 });
       }
-    }
-    try {
-      await db.insert(pokemonCardVariants).values({
-        id: `${card.id}-holo`,
-        cardId: card.id,
-        finishType: card.finishType,
-        editionType: card.editionType,
-        language: card.language,
-        imageUrl: card.imageLarge,
-        variantLabel: `${card.finishType} ${card.editionType}`
-      }).onConflictDoNothing();
-    } catch (err) {
-      console.error("Variant insert failed", err);
     }
     report({
       phase: "done",
@@ -1867,13 +1849,13 @@ async function fixEmptyJpSets(onProgress) {
       const { scrapeScrydexSetCards: scrapeScrydexSetCards2 } = await Promise.resolve().then(() => (init_scrydex_scraper(), scrydex_scraper_exports));
       const cards = await scrapeScrydexSetCards2(target.slug, target.setId);
       if (cards.length > 0) {
-        for (const card2 of cards) {
+        for (const card of cards) {
           try {
             await pool3.query(
               `INSERT INTO pokemon_cards (id, set_id, name, number, image_small, image_large)
                VALUES ($1,$2,$3,$4,$5,$6)
                ON CONFLICT (id) DO NOTHING`,
-              [card2.id, target.setId, card2.name, card2.number, card2.imageSmall, card2.imageLarge]
+              [card.id, target.setId, card.name, card.number, card.imageSmall, card.imageLarge]
             );
             inserted++;
           } catch {
@@ -2901,66 +2883,66 @@ async function syncCardsForSet(setId, setName, force = false) {
     existingIds = new Set(existing.map((r) => r.id));
   }
   let inserted = 0;
-  for (const card2 of allCards) {
-    const alreadySynced = !force && existingIds.has(card2.id);
+  for (const card of allCards) {
+    const alreadySynced = !force && existingIds.has(card.id);
     try {
       await db.insert(pokemonCards).values({
-        id: card2.id,
-        setId: card2.set?.id ?? setId,
-        name: card2.name,
-        number: card2.number,
-        rarity: card2.rarity ?? null,
-        supertype: card2.supertype ?? null,
-        subtypes: card2.subtypes ? card2.subtypes.join(",") : null,
-        imageSmall: card2.images?.small ?? null,
-        imageLarge: card2.images?.large ?? null,
-        artist: card2.artist ?? null,
-        hp: card2.hp ?? null,
-        nationalPokedexNumbers: card2.nationalPokedexNumbers ? card2.nationalPokedexNumbers.join(",") : null,
+        id: card.id,
+        setId: card.set?.id ?? setId,
+        name: card.name,
+        number: card.number,
+        rarity: card.rarity ?? null,
+        supertype: card.supertype ?? null,
+        subtypes: card.subtypes ? card.subtypes.join(",") : null,
+        imageSmall: card.images?.small ?? null,
+        imageLarge: card.images?.large ?? null,
+        artist: card.artist ?? null,
+        hp: card.hp ?? null,
+        nationalPokedexNumbers: card.nationalPokedexNumbers ? card.nationalPokedexNumbers.join(",") : null,
         syncedAt: /* @__PURE__ */ new Date()
       }).onConflictDoUpdate({
         target: pokemonCards.id,
         set: {
-          name: card2.name,
-          number: card2.number,
-          rarity: card2.rarity ?? null,
-          supertype: card2.supertype ?? null,
-          subtypes: card2.subtypes ? card2.subtypes.join(",") : null,
-          imageSmall: card2.images?.small ?? null,
-          imageLarge: card2.images?.large ?? null,
-          artist: card2.artist ?? null,
-          hp: card2.hp ?? null,
-          nationalPokedexNumbers: card2.nationalPokedexNumbers ? card2.nationalPokedexNumbers.join(",") : null,
+          name: card.name,
+          number: card.number,
+          rarity: card.rarity ?? null,
+          supertype: card.supertype ?? null,
+          subtypes: card.subtypes ? card.subtypes.join(",") : null,
+          imageSmall: card.images?.small ?? null,
+          imageLarge: card.images?.large ?? null,
+          artist: card.artist ?? null,
+          hp: card.hp ?? null,
+          nationalPokedexNumbers: card.nationalPokedexNumbers ? card.nationalPokedexNumbers.join(",") : null,
           syncedAt: /* @__PURE__ */ new Date()
         }
       });
       if (!alreadySynced || force) {
-        await syncPricingForCard(card2);
-        const existingPricing = await db.select().from(cardPricing).where(eq2(cardPricing.variantId, card2.id)).limit(1);
+        await syncPricingForCard(card);
+        const existingPricing = await db.select().from(cardPricing).where(eq2(cardPricing.variantId, card.id)).limit(1);
         const hasAnyPrice = existingPricing[0]?.tcgMarket || existingPricing[0]?.priceGBP || existingPricing[0]?.cardmarketAvg;
         if (!hasAnyPrice) {
-          console.log(`[PricingFallback] Using PokecardValues for ${card2.name}`);
+          console.log(`[PricingFallback] Using PokecardValues for ${card.name}`);
           await syncGbpPricingForCard(
-            card2.id,
-            card2.name,
-            card2.number
+            card.id,
+            card.name,
+            card.number
           );
         }
         await sleep(GBP_THROTTLE_MS);
-        await syncGbpPricingForCard(card2.id, card2.name, card2.number);
+        await syncGbpPricingForCard(card.id, card.name, card.number);
         await sleep(EBAY_THROTTLE_MS);
-        await syncEbayPricesForCard(card2.id, card2.name, setName, card2.number);
+        await syncEbayPricesForCard(card.id, card.name, setName, card.number);
       }
       inserted++;
     } catch (err) {
-      console.error(`[CardSync] Failed to upsert card ${card2.id}:`, err);
+      console.error(`[CardSync] Failed to upsert card ${card.id}:`, err);
     }
   }
   return inserted;
 }
-async function syncPricingForCard(card2) {
-  const tcgp = card2.tcgplayer?.prices;
-  const cm = card2.cardmarket?.prices;
+async function syncPricingForCard(card) {
+  const tcgp = card.tcgplayer?.prices;
+  const cm = card.cardmarket?.prices;
   const tcgNormal = tcgp?.normal ?? tcgp?.holofoil ?? tcgp?.["1stEditionNormal"] ?? tcgp?.["1stEditionHolofoil"] ?? null;
   const tcgLow = tcgNormal?.low ?? null;
   const tcgMid = tcgNormal?.mid ?? null;
@@ -2972,7 +2954,7 @@ async function syncPricingForCard(card2) {
   const cardmarketTrend = cm?.trendPrice ?? null;
   try {
     await db.insert(cardPricing).values({
-      variantId: card2.id,
+      variantId: card.id,
       tcgLow,
       tcgMid,
       tcgHigh,
@@ -2997,7 +2979,7 @@ async function syncPricingForCard(card2) {
       }
     });
   } catch (err) {
-    console.error(`[CardSync] Failed to upsert pricing for card ${card2.id}:`, err);
+    console.error(`[CardSync] Failed to upsert pricing for card ${card.id}:`, err);
   }
 }
 async function syncGbpPricingForCard(cardId, cardName, cardNumber) {
@@ -3142,20 +3124,20 @@ async function runPriceRefresh() {
         rarity: pokemonCards.rarity,
         setId: pokemonCards.setId
       }).from(pokemonCards).where(eq2(pokemonCards.setId, set.id));
-      for (const card2 of cards) {
+      for (const card of cards) {
         try {
-          const apiData = await fetchJson(`${POKEMON_API}/cards/${card2.id}`);
+          const apiData = await fetchJson(`${POKEMON_API}/cards/${card.id}`);
           const typed = apiData;
           if (typed.data) {
             await syncPricingForCard(typed.data);
           }
           await sleep(TCG_REQUEST_DELAY_MS);
           await sleep(GBP_THROTTLE_MS);
-          await syncGbpPricingForCard(card2.id, card2.name, card2.number);
+          await syncGbpPricingForCard(card.id, card.name, card.number);
           await sleep(EBAY_THROTTLE_MS);
-          await syncEbayPricesForCard(card2.id, card2.name, set.name, card2.number);
+          await syncEbayPricesForCard(card.id, card.name, set.name, card.number);
         } catch (err) {
-          console.error(`[CardSync] Price refresh failed for ${card2.id}:`, err);
+          console.error(`[CardSync] Price refresh failed for ${card.id}:`, err);
         }
       }
     }
@@ -3220,74 +3202,74 @@ async function runFastCardSeed() {
         page++;
         await sleep(1500);
       }
-      for (const card2 of allCards) {
+      for (const card of allCards) {
         try {
           await db.insert(pokemonCards).values({
-            id: card2.id,
-            setId: card2.set?.id ?? set.id,
-            name: card2.name,
-            number: card2.number,
-            rarity: card2.rarity ?? null,
-            supertype: card2.supertype ?? null,
-            subtypes: card2.subtypes ? card2.subtypes.join(",") : null,
-            imageSmall: card2.images?.small ?? null,
-            imageLarge: card2.images?.large ?? null,
-            artist: card2.artist ?? null,
-            hp: card2.hp ?? null,
-            nationalPokedexNumbers: card2.nationalPokedexNumbers ? card2.nationalPokedexNumbers.join(",") : null,
+            id: card.id,
+            setId: card.set?.id ?? set.id,
+            name: card.name,
+            number: card.number,
+            rarity: card.rarity ?? null,
+            supertype: card.supertype ?? null,
+            subtypes: card.subtypes ? card.subtypes.join(",") : null,
+            imageSmall: card.images?.small ?? null,
+            imageLarge: card.images?.large ?? null,
+            artist: card.artist ?? null,
+            hp: card.hp ?? null,
+            nationalPokedexNumbers: card.nationalPokedexNumbers ? card.nationalPokedexNumbers.join(",") : null,
             syncedAt: /* @__PURE__ */ new Date()
           }).onConflictDoNothing();
-          const prices = card2.tcgplayer?.prices || {};
+          const prices = card.tcgplayer?.prices || {};
           const variantsToInsert = [];
           if (prices.normal) {
             variantsToInsert.push({
-              id: `${card2.id}-normal`,
-              cardId: card2.id,
+              id: `${card.id}-normal`,
+              cardId: card.id,
               finishType: "Non-Holo",
               editionType: "Unlimited",
               language: "English",
               variantLabel: "Non-Holo",
-              imageUrl: card2.images?.large || card2.images?.small || null,
-              isPromo: card2.rarity === "Promo",
+              imageUrl: card.images?.large || card.images?.small || null,
+              isPromo: card.rarity === "Promo",
               isStamped: false
             });
           }
           if (prices.holofoil) {
             variantsToInsert.push({
-              id: `${card2.id}-holo`,
-              cardId: card2.id,
+              id: `${card.id}-holo`,
+              cardId: card.id,
               finishType: "Holo",
               editionType: "Unlimited",
               language: "English",
               variantLabel: "Holo",
-              imageUrl: card2.images?.large || card2.images?.small || null,
-              isPromo: card2.rarity === "Promo",
+              imageUrl: card.images?.large || card.images?.small || null,
+              isPromo: card.rarity === "Promo",
               isStamped: false
             });
           }
           if (prices.reverseHolofoil) {
             variantsToInsert.push({
-              id: `${card2.id}-reverse`,
-              cardId: card2.id,
+              id: `${card.id}-reverse`,
+              cardId: card.id,
               finishType: "Reverse Holo",
               editionType: "Unlimited",
               language: "English",
               variantLabel: "Reverse Holo",
-              imageUrl: card2.images?.large || card2.images?.small || null,
-              isPromo: card2.rarity === "Promo",
+              imageUrl: card.images?.large || card.images?.small || null,
+              isPromo: card.rarity === "Promo",
               isStamped: false
             });
           }
           if (variantsToInsert.length === 0) {
             variantsToInsert.push({
-              id: `${card2.id}-default`,
-              cardId: card2.id,
+              id: `${card.id}-default`,
+              cardId: card.id,
               finishType: "Non-Holo",
               editionType: "Unlimited",
               language: "English",
               variantLabel: "Standard",
-              imageUrl: card2.images?.large || card2.images?.small || null,
-              isPromo: card2.rarity === "Promo",
+              imageUrl: card.images?.large || card.images?.small || null,
+              isPromo: card.rarity === "Promo",
               isStamped: false
             });
           }
@@ -3297,7 +3279,7 @@ async function runFastCardSeed() {
           totalInserted++;
         } catch (err) {
           console.error(
-            `[CardSync] Card insert failed ${card2.id}`,
+            `[CardSync] Card insert failed ${card.id}`,
             err
           );
         }
@@ -3468,9 +3450,9 @@ function setCardCache(id, data) {
   cardMemCache.set(id, { data, ts: Date.now() });
 }
 function warmCardCache(cards) {
-  for (const card2 of cards) {
-    if (card2?.id && !cardMemCache.has(card2.id)) {
-      setCardCache(card2.id, { data: card2 });
+  for (const card of cards) {
+    if (card?.id && !cardMemCache.has(card.id)) {
+      setCardCache(card.id, { data: card });
     }
   }
 }
@@ -3555,21 +3537,21 @@ function dbSetToApiFormat(set) {
     }
   };
 }
-function dbVariantToApiFormat(card2, pricing, ebay) {
+function dbVariantToApiFormat(card, pricing, ebay) {
   const base = {
-    id: card2.id,
-    name: card2.name,
-    number: card2.number,
-    rarity: card2.rarity,
-    supertype: card2.supertype,
-    subtypes: card2.subtypes ? card2.subtypes.split(",") : [],
+    id: card.id,
+    name: card.name,
+    number: card.number,
+    rarity: card.rarity,
+    supertype: card.supertype,
+    subtypes: card.subtypes ? card.subtypes.split(",") : [],
     images: {
-      small: card2.imageSmall,
-      large: card2.imageLarge
+      small: card.imageSmall,
+      large: card.imageLarge
     },
-    artist: card2.artist,
-    hp: card2.hp,
-    set: { id: card2.setId }
+    artist: card.artist,
+    hp: card.hp,
+    set: { id: card.setId }
   };
   if (pricing) {
     base.tcgplayer = {
@@ -3939,7 +3921,7 @@ async function registerRoutes(app2) {
         ]);
         const totalCount = totalCountResult[0]?.count ?? 0;
         const setRow = setInfoResult[0] ?? null;
-        const expectedTotal = setRow?.total ?? 0;
+        const expectedTotal = setRow?.printedTotal ?? setRow?.total ?? 0;
         const hasCards = totalCount > 0;
         const fullySeeded = hasCards && (isNonEnglish || expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
         const dbCards = await db.select({
@@ -3952,31 +3934,43 @@ async function registerRoutes(app2) {
         console.log(`[SetCards] ${setId}: dbCards=${totalCount} expected=${expectedTotal} rows=${dbCards.length} fullySeeded=${fullySeeded}`);
         if (fullySeeded && dbCards.length > 0) {
           const cardMap = /* @__PURE__ */ new Map();
-          for (const { card: card2, variant } of dbCards) {
-            let existing = cardMap.get(card2.id);
+          for (const { card, variant } of dbCards) {
+            let existing = cardMap.get(card.id);
             if (!existing) {
               existing = {
-                ...dbVariantToApiFormat(card2, null),
-                cardId: card2.id,
+                ...dbVariantToApiFormat(card, null),
+                cardId: card.id,
                 variants: []
               };
               if (setRow) {
                 existing.set = dbSetToApiFormat(setRow);
               }
-              cardMap.set(card2.id, existing);
+              cardMap.set(card.id, existing);
             }
-            existing.variants.push({
-              variantId: variant?.id || `${card2.id}-standard`,
-              finishType: variant?.finishType || "Non-Holo",
-              editionType: variant?.editionType || "Standard",
-              variantLabel: variant?.variantLabel || "Standard",
-              isStamped: variant?.isStamped || false,
-              language: variant?.language || "EN",
-              images: variant?.imageUrl ? {
-                small: variant.imageUrl,
-                large: variant.imageUrl
-              } : existing.images
-            });
+            if (variant?.id) {
+              existing.variants.push({
+                variantId: variant.id,
+                finishType: variant.finishType || "Non-Holo",
+                editionType: variant.editionType || "Standard",
+                variantLabel: variant.variantLabel || "Standard",
+                isStamped: variant.isStamped || false,
+                language: variant.language || "EN",
+                images: variant.imageUrl ? { small: variant.imageUrl, large: variant.imageUrl } : existing.images
+              });
+            }
+          }
+          for (const c of cardMap.values()) {
+            if (c.variants.length === 0) {
+              c.variants.push({
+                variantId: `${c.id}-standard`,
+                finishType: "Non-Holo",
+                editionType: "Standard",
+                variantLabel: "Standard",
+                isStamped: false,
+                language: "EN",
+                images: c.images
+              });
+            }
           }
           const formattedCards = Array.from(cardMap.values());
           console.log(
@@ -4022,20 +4016,20 @@ async function registerRoutes(app2) {
                 const d2 = await r2.json();
                 const cards2 = d2.data || [];
                 if (cards2.length === 0) break;
-                for (const card2 of cards2) {
+                for (const card of cards2) {
                   try {
                     await db.insert(pokemonCards).values({
-                      id: card2.id,
-                      setId: card2.set?.id || setId,
-                      name: card2.name,
-                      number: card2.number,
-                      rarity: card2.rarity || null,
-                      supertype: card2.supertype || null,
-                      subtypes: Array.isArray(card2.subtypes) ? card2.subtypes.join(",") : null,
-                      hp: card2.hp || null,
-                      artist: card2.artist || null,
-                      imageSmall: card2.images?.small || null,
-                      imageLarge: card2.images?.large || null
+                      id: card.id,
+                      setId: card.set?.id || setId,
+                      name: card.name,
+                      number: card.number,
+                      rarity: card.rarity || null,
+                      supertype: card.supertype || null,
+                      subtypes: Array.isArray(card.subtypes) ? card.subtypes.join(",") : null,
+                      hp: card.hp || null,
+                      artist: card.artist || null,
+                      imageSmall: card.images?.small || null,
+                      imageLarge: card.images?.large || null
                     }).onConflictDoNothing();
                   } catch {
                   }
@@ -4086,8 +4080,8 @@ async function registerRoutes(app2) {
       try {
         const dbResults = await db.select({ card: pokemonCards, set: pokemonSets }).from(pokemonCards).leftJoin(pokemonSets, eq3(pokemonCards.setId, pokemonSets.id)).where(and3(ilike(pokemonCards.name, `%${query.trim()}%`), isNull2(pokemonCards.deletedAt))).orderBy(desc(pokemonSets.releaseDate)).limit(pageSize).offset(offset);
         if (dbResults.length > 0) {
-          const formatted = dbResults.map(({ card: card2, set }) => {
-            const base = dbVariantToApiFormat(card2, null);
+          const formatted = dbResults.map(({ card, set }) => {
+            const base = dbVariantToApiFormat(card, null);
             if (set) {
               base.set = {
                 id: set.id,
@@ -4153,9 +4147,9 @@ async function registerRoutes(app2) {
           card: pokemonCards,
           variant: pokemonCardVariants
         }).from(pokemonCards).leftJoin(pokemonCardVariants, eq3(pokemonCardVariants.cardId, pokemonCards.id)).where(and3(eq3(pokemonCards.setId, setId), isNull2(pokemonCards.deletedAt))).orderBy(pokemonCards.number);
-        const formattedCards = dbCards.map(({ card: card2, variant }) => {
-          const f = dbVariantToApiFormat(card2, null);
-          f.cardId = card2.id;
+        const formattedCards = dbCards.map(({ card, variant }) => {
+          const f = dbVariantToApiFormat(card, null);
+          f.cardId = card.id;
           if (variant) {
             f.variantId = variant.id;
             f.finishType = variant.finishType;
@@ -4836,8 +4830,8 @@ ${setReference}`
           }
           const dbMatches = await db.select({ card: pokemonCards, set: pokemonSets, pricing: cardPricing }).from(pokemonCards).leftJoin(pokemonSets, eq3(pokemonCards.setId, pokemonSets.id)).leftJoin(cardPricing, eq3(cardPricing.variantId, pokemonCards.id)).where(and3(or2(...nameConditions), isNull2(pokemonCards.deletedAt))).orderBy(desc(pokemonSets.releaseDate)).limit(20);
           if (dbMatches.length > 0) {
-            let formatted = dbMatches.map(({ card: card2, set, pricing }) => {
-              const base = dbVariantToApiFormat(card2, pricing ?? null);
+            let formatted = dbMatches.map(({ card, set, pricing }) => {
+              const base = dbVariantToApiFormat(card, pricing ?? null);
               if (set) {
                 base.set = {
                   id: set.id,
@@ -6580,11 +6574,11 @@ ${setReference}`
         res.status(404).json({ error: "Collection item not found" });
         return;
       }
-      const card2 = row.rows[0];
-      const cardNumber = card2.card_id?.split("-").pop() || "";
+      const card = row.rows[0];
+      const cardNumber = card.card_id?.split("-").pop() || "";
       const prompt = `You are a Pok\xE9mon TCG card verification expert. A user claims this physical card is:
-Card Name: ${card2.card_name}
-Set Name: ${card2.set_name}
+Card Name: ${card.card_name}
+Set Name: ${card.set_name}
 Card Number: ${cardNumber}
 
 You have been given TWO photos: the first is the FRONT of the physical card, the second is the BACK.
