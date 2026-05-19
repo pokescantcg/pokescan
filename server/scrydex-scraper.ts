@@ -570,6 +570,13 @@ export async function runScrydexSync(
           }
 
           // Step 2: Upsert variant row (card is guaranteed to exist at this point)
+          console.log({
+            id: card.id,
+            name: card.name,
+            finishType: card.finishType,
+            editionType: card.editionType,
+            variants: card.variants,
+          });
           try {
             await db
               .insert(pokemonCardVariants)

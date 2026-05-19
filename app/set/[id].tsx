@@ -18,7 +18,12 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
-import { fetchSetCards, PokemonCard, getUKPrice, formatGBP } from "@/lib/pokemon-api";
+import {
+  fetchSetCards,
+  PokemonCard,
+  getUKPrice,
+  formatGBP,
+} from "@/lib/pokemon-api";
 import { CachedCard } from "@/lib/card-cache";
 import { useUser } from "@/lib/user-context";
 
@@ -38,11 +43,29 @@ function sortCardsByNumber(cards: PokemonCard[]): PokemonCard[] {
 }
 
 const RARITY_ORDER = [
-  "Common", "Uncommon", "Rare", "Rare Holo", "Double Rare", "Amazing Rare",
-  "Rare Holo V", "Rare Holo VMAX", "Rare Holo VSTAR", "Rare Holo EX", "Rare Holo GX",
-  "Trainer Gallery Rare Holo", "ACE SPEC Rare", "Rare Ultra", "Illustration Rare",
-  "Rare Rainbow", "Special Illustration Rare", "Hyper Rare", "Rare Secret",
-  "Rare Shiny", "Rare Shiny GX", "Rare Shining", "Promo",
+  "Common",
+  "Uncommon",
+  "Rare",
+  "Rare Holo",
+  "Double Rare",
+  "Amazing Rare",
+  "Rare Holo V",
+  "Rare Holo VMAX",
+  "Rare Holo VSTAR",
+  "Rare Holo EX",
+  "Rare Holo GX",
+  "Trainer Gallery Rare Holo",
+  "ACE SPEC Rare",
+  "Rare Ultra",
+  "Illustration Rare",
+  "Rare Rainbow",
+  "Special Illustration Rare",
+  "Hyper Rare",
+  "Rare Secret",
+  "Rare Shiny",
+  "Rare Shiny GX",
+  "Rare Shining",
+  "Promo",
 ];
 
 function rarityRank(r: string): number {
@@ -85,12 +108,12 @@ const POKEBALL_GOLD = "#FFD700";
 type CardCollectionData = { total: number; variants: Record<string, number> };
 
 const VARIANT_COLORS: Record<string, string> = {
-  "Holo": "#FFD700",
+  Holo: "#FFD700",
   "Reverse Holo": "#00BFFF",
   "Non-Holo": "#C0C0C0",
 };
 const VARIANT_LABELS: Record<string, string> = {
-  "Holo": "H",
+  Holo: "H",
   "Reverse Holo": "R",
   "Non-Holo": "N",
 };
@@ -104,9 +127,26 @@ function CollectionBadge({ data }: { data: CardCollectionData }) {
           const label = VARIANT_LABELS[variant] ?? variant[0];
           const color = VARIANT_COLORS[variant] ?? POKEBALL_GOLD;
           return (
-            <View key={variant} style={{ flexDirection: "row", alignItems: "center", gap: 1 }}>
-              <Text style={{ fontSize: 9, fontFamily: "Outfit_700Bold", color }}>{label}</Text>
-              {qty > 1 && <Text style={{ fontSize: 8, fontFamily: "Outfit_600SemiBold", color }}>×{qty}</Text>}
+            <View
+              key={variant}
+              style={{ flexDirection: "row", alignItems: "center", gap: 1 }}
+            >
+              <Text
+                style={{ fontSize: 9, fontFamily: "Outfit_700Bold", color }}
+              >
+                {label}
+              </Text>
+              {qty > 1 && (
+                <Text
+                  style={{
+                    fontSize: 8,
+                    fontFamily: "Outfit_600SemiBold",
+                    color,
+                  }}
+                >
+                  ×{qty}
+                </Text>
+              )}
             </View>
           );
         })}
@@ -132,7 +172,10 @@ function CardGridItem({
         styles.gridItem,
         {
           backgroundColor: colors.card,
-          borderColor: (collectionData?.total ?? 0) > 0 ? POKEBALL_GOLD + "80" : colors.borderLight,
+          borderColor:
+            (collectionData?.total ?? 0) > 0
+              ? POKEBALL_GOLD + "80"
+              : colors.borderLight,
           borderWidth: (collectionData?.total ?? 0) > 0 ? 1.5 : 1,
           width: CARD_WIDTH,
           opacity: pressed ? 0.8 : 1,
@@ -151,7 +194,10 @@ function CardGridItem({
       <View style={{ width: CARD_WIDTH, height: CARD_IMG_HEIGHT }}>
         <Image
           source={{ uri: card.images?.small || "" }}
-          style={[styles.gridImage, { height: CARD_IMG_HEIGHT, width: CARD_WIDTH }]}
+          style={[
+            styles.gridImage,
+            { height: CARD_IMG_HEIGHT, width: CARD_WIDTH },
+          ]}
           contentFit="contain"
           placeholder={{ color: colors.surface }}
           transition={200}
@@ -159,20 +205,44 @@ function CardGridItem({
 
         {card.finishType === "Reverse Holo" && (
           <LinearGradient
-            colors={["rgba(255,255,255,0.03)", "rgba(0,191,255,0.16)", "rgba(255,255,255,0.03)"]}
+            colors={[
+              "rgba(255,255,255,0.03)",
+              "rgba(0,191,255,0.16)",
+              "rgba(255,255,255,0.03)",
+            ]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 10, opacity: 0.9 }}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              borderRadius: 10,
+              opacity: 0.9,
+            }}
             pointerEvents="none"
           />
         )}
 
         {card.finishType === "Holo" && (
           <LinearGradient
-            colors={["rgba(255,0,255,0.08)", "rgba(0,255,255,0.15)", "rgba(255,255,0,0.08)"]}
+            colors={[
+              "rgba(255,0,255,0.08)",
+              "rgba(0,255,255,0.15)",
+              "rgba(255,255,0,0.08)",
+            ]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 10, opacity: 0.85 }}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              borderRadius: 10,
+              opacity: 0.85,
+            }}
             pointerEvents="none"
           />
         )}
@@ -191,7 +261,12 @@ function CardGridItem({
           >
             <Text
               style={{
-                color: card.finishType === "Holo" ? "#FFD700" : card.finishType === "Reverse Holo" ? "#00BFFF" : "#FFFFFF",
+                color:
+                  card.finishType === "Holo"
+                    ? "#FFD700"
+                    : card.finishType === "Reverse Holo"
+                      ? "#00BFFF"
+                      : "#FFFFFF",
                 fontSize: 9,
                 fontFamily: "Outfit_700Bold",
               }}
@@ -213,7 +288,13 @@ function CardGridItem({
               paddingVertical: 2,
             }}
           >
-            <Text style={{ color: "#FFD700", fontSize: 9, fontFamily: "Outfit_700Bold" }}>
+            <Text
+              style={{
+                color: "#FFD700",
+                fontSize: 9,
+                fontFamily: "Outfit_700Bold",
+              }}
+            >
               STAMP
             </Text>
           </View>
@@ -225,7 +306,10 @@ function CardGridItem({
       </View>
 
       <View style={styles.gridInfo}>
-        <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={2}>
+        <Text
+          style={[styles.gridName, { color: colors.text }]}
+          numberOfLines={2}
+        >
           {card.name}
         </Text>
         <Text style={[styles.gridNumber, { color: colors.textMuted }]}>
@@ -241,11 +325,26 @@ function CardGridItem({
   );
 }
 
-const NON_ENGLISH_PATTERNS = ["_ja", "_ko", "_zh", "_cn", "topsun", "babanuki", "mengka", "oldmaid", "hanafuda"];
+const NON_ENGLISH_PATTERNS = [
+  "_ja",
+  "_ko",
+  "_zh",
+  "_cn",
+  "topsun",
+  "babanuki",
+  "mengka",
+  "oldmaid",
+  "hanafuda",
+];
 
 function getSetLanguageLabel(setId: string): string {
   const id = (setId || "").toLowerCase();
-  if (["babanuki", "mengka", "topsun", "oldmaid", "hanafuda"].some((p) => id.includes(p))) return "Non-TCG";
+  if (
+    ["babanuki", "mengka", "topsun", "oldmaid", "hanafuda"].some((p) =>
+      id.includes(p),
+    )
+  )
+    return "Non-TCG";
   if (id.includes("_ja")) return "Japanese";
   if (id.includes("_ko")) return "Korean";
   if (id.includes("_zh") || id.includes("_cn")) return "Chinese";
@@ -352,26 +451,32 @@ export default function SetDetailScreen() {
     };
 
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [id, loadKey]);
 
   const availableRarities = useMemo(() => {
     const seen = new Set<string>();
-    allCards.forEach((c) => { if (c.rarity) seen.add(c.rarity); });
+    allCards.forEach((c) => {
+      if (c.rarity) seen.add(c.rarity);
+    });
     return Array.from(seen).sort((a, b) => rarityRank(a) - rarityRank(b));
   }, [allCards]);
 
   const expandedCards = useMemo(() => {
     return allCards.flatMap((card: any) => {
       if (!card?.variants || card.variants.length === 0) {
-        return [{
-          ...card,
-          renderId: `${card.id}-standard`,
-          cardId: card.id,
-          finishType: card.finishType || "Non-Holo",
-          variantLabel: card.variantLabel || null,
-          isStamped: card.isStamped || false,
-        }];
+        return [
+          {
+            ...card,
+            renderId: `${card.id}-standard`,
+            cardId: card.id,
+            finishType: card.finishType || "Non-Holo",
+            variantLabel: card.variantLabel || null,
+            isStamped: card.isStamped || false,
+          },
+        ];
       }
       return card.variants.map((variant: any) => ({
         ...card,
@@ -384,10 +489,7 @@ export default function SetDetailScreen() {
 
         editionType: variant.editionType || "Standard",
 
-        variantLabel:
-          variant.variantLabel ||
-          variant.finishType ||
-          "Standard",
+        variantLabel: variant.variantLabel || variant.finishType || "Standard",
 
         isStamped: variant.isStamped || false,
 
@@ -406,8 +508,14 @@ export default function SetDetailScreen() {
     const safeCards = allCards.map((card: any) => ({
       ...card,
       renderId: `${card.id}-${card.variant || card.variantType || card.finishType || "Non-Holo"}`,
-      finishType: card.finishType || card.variant || card.variantType || "Non-Holo",
-      variantLabel: card.variantLabel || card.variant || card.variantType || card.finishType || "Non-Holo",
+      finishType:
+        card.finishType || card.variant || card.variantType || "Non-Holo",
+      variantLabel:
+        card.variantLabel ||
+        card.variant ||
+        card.variantType ||
+        card.finishType ||
+        "Non-Holo",
     }));
     if (!activeFilter) return safeCards;
     return safeCards.filter((c: any) => c.rarity === activeFilter);
@@ -425,13 +533,17 @@ export default function SetDetailScreen() {
         collectionData={collectionMap.get(item.cardId ?? item.id) ?? null}
       />
     ),
-    [colors, collectionMap]
+    [colors, collectionMap],
   );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient
-        colors={colorScheme === "dark" ? ["#2A0A0A", "#1A1A2E"] : ["#FFF0F0", "#F5F5F5"]}
+        colors={
+          colorScheme === "dark"
+            ? ["#2A0A0A", "#1A1A2E"]
+            : ["#FFF0F0", "#F5F5F5"]
+        }
         style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}
       >
         <View style={styles.headerRow}>
@@ -439,13 +551,22 @@ export default function SetDetailScreen() {
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
           <View style={styles.headerInfo}>
-            <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+            <Text
+              style={[styles.headerTitle, { color: colors.text }]}
+              numberOfLines={1}
+            >
               {name || "Set"}
             </Text>
             <View style={styles.headerMeta}>
               <View style={styles.headerMetaItem}>
-                <MaterialCommunityIcons name="cards-outline" size={13} color={colors.pokemonRed} />
-                <Text style={[styles.headerCount, { color: colors.textSecondary }]}>
+                <MaterialCommunityIcons
+                  name="cards-outline"
+                  size={13}
+                  color={colors.pokemonRed}
+                />
+                <Text
+                  style={[styles.headerCount, { color: colors.textSecondary }]}
+                >
                   {activeFilter
                     ? `${filteredCount} of ${loaded}${totalCount > loaded ? `/${totalCount}` : ""} cards`
                     : `${loaded}${totalCount > 0 ? `/${totalCount}` : ""} cards`}
@@ -453,7 +574,11 @@ export default function SetDetailScreen() {
               </View>
             </View>
           </View>
-          <Pressable onPress={handleRefresh} style={styles.refreshBtn} disabled={isLoading || isRefreshing}>
+          <Pressable
+            onPress={handleRefresh}
+            style={styles.refreshBtn}
+            disabled={isLoading || isRefreshing}
+          >
             <Ionicons
               name="refresh"
               size={20}
@@ -473,13 +598,22 @@ export default function SetDetailScreen() {
               style={[
                 styles.filterChip,
                 {
-                  backgroundColor: !activeFilter ? colors.pokemonRed : colors.surface,
-                  borderColor: !activeFilter ? colors.pokemonRed : colors.borderLight,
+                  backgroundColor: !activeFilter
+                    ? colors.pokemonRed
+                    : colors.surface,
+                  borderColor: !activeFilter
+                    ? colors.pokemonRed
+                    : colors.borderLight,
                 },
               ]}
               onPress={() => setActiveFilter(null)}
             >
-              <Text style={[styles.filterChipText, { color: !activeFilter ? "#FFF" : colors.textSecondary }]}>
+              <Text
+                style={[
+                  styles.filterChipText,
+                  { color: !activeFilter ? "#FFF" : colors.textSecondary },
+                ]}
+              >
                 All
               </Text>
             </Pressable>
@@ -492,13 +626,22 @@ export default function SetDetailScreen() {
                   style={[
                     styles.filterChip,
                     {
-                      backgroundColor: active ? colors.pokemonRed : colors.surface,
-                      borderColor: active ? colors.pokemonRed : colors.borderLight,
+                      backgroundColor: active
+                        ? colors.pokemonRed
+                        : colors.surface,
+                      borderColor: active
+                        ? colors.pokemonRed
+                        : colors.borderLight,
                     },
                   ]}
                   onPress={() => setActiveFilter(active ? null : rarity)}
                 >
-                  <Text style={[styles.filterChipText, { color: active ? "#FFF" : colors.textSecondary }]}>
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      { color: active ? "#FFF" : colors.textSecondary },
+                    ]}
+                  >
                     {rarity}
                   </Text>
                 </Pressable>
@@ -510,8 +653,14 @@ export default function SetDetailScreen() {
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <MaterialCommunityIcons name="pokeball" size={40} color={colors.pokemonRed} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading cards...</Text>
+          <MaterialCommunityIcons
+            name="pokeball"
+            size={40}
+            color={colors.pokemonRed}
+          />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+            Loading cards...
+          </Text>
         </View>
       ) : (
         <FlatList
@@ -534,7 +683,9 @@ export default function SetDetailScreen() {
             isLoadingMore ? (
               <View style={styles.footerLoader}>
                 <ActivityIndicator color={colors.pokemonRed} />
-                <Text style={[styles.footerText, { color: colors.textSecondary }]}>
+                <Text
+                  style={[styles.footerText, { color: colors.textSecondary }]}
+                >
                   Loading {totalCount - loaded} more cards...
                 </Text>
               </View>
@@ -543,41 +694,72 @@ export default function SetDetailScreen() {
           ListEmptyComponent={
             hasError ? (
               <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="wifi-off" size={48} color={colors.textMuted} />
-                <Text style={[styles.emptyText, { color: colors.text }]}>Couldn't load cards</Text>
-                <Text style={[styles.emptySubText, { color: colors.textSecondary }]}>
-                  This set may be unavailable. Pull down or tap refresh to try again.
+                <MaterialCommunityIcons
+                  name="wifi-off"
+                  size={48}
+                  color={colors.textMuted}
+                />
+                <Text style={[styles.emptyText, { color: colors.text }]}>
+                  Couldn't load cards
                 </Text>
-                <Pressable onPress={handleRefresh} style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}>
+                <Text
+                  style={[styles.emptySubText, { color: colors.textSecondary }]}
+                >
+                  This set may be unavailable. Pull down or tap refresh to try
+                  again.
+                </Text>
+                <Pressable
+                  onPress={handleRefresh}
+                  style={[
+                    styles.retryBtn,
+                    { backgroundColor: colors.pokemonRed },
+                  ]}
+                >
                   <Ionicons name="refresh" size={16} color="#FFF" />
                   <Text style={styles.retryBtnText}>Retry</Text>
                 </Pressable>
               </View>
             ) : activeFilter ? (
               <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="filter-outline" size={48} color={colors.textMuted} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                <MaterialCommunityIcons
+                  name="filter-outline"
+                  size={48}
+                  color={colors.textMuted}
+                />
+                <Text
+                  style={[styles.emptyText, { color: colors.textSecondary }]}
+                >
                   No {activeFilter} cards in this set
                 </Text>
               </View>
             ) : isNonEnglishSet(id as string) ? (
               <View style={styles.emptyContainer}>
                 <Text style={{ fontSize: 48, textAlign: "center" }}>
-                  {getSetLanguageLabel(id as string) === "Japanese" ? "🇯🇵"
-                    : getSetLanguageLabel(id as string) === "Korean" ? "🇰🇷"
-                    : getSetLanguageLabel(id as string) === "Chinese" ? "🇨🇳"
-                    : "🎴"}
+                  {getSetLanguageLabel(id as string) === "Japanese"
+                    ? "🇯🇵"
+                    : getSetLanguageLabel(id as string) === "Korean"
+                      ? "🇰🇷"
+                      : getSetLanguageLabel(id as string) === "Chinese"
+                        ? "🇨🇳"
+                        : "🎴"}
                 </Text>
                 <Text style={[styles.emptyText, { color: colors.text }]}>
                   {getSetLanguageLabel(id as string)} Set
                 </Text>
-                <Text style={[styles.emptySubText, { color: colors.textSecondary }]}>
-                  Individual card data for this set isn't available yet in the database.{"\n\n"}
-                  Use the Scanner tab to identify any card — the AI will recognise it and show you its details and UK pricing.
+                <Text
+                  style={[styles.emptySubText, { color: colors.textSecondary }]}
+                >
+                  Individual card data for this set isn't available yet in the
+                  database.{"\n\n"}
+                  Use the Scanner tab to identify any card — the AI will
+                  recognise it and show you its details and UK pricing.
                 </Text>
                 <Pressable
                   onPress={() => router.push("/(tabs)/scanner")}
-                  style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}
+                  style={[
+                    styles.retryBtn,
+                    { backgroundColor: colors.pokemonRed },
+                  ]}
                 >
                   <Ionicons name="scan-outline" size={16} color="#FFF" />
                   <Text style={styles.retryBtnText}>Open Scanner</Text>
@@ -585,8 +767,14 @@ export default function SetDetailScreen() {
               </View>
             ) : (
               <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="cards-outline" size={48} color={colors.textMuted} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                <MaterialCommunityIcons
+                  name="cards-outline"
+                  size={48}
+                  color={colors.textMuted}
+                />
+                <Text
+                  style={[styles.emptyText, { color: colors.textSecondary }]}
+                >
                   No cards found for this set
                 </Text>
               </View>
@@ -601,16 +789,41 @@ export default function SetDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 8 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 0 },
-  backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 0,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   headerInfo: { flex: 1 },
   headerTitle: { fontSize: 20, fontFamily: "Outfit_700Bold" },
-  headerMeta: { flexDirection: "row", gap: 16, alignItems: "center", marginTop: 3 },
+  headerMeta: {
+    flexDirection: "row",
+    gap: 16,
+    alignItems: "center",
+    marginTop: 3,
+  },
   headerMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   headerCount: { fontSize: 13, fontFamily: "Outfit_500Medium" },
   filterScroll: { marginTop: 10, marginHorizontal: -16 },
-  filterContent: { paddingHorizontal: 16, paddingBottom: 6, gap: 8, flexDirection: "row" },
-  filterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  filterContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 6,
+    gap: 8,
+    flexDirection: "row",
+  },
+  filterChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
   filterChipText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
   listContent: { paddingHorizontal: H_PAD, paddingTop: 10 },
   gridRow: { gap: GAP, marginBottom: GAP },
@@ -620,12 +833,33 @@ const styles = StyleSheet.create({
   gridName: { fontSize: 11, fontFamily: "Outfit_600SemiBold", lineHeight: 14 },
   gridNumber: { fontSize: 10, fontFamily: "Outfit_400Regular" },
   gridPrice: { fontSize: 11, fontFamily: "Outfit_700Bold", marginTop: 2 },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
   loadingText: { fontSize: 14, fontFamily: "Outfit_500Medium" },
-  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 80, gap: 12 },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 80,
+    gap: 12,
+  },
   emptyText: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
-  emptySubText: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 32 },
-  refreshBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  emptySubText: {
+    fontSize: 13,
+    fontFamily: "Outfit_400Regular",
+    textAlign: "center",
+    paddingHorizontal: 32,
+  },
+  refreshBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   retryBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -635,9 +869,24 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginTop: 8,
   },
-  retryBtnText: { color: "#FFF", fontSize: 14, fontFamily: "Outfit_600SemiBold" },
-  footerLoader: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16 },
+  retryBtnText: {
+    color: "#FFF",
+    fontSize: 14,
+    fontFamily: "Outfit_600SemiBold",
+  },
+  footerLoader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 16,
+  },
   footerText: { fontSize: 13, fontFamily: "Outfit_400Regular" },
   collectionBadge: { position: "absolute", bottom: 4, right: 4 },
-  collectionBadgeInner: { flexDirection: "row", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" },
+  collectionBadgeInner: {
+    flexDirection: "row",
+    gap: 3,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
 });
