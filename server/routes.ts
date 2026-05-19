@@ -120,13 +120,10 @@ function setCardCache(id: string, data: any) {
   cardMemCache.set(id, { data, ts: Date.now() });
 }
 // Bulk-populate card cache from a set response (call after any set load)
-
-  function warmCardCache(cards: any[]) {
-    // Don't warm individual card cache from set responses —
-    // set responses don't include variants, so warming here
-    // would serve variant-less cards for up to 20 minutes.
-    }
-  }
+function warmCardCache(cards: any[]) {
+  // Don't warm individual card cache from set responses.
+  // Set responses don't include variants, so warming here
+  // would serve variant-less cards for up to 20 minutes.
 }
 
 function detectSetLanguage(
