@@ -1024,11 +1024,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         } catch (error: any) {
           if (error?.name === "AbortError") {
-            res
-              .status(504)
-              .json({
-                error: "Cards took too long to load. Please try again.",
-              });
+            res.status(504).json({
+              error: "Cards took too long to load. Please try again.",
+            });
           } else {
             console.error("Failed to fetch set cards:", error);
             res
@@ -1039,11 +1037,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (err: any) {
         if (!res.headersSent) {
           if (err?.name === "AbortError") {
-            res
-              .status(504)
-              .json({
-                error: "Cards took too long to load. Please try again.",
-              });
+            res.status(504).json({
+              error: "Cards took too long to load. Please try again.",
+            });
           } else {
             console.error("Failed to fetch set cards (outer):", err);
             res
@@ -1367,17 +1363,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           pricing[0] ?? null,
           ebayData,
         );
-
-        formattedCard.variants = variantRows.map((v) => ({
-          variantId: v.id,
-          finishType: v.finishType,
-          editionType: v.editionType,
-          variantLabel: v.variantLabel,
-          isStamped: v.isStamped,
-          language: v.language,
-          images: v.imageUrl
-            ? { small: v.imageUrl, large: v.imageUrl }
-            : formattedCard.images,
+        
+        console.error("CARD ENDPOINT FAILURE:", error);
+        formattedCard.variants = (variantRows || []).map((v) => ({
+          variantId: v?.id || null,
+          finishType: v?.finishType || "normal",
+          editionType: v?.editionType || null,
+          variantLabel: v?.variantLabel || "Non-Holo",
+          isStamped: Boolean(v?.isStamped),
+          language: v?.language || "en",
+          images: v?.imageUrl
+            ? {
+                small: v.imageUrl,
+                large: v.imageUrl,
+              }
+            : formattedCard.images || null,
         }));
 
         const setData = await db
@@ -1448,20 +1448,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isDevMode = process.env.NODE_ENV === "development";
       if (syncSecret) {
         if (authHeader !== syncSecret) {
-          res
-            .status(401)
-            .json({
-              error: "Unauthorized: valid x-sync-secret header required",
-            });
+          res.status(401).json({
+            error: "Unauthorized: valid x-sync-secret header required",
+          });
           return;
         }
       } else if (!isDevMode) {
-        res
-          .status(403)
-          .json({
-            error:
-              "Forbidden: set SYNC_SECRET environment variable to enable manual sync in production",
-          });
+        res.status(403).json({
+          error:
+            "Forbidden: set SYNC_SECRET environment variable to enable manual sync in production",
+        });
         return;
       }
       runFullSync(true).catch((err) =>
@@ -1901,13 +1897,11 @@ Rules:
               aiErr.name === "AbortError" ||
               aiErr.code === "ERR_CANCELED"
             ) {
-              res
-                .status(408)
-                .json({
-                  error:
-                    aiErr.message ||
-                    "AI identification timed out. Please try again.",
-                });
+              res.status(408).json({
+                error:
+                  aiErr.message ||
+                  "AI identification timed out. Please try again.",
+              });
               return;
             }
             throw aiErr;
@@ -2062,13 +2056,11 @@ ${setReference}`,
             aiErr.name === "AbortError" ||
             aiErr.code === "ERR_CANCELED"
           ) {
-            res
-              .status(408)
-              .json({
-                error:
-                  aiErr.message ||
-                  "AI identification timed out. Please try again.",
-              });
+            res.status(408).json({
+              error:
+                aiErr.message ||
+                "AI identification timed out. Please try again.",
+            });
             return;
           }
           throw aiErr;
@@ -2265,11 +2257,9 @@ ${setReference}`,
     try {
       const { username, displayName, email, mobileNumber, password } = req.body;
       if (!username || !displayName || !email || !password) {
-        res
-          .status(400)
-          .json({
-            error: "Username, display name, email and password are required",
-          });
+        res.status(400).json({
+          error: "Username, display name, email and password are required",
+        });
         return;
       }
       if (password.length < 6) {
@@ -2333,20 +2323,16 @@ ${setReference}`,
       const result = verifyOtp(normalised, code);
       if (!result.valid) {
         if (result.tooManyAttempts) {
-          res
-            .status(429)
-            .json({
-              error: "Too many incorrect attempts. Please request a new code.",
-            });
+          res.status(429).json({
+            error: "Too many incorrect attempts. Please request a new code.",
+          });
           return;
         }
-        res
-          .status(401)
-          .json({
-            error: result.expired
-              ? "Code expired. Please request a new one."
-              : "Incorrect code. Please try again.",
-          });
+        res.status(401).json({
+          error: result.expired
+            ? "Code expired. Please request a new one."
+            : "Incorrect code. Please try again.",
+        });
         return;
       }
       const user = await storage.getUserByEmail(normalised);
@@ -2409,12 +2395,10 @@ ${setReference}`,
         return;
       }
       if (caller.isPremium && caller.subscriptionStatus === "active") {
-        res
-          .status(403)
-          .json({
-            error:
-              "Please cancel your Premium subscription before deleting your account.",
-          });
+        res.status(403).json({
+          error:
+            "Please cancel your Premium subscription before deleting your account.",
+        });
         return;
       }
       await storage.deleteUser(caller.id);
@@ -2447,12 +2431,9 @@ ${setReference}`,
         return;
       }
       if (!user.passwordHash) {
-        res
-          .status(401)
-          .json({
-            error:
-              "This account does not have a password set. Contact an admin.",
-          });
+        res.status(401).json({
+          error: "This account does not have a password set. Contact an admin.",
+        });
         return;
       }
       const valid = await bcrypt.compare(password, user.passwordHash);
@@ -2499,12 +2480,9 @@ ${setReference}`,
         return;
       }
       if (!user.passwordHash) {
-        res
-          .status(401)
-          .json({
-            error:
-              "This account does not have a password set. Contact an admin.",
-          });
+        res.status(401).json({
+          error: "This account does not have a password set. Contact an admin.",
+        });
         return;
       }
       const valid = await bcrypt.compare(password, user.passwordHash);
@@ -2569,12 +2547,10 @@ ${setReference}`,
 
       const { code, rateLimited } = createOtp(credential);
       if (rateLimited) {
-        res
-          .status(429)
-          .json({
-            error:
-              "Too many requests. Please wait before requesting another code.",
-          });
+        res.status(429).json({
+          error:
+            "Too many requests. Please wait before requesting another code.",
+        });
         return;
       }
       let sent = false;
@@ -2619,12 +2595,10 @@ ${setReference}`,
           targetCredential = user.email;
           const { code, rateLimited } = createOtp(targetCredential);
           if (rateLimited) {
-            res
-              .status(429)
-              .json({
-                error:
-                  "Too many requests. Please wait before requesting another code.",
-              });
+            res.status(429).json({
+              error:
+                "Too many requests. Please wait before requesting another code.",
+            });
             return;
           }
           sent = await sendOtpByEmail(user.email, code);
@@ -2632,12 +2606,10 @@ ${setReference}`,
           targetCredential = user.mobileNumber;
           const { code, rateLimited } = createOtp(targetCredential);
           if (rateLimited) {
-            res
-              .status(429)
-              .json({
-                error:
-                  "Too many requests. Please wait before requesting another code.",
-              });
+            res.status(429).json({
+              error:
+                "Too many requests. Please wait before requesting another code.",
+            });
             return;
           }
           sent = await sendOtpBySms(user.mobileNumber, code);
@@ -2667,20 +2639,16 @@ ${setReference}`,
       const result = verifyOtp(credential, code);
       if (!result.valid) {
         if (result.tooManyAttempts) {
-          res
-            .status(429)
-            .json({
-              error: "Too many incorrect attempts. Please request a new code.",
-            });
+          res.status(429).json({
+            error: "Too many incorrect attempts. Please request a new code.",
+          });
           return;
         }
-        res
-          .status(401)
-          .json({
-            error: result.expired
-              ? "Verification code has expired. Please request a new one."
-              : "Incorrect verification code. Please try again.",
-          });
+        res.status(401).json({
+          error: result.expired
+            ? "Verification code has expired. Please request a new one."
+            : "Incorrect verification code. Please try again.",
+        });
         return;
       }
 
@@ -3085,20 +3053,16 @@ ${setReference}`,
         return;
       }
       if (user.role === "admin" || user.role === "moderator") {
-        res
-          .status(403)
-          .json({
-            error:
-              "Staff premium cannot be self-cancelled. Contact a superadmin.",
-          });
+        res.status(403).json({
+          error:
+            "Staff premium cannot be self-cancelled. Contact a superadmin.",
+        });
         return;
       }
       if (!user.isPremium) {
-        res
-          .status(400)
-          .json({
-            error: "Account does not have an active premium subscription.",
-          });
+        res.status(400).json({
+          error: "Account does not have an active premium subscription.",
+        });
         return;
       }
 
@@ -4137,11 +4101,9 @@ ${setReference}`,
       res.json({ history: entries });
     } catch (error: any) {
       console.error("Scan history delete error:", error);
-      res
-        .status(500)
-        .json({
-          error: error.message || "Failed to delete scan history entry",
-        });
+      res.status(500).json({
+        error: error.message || "Failed to delete scan history entry",
+      });
     }
   });
 
@@ -4402,11 +4364,9 @@ ${setReference}`,
         const { id } = req.params;
         const { frontImageBase64, backImageBase64 } = req.body;
         if (!frontImageBase64 || !backImageBase64) {
-          res
-            .status(400)
-            .json({
-              error: "Both frontImageBase64 and backImageBase64 are required",
-            });
+          res.status(400).json({
+            error: "Both frontImageBase64 and backImageBase64 are required",
+          });
           return;
         }
 
@@ -4835,11 +4795,9 @@ matches must be true or false.`;
 
         const { cardId, cardName, cardImage, frontPhoto, backPhoto } = req.body;
         if (!cardId || !cardName || !frontPhoto || !backPhoto) {
-          res
-            .status(400)
-            .json({
-              error: "cardId, cardName, frontPhoto and backPhoto are required",
-            });
+          res.status(400).json({
+            error: "cardId, cardName, frontPhoto and backPhoto are required",
+          });
           return;
         }
 
@@ -4851,12 +4809,10 @@ matches must be true or false.`;
             LIMIT 1`,
         );
         if (cardOwnership.rows.length === 0) {
-          res
-            .status(403)
-            .json({
-              error:
-                "The selected card must be a professionally graded entry in your collection (add it with a grading company and grade first)",
-            });
+          res.status(403).json({
+            error:
+              "The selected card must be a professionally graded entry in your collection (add it with a grading company and grade first)",
+          });
           return;
         }
 
@@ -4865,11 +4821,9 @@ matches must be true or false.`;
           sql`SELECT id FROM pokescan_collector_verifications WHERE user_id = ${user.id} AND status = 'pending'`,
         );
         if (existing.rows.length > 0) {
-          res
-            .status(409)
-            .json({
-              error: "You already have a pending verification application",
-            });
+          res.status(409).json({
+            error: "You already have a pending verification application",
+          });
           return;
         }
 
@@ -4923,11 +4877,9 @@ matches must be true or false.`;
             : null,
         });
       } catch (error: any) {
-        res
-          .status(500)
-          .json({
-            error: error.message || "Failed to get verification status",
-          });
+        res.status(500).json({
+          error: error.message || "Failed to get verification status",
+        });
       }
     },
   );
@@ -5336,20 +5288,16 @@ matches must be true or false.`;
   // via the regular email+password flow (POST /api/auth/login). Stubs below
   // return a clear error so older APKs prompt the user to update.
   app.post("/api/admin/request-otp", (_req: Request, res: Response) => {
-    res
-      .status(410)
-      .json({
-        error:
-          "Admin code login has been removed. Please update the app and use the email + password login.",
-      });
+    res.status(410).json({
+      error:
+        "Admin code login has been removed. Please update the app and use the email + password login.",
+    });
   });
   app.post("/api/admin/verify-otp", (_req: Request, res: Response) => {
-    res
-      .status(410)
-      .json({
-        error:
-          "Admin code login has been removed. Please update the app and use the email + password login.",
-      });
+    res.status(410).json({
+      error:
+        "Admin code login has been removed. Please update the app and use the email + password login.",
+    });
   });
 
   // Validate a stored superadmin token (used by client to check if it's still good).
@@ -5382,11 +5330,9 @@ matches must be true or false.`;
         return;
       }
       if (!username || !displayName || !email || !password) {
-        res
-          .status(400)
-          .json({
-            error: "Username, display name, email and password are required",
-          });
+        res.status(400).json({
+          error: "Username, display name, email and password are required",
+        });
         return;
       }
       if (password.length < 6) {
@@ -6933,12 +6879,10 @@ Return ONLY valid JSON in exactly this format with no markdown:
         caller.chatBannedUntil &&
         new Date(caller.chatBannedUntil) > new Date()
       ) {
-        res
-          .status(403)
-          .json({
-            error: "You are banned from the chat",
-            bannedUntil: caller.chatBannedUntil,
-          });
+        res.status(403).json({
+          error: "You are banned from the chat",
+          bannedUntil: caller.chatBannedUntil,
+        });
         return;
       }
 
@@ -6978,12 +6922,10 @@ Return ONLY valid JSON in exactly this format with no markdown:
         caller.chatBannedUntil &&
         new Date(caller.chatBannedUntil) > new Date()
       ) {
-        res
-          .status(403)
-          .json({
-            error: "You are banned from the chat",
-            bannedUntil: caller.chatBannedUntil,
-          });
+        res.status(403).json({
+          error: "You are banned from the chat",
+          bannedUntil: caller.chatBannedUntil,
+        });
         return;
       }
 
@@ -7049,12 +6991,10 @@ Return ONLY valid JSON in exactly this format with no markdown:
           new Date(caller.chatBannedUntil) > new Date() &&
           !isStaffRole(caller.role)
         ) {
-          res
-            .status(403)
-            .json({
-              error: "You are banned from the chat",
-              bannedUntil: caller.chatBannedUntil,
-            });
+          res.status(403).json({
+            error: "You are banned from the chat",
+            bannedUntil: caller.chatBannedUntil,
+          });
           return;
         }
 

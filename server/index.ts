@@ -6,6 +6,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 const app = express();
+app.disable("etag");
 app.get("/api/users", (req, res) => {
   res.json([{ id: 1, email: "test@example.com" }]);
 });
@@ -236,7 +237,10 @@ process.on("uncaughtException", (err) => {
 });
 
 process.on("unhandledRejection", (reason) => {
-  console.error("[Server] Unhandled promise rejection — keeping process alive:", reason);
+  console.error(
+    "[Server] Unhandled promise rejection — keeping process alive:",
+    reason,
+  );
 });
 
 (async () => {
