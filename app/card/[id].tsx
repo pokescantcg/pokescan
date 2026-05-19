@@ -52,18 +52,37 @@ interface ExtendedEbayPrice {
   } | null;
 }
 
-function PriceRow({ label, value, colors }: { label: string; value: number | null; colors: ReturnType<typeof useThemeColors> }) {
+function PriceRow({
+  label,
+  value,
+  colors,
+}: {
+  label: string;
+  value: number | null;
+  colors: ReturnType<typeof useThemeColors>;
+}) {
   return (
     <View style={styles.priceRow}>
-      <Text style={[styles.priceLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.priceValue, { color: value ? colors.text : colors.textMuted }]}>
+      <Text style={[styles.priceLabel, { color: colors.textSecondary }]}>
+        {label}
+      </Text>
+      <Text
+        style={[
+          styles.priceValue,
+          { color: value ? colors.text : colors.textMuted },
+        ]}
+      >
         {formatGBP(value)}
       </Text>
     </View>
   );
 }
 
-function SoldPriceBreakdown({ ext, loading, colors }: {
+function SoldPriceBreakdown({
+  ext,
+  loading,
+  colors,
+}: {
   ext: ExtendedEbayPrice | null;
   loading: boolean;
   colors: ReturnType<typeof useThemeColors>;
@@ -71,38 +90,59 @@ function SoldPriceBreakdown({ ext, loading, colors }: {
   const [gradedOpen, setGradedOpen] = useState(false);
   const hasAnyGraded = useMemo(() => {
     if (!ext?.gradedPrices) return false;
-    return GRADERS.some(g => ext.gradedPrices![g][9] !== null || ext.gradedPrices![g][10] !== null);
+    return GRADERS.some(
+      (g) =>
+        ext.gradedPrices![g][9] !== null || ext.gradedPrices![g][10] !== null,
+    );
   }, [ext]);
 
   if (loading) {
     return (
       <View style={styles.soldLoadingRow}>
         <ActivityIndicator size="small" color={colors.pokemonRed} />
-        <Text style={[styles.soldLoadingText, { color: colors.textMuted }]}>Fetching eBay sold prices…</Text>
+        <Text style={[styles.soldLoadingText, { color: colors.textMuted }]}>
+          Fetching eBay sold prices…
+        </Text>
       </View>
     );
   }
-  if (!ext || (ext.lowestSold === null && ext.medianSold === null && ext.highestSold === null)) return null;
+  if (
+    !ext ||
+    (ext.lowestSold === null &&
+      ext.medianSold === null &&
+      ext.highestSold === null)
+  )
+    return null;
 
   return (
     <View style={styles.soldBreakdownWrap}>
       <View style={styles.soldRow}>
         <View style={styles.soldStat}>
-          <Text style={[styles.soldStatLabel, { color: colors.textMuted }]}>Lowest Sold</Text>
+          <Text style={[styles.soldStatLabel, { color: colors.textMuted }]}>
+            Lowest Sold
+          </Text>
           <Text style={[styles.soldStatValue, { color: colors.pokemonBlue }]}>
             {ext.lowestSold !== null ? formatGBP(ext.lowestSold) : "—"}
           </Text>
         </View>
-        <View style={[styles.soldDivider, { backgroundColor: colors.borderLight }]} />
+        <View
+          style={[styles.soldDivider, { backgroundColor: colors.borderLight }]}
+        />
         <View style={styles.soldStat}>
-          <Text style={[styles.soldStatLabel, { color: colors.textMuted }]}>Median Sold</Text>
+          <Text style={[styles.soldStatLabel, { color: colors.textMuted }]}>
+            Median Sold
+          </Text>
           <Text style={[styles.soldStatValue, { color: colors.success }]}>
             {ext.medianSold !== null ? formatGBP(ext.medianSold) : "—"}
           </Text>
         </View>
-        <View style={[styles.soldDivider, { backgroundColor: colors.borderLight }]} />
+        <View
+          style={[styles.soldDivider, { backgroundColor: colors.borderLight }]}
+        />
         <View style={styles.soldStat}>
-          <Text style={[styles.soldStatLabel, { color: colors.textMuted }]}>Highest Sold</Text>
+          <Text style={[styles.soldStatLabel, { color: colors.textMuted }]}>
+            Highest Sold
+          </Text>
           <Text style={[styles.soldStatValue, { color: colors.pokemonRed }]}>
             {ext.highestSold !== null ? formatGBP(ext.highestSold) : "—"}
           </Text>
@@ -111,32 +151,64 @@ function SoldPriceBreakdown({ ext, loading, colors }: {
 
       <Pressable
         style={[styles.gradedToggle, { borderTopColor: colors.borderLight }]}
-        onPress={() => setGradedOpen(v => !v)}
+        onPress={() => setGradedOpen((v) => !v)}
       >
-        <MaterialCommunityIcons name="certificate-outline" size={14} color={colors.textMuted} />
+        <MaterialCommunityIcons
+          name="certificate-outline"
+          size={14}
+          color={colors.textMuted}
+        />
         <Text style={[styles.gradedToggleText, { color: colors.textMuted }]}>
-          {gradedOpen ? "Hide Graded Prices" : "Graded Prices (PSA / BGS / ACE / CGC)"}
+          {gradedOpen
+            ? "Hide Graded Prices"
+            : "Graded Prices (PSA / BGS / ACE / CGC)"}
         </Text>
-        <Ionicons name={gradedOpen ? "chevron-up" : "chevron-down"} size={13} color={colors.textMuted} />
+        <Ionicons
+          name={gradedOpen ? "chevron-up" : "chevron-down"}
+          size={13}
+          color={colors.textMuted}
+        />
       </Pressable>
 
       {gradedOpen && (
         <View style={styles.gradedGrid}>
           <View style={styles.gradedHeaderRow}>
             <View style={styles.gradedLabelCol} />
-            <Text style={[styles.gradedColHeader, { color: colors.textMuted }]}>Grade 9</Text>
-            <Text style={[styles.gradedColHeader, { color: colors.textMuted }]}>Grade 10</Text>
+            <Text style={[styles.gradedColHeader, { color: colors.textMuted }]}>
+              Grade 9
+            </Text>
+            <Text style={[styles.gradedColHeader, { color: colors.textMuted }]}>
+              Grade 10
+            </Text>
           </View>
-          {GRADERS.map(grader => {
+          {GRADERS.map((grader) => {
             const g9 = ext.gradedPrices?.[grader][9] ?? null;
             const g10 = ext.gradedPrices?.[grader][10] ?? null;
             return (
-              <View key={grader} style={[styles.gradedRow, { borderTopColor: colors.borderLight }]}>
-                <Text style={[styles.graderName, { color: colors.text }]}>{grader}</Text>
-                <Text style={[styles.gradedPrice, { color: g9 !== null ? colors.success : colors.textMuted }]}>
+              <View
+                key={grader}
+                style={[
+                  styles.gradedRow,
+                  { borderTopColor: colors.borderLight },
+                ]}
+              >
+                <Text style={[styles.graderName, { color: colors.text }]}>
+                  {grader}
+                </Text>
+                <Text
+                  style={[
+                    styles.gradedPrice,
+                    { color: g9 !== null ? colors.success : colors.textMuted },
+                  ]}
+                >
                   {g9 !== null ? formatGBP(g9) : "No data"}
                 </Text>
-                <Text style={[styles.gradedPrice, { color: g10 !== null ? colors.success : colors.textMuted }]}>
+                <Text
+                  style={[
+                    styles.gradedPrice,
+                    { color: g10 !== null ? colors.success : colors.textMuted },
+                  ]}
+                >
                   {g10 !== null ? formatGBP(g10) : "No data"}
                 </Text>
               </View>
@@ -154,21 +226,29 @@ function SoldPriceBreakdown({ ext, loading, colors }: {
 }
 
 export default function CardDetailScreen() {
-  const { id, variant: routeVariant } = useLocalSearchParams<{ id: string; variant?: string }>();
+  const { id, variant: routeVariant } = useLocalSearchParams<{
+    id: string;
+    variant?: string;
+  }>();
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
   const { user, addCard, createListing, collection } = useUser();
   const [selectedCondition, setSelectedCondition] = useState("Near Mint");
   const [selectedVariant, setSelectedVariant] = useState<CardVariant>(
-    (routeVariant || "Non-Holo") as CardVariant
+    (routeVariant || "Non-Holo") as CardVariant,
   );
   const [gradingCompany, setGradingCompany] = useState("");
   const [grade, setGrade] = useState("");
 
-  const [ebayFetchedPrice, setEbayFetchedPrice] = useState<{ price: number | null; source: string } | null>(null);
+  const [ebayFetchedPrice, setEbayFetchedPrice] = useState<{
+    price: number | null;
+    source: string;
+  } | null>(null);
   const [ebayPriceLoading, setEbayPriceLoading] = useState(false);
-  const [extEbayPrice, setExtEbayPrice] = useState<ExtendedEbayPrice | null>(null);
+  const [extEbayPrice, setExtEbayPrice] = useState<ExtendedEbayPrice | null>(
+    null,
+  );
 
   // Listing modal state
   const [listingModalVisible, setListingModalVisible] = useState(false);
@@ -179,14 +259,26 @@ export default function CardDetailScreen() {
   const [listingPhotos, setListingPhotos] = useState<string[]>([]);
   const [listingLoading, setListingLoading] = useState(false);
 
-  const { data: card, isLoading, isError, refetch } = useQuery({
+  const {
+    data: card,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ["card", id],
     queryFn: () => fetchCard(id),
-    staleTime: 1000 * 60 * 30,
+    staleTime: 0,
     retry: 1,
   });
 
-  const conditions = ["Mint", "Near Mint", "Excellent", "Good", "Light Play", "Played"];
+  const conditions = [
+    "Mint",
+    "Near Mint",
+    "Excellent",
+    "Good",
+    "Light Play",
+    "Played",
+  ];
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   const inCollection = collection.some((c) => c.cardId === id);
@@ -219,7 +311,11 @@ export default function CardDetailScreen() {
     fetch(url.toString())
       .then((r) => r.json())
       .then((data) => {
-        if (data.price) setEbayFetchedPrice({ price: data.price, source: data.source || "eBay UK (Sold)" });
+        if (data.price)
+          setEbayFetchedPrice({
+            price: data.price,
+            source: data.source || "eBay UK (Sold)",
+          });
         if (data.medianSold !== undefined || data.lowestSold !== undefined) {
           setExtEbayPrice({
             lowestSold: data.lowestSold ?? null,
@@ -235,7 +331,9 @@ export default function CardDetailScreen() {
 
   useEffect(() => {
     if (!card || !ebayFetchedPrice?.price || !user) return;
-    const nullPriceItems = collection.filter((c) => c.cardId === card.id && !c.priceGBP && c.id);
+    const nullPriceItems = collection.filter(
+      (c) => c.cardId === card.id && !c.priceGBP && c.id,
+    );
     if (nullPriceItems.length === 0) return;
     nullPriceItems.forEach((item) => {
       updateCollectionItemPrice(item.id!, ebayFetchedPrice.price!);
@@ -244,14 +342,21 @@ export default function CardDetailScreen() {
 
   const handleAddToCollection = () => {
     if (!user) {
-      Alert.alert("Sign In Required", "Create an account to add cards to your collection.", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Sign In", onPress: () => router.push("/register") },
-      ]);
+      Alert.alert(
+        "Sign In Required",
+        "Create an account to add cards to your collection.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Sign In", onPress: () => router.push("/register") },
+        ],
+      );
       return;
     }
     if (!user.isPremium) {
-      Alert.alert("Premium Required", "Upgrade to Premium to save cards to your collection.");
+      Alert.alert(
+        "Premium Required",
+        "Upgrade to Premium to save cards to your collection.",
+      );
       return;
     }
     if (!card) return;
@@ -277,15 +382,21 @@ export default function CardDetailScreen() {
 
   const openListingModal = (type: "sale" | "trade") => {
     if (!user?.isPremium) {
-      Alert.alert("Premium Required", "Upgrade to Premium to list cards on the marketplace.", [
-        { text: "Cancel", style: "cancel" },
-        { text: "Upgrade", onPress: () => router.push("/premium") },
-      ]);
+      Alert.alert(
+        "Premium Required",
+        "Upgrade to Premium to list cards on the marketplace.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Upgrade", onPress: () => router.push("/premium") },
+        ],
+      );
       return;
     }
     if (!card) return;
     setListingType(type);
-    setListingPrice(type === "sale" ? String(getUKPrice(card).price ?? "") : "");
+    setListingPrice(
+      type === "sale" ? String(getUKPrice(card).price ?? "") : "",
+    );
     setListingDescription("");
     setListingPhotos([]);
     setListingModalVisible(true);
@@ -298,7 +409,10 @@ export default function CardDetailScreen() {
     }
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow photo library access to add photos to your listing.");
+      Alert.alert(
+        "Permission needed",
+        "Allow photo library access to add photos to your listing.",
+      );
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -309,7 +423,10 @@ export default function CardDetailScreen() {
       base64: true,
     });
     if (!result.canceled && result.assets[0]?.base64) {
-      setListingPhotos((prev) => [...prev, `data:image/jpeg;base64,${result.assets[0].base64}`]);
+      setListingPhotos((prev) => [
+        ...prev,
+        `data:image/jpeg;base64,${result.assets[0].base64}`,
+      ]);
     }
   }, [listingPhotos]);
 
@@ -320,7 +437,10 @@ export default function CardDetailScreen() {
     }
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("Permission needed", "Allow camera access to take photos for your listing.");
+      Alert.alert(
+        "Permission needed",
+        "Allow camera access to take photos for your listing.",
+      );
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -329,7 +449,10 @@ export default function CardDetailScreen() {
       base64: true,
     });
     if (!result.canceled && result.assets[0]?.base64) {
-      setListingPhotos((prev) => [...prev, `data:image/jpeg;base64,${result.assets[0].base64}`]);
+      setListingPhotos((prev) => [
+        ...prev,
+        `data:image/jpeg;base64,${result.assets[0].base64}`,
+      ]);
     }
   }, [listingPhotos]);
 
@@ -341,9 +464,8 @@ export default function CardDetailScreen() {
     if (!card || !user) return;
     setListingLoading(true);
     try {
-      const priceVal = listingType === "sale"
-        ? (parseFloat(listingPrice) || null)
-        : null;
+      const priceVal =
+        listingType === "sale" ? parseFloat(listingPrice) || null : null;
       await createListing({
         userId: user.id,
         userName: user.displayName,
@@ -363,14 +485,26 @@ export default function CardDetailScreen() {
       setListingModalVisible(false);
       Alert.alert(
         "Listed!",
-        `${card.name} listed for ${listingType === "sale" ? "sale" : "trade"} on the marketplace.`
+        `${card.name} listed for ${listingType === "sale" ? "sale" : "trade"} on the marketplace.`,
       );
     } catch (err: any) {
-      Alert.alert("Error", err.message ?? "Could not create listing. Please try again.");
+      Alert.alert(
+        "Error",
+        err.message ?? "Could not create listing. Please try again.",
+      );
     } finally {
       setListingLoading(false);
     }
-  }, [card, user, listingType, listingPrice, listingDescription, listingPhotos, selectedCondition, createListing]);
+  }, [
+    card,
+    user,
+    listingType,
+    listingPrice,
+    listingDescription,
+    listingPhotos,
+    selectedCondition,
+    createListing,
+  ]);
 
   const openEbayListings = () => {
     if (!card) return;
@@ -387,13 +521,22 @@ export default function CardDetailScreen() {
   if (isLoading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}>
+        <View
+          style={[
+            styles.header,
+            { paddingTop: (insets.top || webTopInset) + 4 },
+          ]}
+        >
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
         </View>
         <View style={styles.loadingContainer}>
-          <MaterialCommunityIcons name="pokeball" size={40} color={colors.pokemonRed} />
+          <MaterialCommunityIcons
+            name="pokeball"
+            size={40}
+            color={colors.pokemonRed}
+          />
         </View>
       </View>
     );
@@ -402,25 +545,49 @@ export default function CardDetailScreen() {
   if (isError || !card) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}>
+        <View
+          style={[
+            styles.header,
+            { paddingTop: (insets.top || webTopInset) + 4 },
+          ]}
+        >
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
         </View>
         <View style={styles.loadingContainer}>
-          <MaterialCommunityIcons name="wifi-off" size={48} color={colors.textMuted} />
-          <Text style={[styles.errorTitle, { color: colors.text }]}>Card unavailable</Text>
-          <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
-            This card is from an older set that hasn't loaded yet. Go back and open the set first, then try tapping the card again.
+          <MaterialCommunityIcons
+            name="wifi-off"
+            size={48}
+            color={colors.textMuted}
+          />
+          <Text style={[styles.errorTitle, { color: colors.text }]}>
+            Card unavailable
           </Text>
-          <Pressable onPress={() => refetch()} style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}>
+          <Text style={[styles.errorSubtitle, { color: colors.textSecondary }]}>
+            This card is from an older set that hasn't loaded yet. Go back and
+            open the set first, then try tapping the card again.
+          </Text>
+          <Pressable
+            onPress={() => refetch()}
+            style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}
+          >
             <Text style={styles.retryBtnText}>Try again</Text>
           </Pressable>
           <Pressable
             onPress={() => router.push("/(tabs)/scanner")}
-            style={[styles.retryBtn, { backgroundColor: colors.surface, borderWidth: 1.5, borderColor: colors.pokemonRed }]}
+            style={[
+              styles.retryBtn,
+              {
+                backgroundColor: colors.surface,
+                borderWidth: 1.5,
+                borderColor: colors.pokemonRed,
+              },
+            ]}
           >
-            <Text style={[styles.retryBtnText, { color: colors.pokemonRed }]}>Search by name instead</Text>
+            <Text style={[styles.retryBtnText, { color: colors.pokemonRed }]}>
+              Search by name instead
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -428,21 +595,32 @@ export default function CardDetailScreen() {
   }
 
   const builtInPrice = getUKPrice(card);
-  const priceData = builtInPrice.price !== null ? builtInPrice : (ebayFetchedPrice ?? { price: null, source: "" });
+  const priceData =
+    builtInPrice.price !== null
+      ? builtInPrice
+      : (ebayFetchedPrice ?? { price: null, source: "" });
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}>
+      <View
+        style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}
+      >
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+        <Text
+          style={[styles.headerTitle, { color: colors.text }]}
+          numberOfLines={1}
+        >
           {card.name}
         </Text>
         <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
         <View style={styles.imageContainer}>
           <Image
             source={{ uri: card.images?.large ?? undefined }}
@@ -454,88 +632,217 @@ export default function CardDetailScreen() {
         <View style={styles.content}>
           <View style={styles.titleRow}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.cardName, { color: colors.text }]}>{card.name}</Text>
-              <Text style={[styles.cardSetName, { color: colors.textSecondary }]}>
+              <Text style={[styles.cardName, { color: colors.text }]}>
+                {card.name}
+              </Text>
+              <Text
+                style={[styles.cardSetName, { color: colors.textSecondary }]}
+              >
                 {card.set?.name ?? ""} #{card.number}
               </Text>
             </View>
             {card.rarity && (
-              <View style={[styles.rarityBadge, { backgroundColor: colors.pokemonYellow + "25" }]}>
+              <View
+                style={[
+                  styles.rarityBadge,
+                  { backgroundColor: colors.pokemonYellow + "25" },
+                ]}
+              >
                 <Ionicons name="star" size={12} color={colors.pokemonYellow} />
-                <Text style={[styles.rarityText, { color: colors.pokemonYellow }]}>{card.rarity}</Text>
+                <Text
+                  style={[styles.rarityText, { color: colors.pokemonYellow }]}
+                >
+                  {card.rarity}
+                </Text>
               </View>
             )}
           </View>
 
           <View style={styles.detailsGrid}>
             {card.supertype && (
-              <View style={[styles.detailChip, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "30" }]}>
-                <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Type</Text>
-                <Text style={[styles.detailValue, { color: colors.text }]}>{card.supertype}</Text>
+              <View
+                style={[
+                  styles.detailChip,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.pokemonRed + "30",
+                  },
+                ]}
+              >
+                <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
+                  Type
+                </Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>
+                  {card.supertype}
+                </Text>
               </View>
             )}
             {card.hp && (
-              <View style={[styles.detailChip, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "30" }]}>
-                <Text style={[styles.detailLabel, { color: colors.textMuted }]}>HP</Text>
-                <Text style={[styles.detailValue, { color: colors.pokemonRed }]}>{card.hp}</Text>
+              <View
+                style={[
+                  styles.detailChip,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.pokemonRed + "30",
+                  },
+                ]}
+              >
+                <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
+                  HP
+                </Text>
+                <Text
+                  style={[styles.detailValue, { color: colors.pokemonRed }]}
+                >
+                  {card.hp}
+                </Text>
               </View>
             )}
             {card.types && card.types.length > 0 && (
-              <View style={[styles.detailChip, { backgroundColor: colors.card, borderColor: colors.pokemonBlue + "30" }]}>
-                <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Energy</Text>
-                <Text style={[styles.detailValue, { color: colors.pokemonBlue }]}>{card.types.join(", ")}</Text>
+              <View
+                style={[
+                  styles.detailChip,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.pokemonBlue + "30",
+                  },
+                ]}
+              >
+                <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
+                  Energy
+                </Text>
+                <Text
+                  style={[styles.detailValue, { color: colors.pokemonBlue }]}
+                >
+                  {card.types.join(", ")}
+                </Text>
               </View>
             )}
             {card.artist && (
-              <View style={[styles.detailChip, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
-                <Text style={[styles.detailLabel, { color: colors.textMuted }]}>Artist</Text>
-                <Text style={[styles.detailValue, { color: colors.text }]}>{card.artist}</Text>
+              <View
+                style={[
+                  styles.detailChip,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.borderLight,
+                  },
+                ]}
+              >
+                <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
+                  Artist
+                </Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>
+                  {card.artist}
+                </Text>
               </View>
             )}
           </View>
 
-          <View style={[styles.priceSection, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "30" }]}>
+          <View
+            style={[
+              styles.priceSection,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.pokemonRed + "30",
+              },
+            ]}
+          >
             <View style={styles.priceSectionHeader}>
               <Ionicons name="pricetag" size={18} color={colors.pokemonRed} />
-              <Text style={[styles.priceSectionTitle, { color: colors.text }]}>UK Pricing</Text>
+              <Text style={[styles.priceSectionTitle, { color: colors.text }]}>
+                UK Pricing
+              </Text>
             </View>
             <LinearGradient
-              colors={colorScheme === "dark" ? ["#1F2B47", "#162040"] : ["#FFF8F8", "#FFF0F0"]}
+              colors={
+                colorScheme === "dark"
+                  ? ["#1F2B47", "#162040"]
+                  : ["#FFF8F8", "#FFF0F0"]
+              }
               style={styles.mainPrice}
             >
-              <Text style={[styles.mainPriceLabel, { color: colors.textSecondary }]}>
+              <Text
+                style={[styles.mainPriceLabel, { color: colors.textSecondary }]}
+              >
                 Market Price (GBP)
               </Text>
               {ebayPriceLoading && !priceData.price ? (
-                <ActivityIndicator size="small" color={colors.pokemonRed} style={{ marginVertical: 8 }} />
+                <ActivityIndicator
+                  size="small"
+                  color={colors.pokemonRed}
+                  style={{ marginVertical: 8 }}
+                />
               ) : (
-                <Text style={[styles.mainPriceValue, { color: priceData.price ? colors.success : colors.textMuted }]}>
+                <Text
+                  style={[
+                    styles.mainPriceValue,
+                    {
+                      color: priceData.price
+                        ? colors.success
+                        : colors.textMuted,
+                    },
+                  ]}
+                >
                   {formatGBP(priceData.price)}
                 </Text>
               )}
-              <Text style={[styles.mainPriceSource, { color: colors.textMuted }]}>
-                {ebayPriceLoading && !priceData.price ? "Checking eBay UK…" : `via ${priceData.source || "N/A"}`}
+              <Text
+                style={[styles.mainPriceSource, { color: colors.textMuted }]}
+              >
+                {ebayPriceLoading && !priceData.price
+                  ? "Checking eBay UK…"
+                  : `via ${priceData.source || "N/A"}`}
               </Text>
             </LinearGradient>
 
             {/* eBay sold price breakdown */}
-            <SoldPriceBreakdown ext={extEbayPrice} loading={ebayPriceLoading} colors={colors} />
+            <SoldPriceBreakdown
+              ext={extEbayPrice}
+              loading={ebayPriceLoading}
+              colors={colors}
+            />
 
             {card.cardmarket?.prices && (
               <View style={styles.priceDetails}>
-                <PriceRow label="Average Sell" value={card.cardmarket.prices.averageSellPrice} colors={colors} />
-                <PriceRow label="Low Price" value={card.cardmarket.prices.lowPrice} colors={colors} />
-                <PriceRow label="Trend Price" value={card.cardmarket.prices.trendPrice} colors={colors} />
-                <PriceRow label="7-Day Avg" value={card.cardmarket.prices.avg7} colors={colors} />
-                <PriceRow label="30-Day Avg" value={card.cardmarket.prices.avg30} colors={colors} />
+                <PriceRow
+                  label="Average Sell"
+                  value={card.cardmarket.prices.averageSellPrice}
+                  colors={colors}
+                />
+                <PriceRow
+                  label="Low Price"
+                  value={card.cardmarket.prices.lowPrice}
+                  colors={colors}
+                />
+                <PriceRow
+                  label="Trend Price"
+                  value={card.cardmarket.prices.trendPrice}
+                  colors={colors}
+                />
+                <PriceRow
+                  label="7-Day Avg"
+                  value={card.cardmarket.prices.avg7}
+                  colors={colors}
+                />
+                <PriceRow
+                  label="30-Day Avg"
+                  value={card.cardmarket.prices.avg30}
+                  colors={colors}
+                />
               </View>
             )}
           </View>
 
-          <View style={[styles.ebaySection, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+          <View
+            style={[
+              styles.ebaySection,
+              { backgroundColor: colors.card, borderColor: colors.borderLight },
+            ]}
+          >
             <View style={styles.priceSectionHeader}>
               <Ionicons name="globe-outline" size={18} color="#E53238" />
-              <Text style={[styles.priceSectionTitle, { color: colors.text }]}>eBay UK</Text>
+              <Text style={[styles.priceSectionTitle, { color: colors.text }]}>
+                eBay UK
+              </Text>
             </View>
             <Text style={[styles.ebayDesc, { color: colors.textSecondary }]}>
               Compare prices on eBay UK for this card
@@ -563,38 +870,72 @@ export default function CardDetailScreen() {
               </Pressable>
             </View>
           </View>
-
-          <Text style={[styles.conditionTitle, { color: colors.text }]}>Card Variant</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.variantRow}>
+          {console.log("card.variants:", JSON.stringify(card.variants))}
+          <Text style={[styles.conditionTitle, { color: colors.text }]}>
+            Card Variant
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.variantRow}
+          >
             {(card.variants && card.variants.length > 0
-              ? [...new Set(card.variants.map((v: any) => v.variantLabel || v.finishType || "Non-Holo"))]
+              ? [
+                  ...new Set(
+                    card.variants.map(
+                      (v: any) => v.variantLabel || v.finishType || "Non-Holo",
+                    ),
+                  ),
+                ]
               : ["Non-Holo", "Holo", "Reverse Holo"]
             ).map((v: string) => {
               const active = selectedVariant === v;
               const iconName =
-                v === "Non-Holo" ? "square-outline"
-                : v === "Holo" ? "sparkles"
-                : v === "Reverse Holo" ? "refresh-circle"
-                : v.toLowerCase().includes("alt") || v.toLowerCase().includes("art") ? "image-outline"
-                : v.toLowerCase().includes("full") ? "expand-outline"
-                : v.toLowerCase().includes("secret") ? "star"
-                : v.toLowerCase().includes("promo") ? "ribbon-outline"
-                : "card-outline";
+                v === "Non-Holo"
+                  ? "square-outline"
+                  : v === "Holo"
+                    ? "sparkles"
+                    : v === "Reverse Holo"
+                      ? "refresh-circle"
+                      : v.toLowerCase().includes("alt") ||
+                          v.toLowerCase().includes("art")
+                        ? "image-outline"
+                        : v.toLowerCase().includes("full")
+                          ? "expand-outline"
+                          : v.toLowerCase().includes("secret")
+                            ? "star"
+                            : v.toLowerCase().includes("promo")
+                              ? "ribbon-outline"
+                              : "card-outline";
               return (
                 <Pressable
                   key={v}
                   style={[
                     styles.variantChip,
                     {
-                      backgroundColor: active ? colors.pokemonYellow : colors.card,
-                      borderColor: active ? colors.pokemonYellow : colors.borderLight,
+                      backgroundColor: active
+                        ? colors.pokemonYellow
+                        : colors.card,
+                      borderColor: active
+                        ? colors.pokemonYellow
+                        : colors.borderLight,
                       minWidth: 90,
                     },
                   ]}
                   onPress={() => setSelectedVariant(v as CardVariant)}
                 >
-                  <Ionicons name={iconName as any} size={14} color={active ? "#000" : colors.textSecondary} />
-                  <Text style={[styles.variantChipText, { color: active ? "#000" : colors.textSecondary }]} numberOfLines={1}>
+                  <Ionicons
+                    name={iconName as any}
+                    size={14}
+                    color={active ? "#000" : colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.variantChipText,
+                      { color: active ? "#000" : colors.textSecondary },
+                    ]}
+                    numberOfLines={1}
+                  >
                     {v}
                   </Text>
                 </Pressable>
@@ -602,7 +943,9 @@ export default function CardDetailScreen() {
             })}
           </ScrollView>
 
-          <Text style={[styles.conditionTitle, { color: colors.text }]}>Card Condition</Text>
+          <Text style={[styles.conditionTitle, { color: colors.text }]}>
+            Card Condition
+          </Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -614,8 +957,12 @@ export default function CardDetailScreen() {
                 style={[
                   styles.conditionChip,
                   {
-                    backgroundColor: selectedCondition === c ? colors.pokemonRed : colors.card,
-                    borderColor: selectedCondition === c ? colors.pokemonRed : colors.borderLight,
+                    backgroundColor:
+                      selectedCondition === c ? colors.pokemonRed : colors.card,
+                    borderColor:
+                      selectedCondition === c
+                        ? colors.pokemonRed
+                        : colors.borderLight,
                   },
                 ]}
                 onPress={() => setSelectedCondition(c)}
@@ -623,7 +970,10 @@ export default function CardDetailScreen() {
                 <Text
                   style={[
                     styles.conditionChipText,
-                    { color: selectedCondition === c ? "#FFF" : colors.textSecondary },
+                    {
+                      color:
+                        selectedCondition === c ? "#FFF" : colors.textSecondary,
+                    },
                   ]}
                 >
                   {c}
@@ -632,7 +982,9 @@ export default function CardDetailScreen() {
             ))}
           </ScrollView>
 
-          <Text style={[styles.conditionTitle, { color: colors.text }]}>Grading (Optional)</Text>
+          <Text style={[styles.conditionTitle, { color: colors.text }]}>
+            Grading (Optional)
+          </Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -655,7 +1007,12 @@ export default function CardDetailScreen() {
                     if (co === "None") setGrade("");
                   }}
                 >
-                  <Text style={[styles.conditionChipText, { color: selected ? "#FFF" : colors.textSecondary }]}>
+                  <Text
+                    style={[
+                      styles.conditionChipText,
+                      { color: selected ? "#FFF" : colors.textSecondary },
+                    ]}
+                  >
                     {co}
                   </Text>
                 </Pressable>
@@ -677,7 +1034,11 @@ export default function CardDetailScreen() {
                   fontFamily: "Outfit_400Regular",
                   fontSize: 14,
                 }}
-                placeholder={gradingCompany === "Beckett" ? "Grade (1–10, e.g. 9.5)" : "Grade (1–10, e.g. 9)"}
+                placeholder={
+                  gradingCompany === "Beckett"
+                    ? "Grade (1–10, e.g. 9.5)"
+                    : "Grade (1–10, e.g. 9)"
+                }
                 placeholderTextColor={colors.textMuted}
                 value={grade}
                 onChangeText={(t) => {
@@ -689,37 +1050,74 @@ export default function CardDetailScreen() {
                 autoCorrect={false}
                 maxLength={4}
               />
-              {grade !== "" && (() => {
-                const n = parseFloat(grade);
-                const valid = !isNaN(n) && n >= 1 && n <= 10 &&
-                  (gradingCompany === "Beckett" ? (n * 2) % 1 === 0 : Number.isInteger(n));
-                return (
-                  <Text style={{ fontSize: 11, fontFamily: "Outfit_400Regular", color: valid ? "#27AE60" : colors.pokemonRed, marginTop: 3, marginLeft: 4 }}>
-                    {valid
-                      ? `${gradingCompany} ${grade} — valid grade`
-                      : gradingCompany === "Beckett"
-                        ? "Beckett grades: 1–10 in 0.5 steps (e.g. 9, 9.5)"
-                        : "Grade must be a whole number 1–10"}
-                  </Text>
-                );
-              })()}
+              {grade !== "" &&
+                (() => {
+                  const n = parseFloat(grade);
+                  const valid =
+                    !isNaN(n) &&
+                    n >= 1 &&
+                    n <= 10 &&
+                    (gradingCompany === "Beckett"
+                      ? (n * 2) % 1 === 0
+                      : Number.isInteger(n));
+                  return (
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontFamily: "Outfit_400Regular",
+                        color: valid ? "#27AE60" : colors.pokemonRed,
+                        marginTop: 3,
+                        marginLeft: 4,
+                      }}
+                    >
+                      {valid
+                        ? `${gradingCompany} ${grade} — valid grade`
+                        : gradingCompany === "Beckett"
+                          ? "Beckett grades: 1–10 in 0.5 steps (e.g. 9, 9.5)"
+                          : "Grade must be a whole number 1–10"}
+                    </Text>
+                  );
+                })()}
             </View>
           )}
 
-          {gradingCompany !== "" && grade !== "" && (() => {
-            const n = parseFloat(grade);
-            const valid = !isNaN(n) && n >= 1 && n <= 10;
-            return valid ? (
-              <View style={{ flexDirection: "row", marginBottom: 8 }}>
-                <View style={{ backgroundColor: "#3498DB20", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, flexDirection: "row", gap: 4, alignItems: "center" }}>
-                  <Ionicons name="checkmark-circle" size={12} color="#3498DB" />
-                  <Text style={{ fontSize: 12, fontFamily: "Outfit_600SemiBold", color: "#3498DB" }}>
-                    Graded {gradingCompany} {grade} will be saved as a separate entry
-                  </Text>
+          {gradingCompany !== "" &&
+            grade !== "" &&
+            (() => {
+              const n = parseFloat(grade);
+              const valid = !isNaN(n) && n >= 1 && n <= 10;
+              return valid ? (
+                <View style={{ flexDirection: "row", marginBottom: 8 }}>
+                  <View
+                    style={{
+                      backgroundColor: "#3498DB20",
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      borderRadius: 8,
+                      flexDirection: "row",
+                      gap: 4,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={12}
+                      color="#3498DB"
+                    />
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        fontFamily: "Outfit_600SemiBold",
+                        color: "#3498DB",
+                      }}
+                    >
+                      Graded {gradingCompany} {grade} will be saved as a
+                      separate entry
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            ) : null;
-          })()}
+              ) : null;
+            })()}
 
           <View style={styles.actionButtons}>
             <Pressable
@@ -735,7 +1133,11 @@ export default function CardDetailScreen() {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
               >
-                <Ionicons name={inCollection ? "checkmark-circle" : "add-circle"} size={20} color="#FFF" />
+                <Ionicons
+                  name={inCollection ? "checkmark-circle" : "add-circle"}
+                  size={20}
+                  color="#FFF"
+                />
                 <Text style={styles.actionBtnText}>
                   {inCollection ? "Add Another" : "Add to Collection"}
                 </Text>
@@ -746,7 +1148,10 @@ export default function CardDetailScreen() {
               <Pressable
                 style={({ pressed }) => [
                   styles.actionBtnSmall,
-                  { backgroundColor: colors.success, opacity: pressed ? 0.85 : 1 },
+                  {
+                    backgroundColor: colors.success,
+                    opacity: pressed ? 0.85 : 1,
+                  },
                 ]}
                 onPress={() => openListingModal("sale")}
               >
@@ -756,7 +1161,10 @@ export default function CardDetailScreen() {
               <Pressable
                 style={({ pressed }) => [
                   styles.actionBtnSmall,
-                  { backgroundColor: colors.pokemonBlue, opacity: pressed ? 0.85 : 1 },
+                  {
+                    backgroundColor: colors.pokemonBlue,
+                    opacity: pressed ? 0.85 : 1,
+                  },
                 ]}
                 onPress={() => openListingModal("trade")}
               >
@@ -779,25 +1187,53 @@ export default function CardDetailScreen() {
           style={{ flex: 1, backgroundColor: colors.background }}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
-          <View style={[listingStyles.header, { paddingTop: insets.top + 12, backgroundColor: listingType === "sale" ? colors.success : colors.pokemonBlue }]}>
+          <View
+            style={[
+              listingStyles.header,
+              {
+                paddingTop: insets.top + 12,
+                backgroundColor:
+                  listingType === "sale" ? colors.success : colors.pokemonBlue,
+              },
+            ]}
+          >
             <View style={{ flex: 1 }}>
               <Text style={listingStyles.modalTitle}>
                 {listingType === "sale" ? "List for Sale" : "List for Trade"}
               </Text>
-              <Text style={listingStyles.modalSubtitle} numberOfLines={1}>{card?.name}</Text>
+              <Text style={listingStyles.modalSubtitle} numberOfLines={1}>
+                {card?.name}
+              </Text>
             </View>
-            <Pressable onPress={() => setListingModalVisible(false)} style={listingStyles.closeBtn}>
+            <Pressable
+              onPress={() => setListingModalVisible(false)}
+              style={listingStyles.closeBtn}
+            >
               <Ionicons name="close" size={22} color="#FFF" />
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={{ padding: 20, gap: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={{ padding: 20, gap: 20, paddingBottom: 40 }}
+            showsVerticalScrollIndicator={false}
+          >
             {/* Price (sale only) */}
             {listingType === "sale" && (
               <View>
-                <Text style={[listingStyles.label, { color: colors.textSecondary }]}>Asking Price (£)</Text>
+                <Text
+                  style={[listingStyles.label, { color: colors.textSecondary }]}
+                >
+                  Asking Price (£)
+                </Text>
                 <TextInput
-                  style={[listingStyles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.borderLight }]}
+                  style={[
+                    listingStyles.input,
+                    {
+                      backgroundColor: colors.card,
+                      color: colors.text,
+                      borderColor: colors.borderLight,
+                    },
+                  ]}
                   value={listingPrice}
                   onChangeText={setListingPrice}
                   keyboardType="decimal-pad"
@@ -809,9 +1245,21 @@ export default function CardDetailScreen() {
 
             {/* Description */}
             <View>
-              <Text style={[listingStyles.label, { color: colors.textSecondary }]}>Description (optional)</Text>
+              <Text
+                style={[listingStyles.label, { color: colors.textSecondary }]}
+              >
+                Description (optional)
+              </Text>
               <TextInput
-                style={[listingStyles.input, listingStyles.textArea, { backgroundColor: colors.card, color: colors.text, borderColor: colors.borderLight }]}
+                style={[
+                  listingStyles.input,
+                  listingStyles.textArea,
+                  {
+                    backgroundColor: colors.card,
+                    color: colors.text,
+                    borderColor: colors.borderLight,
+                  },
+                ]}
                 value={listingDescription}
                 onChangeText={setListingDescription}
                 placeholder="Describe the card's condition, any extras included, etc."
@@ -823,12 +1271,30 @@ export default function CardDetailScreen() {
 
             {/* External listing URL */}
             <View>
-              <Text style={[listingStyles.label, { color: colors.textSecondary }]}>External Listing URL (optional)</Text>
-              <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: "Outfit_400Regular", marginBottom: 6 }}>
+              <Text
+                style={[listingStyles.label, { color: colors.textSecondary }]}
+              >
+                External Listing URL (optional)
+              </Text>
+              <Text
+                style={{
+                  fontSize: 11,
+                  color: colors.textMuted,
+                  fontFamily: "Outfit_400Regular",
+                  marginBottom: 6,
+                }}
+              >
                 Link buyers to your eBay, Vinted, or other listing
               </Text>
               <TextInput
-                style={[listingStyles.input, { backgroundColor: colors.card, color: colors.text, borderColor: colors.borderLight }]}
+                style={[
+                  listingStyles.input,
+                  {
+                    backgroundColor: colors.card,
+                    color: colors.text,
+                    borderColor: colors.borderLight,
+                  },
+                ]}
                 value={listingExternalUrl}
                 onChangeText={setListingExternalUrl}
                 placeholder="https://www.ebay.co.uk/itm/..."
@@ -840,9 +1306,26 @@ export default function CardDetailScreen() {
 
             {/* Photos */}
             <View>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                <Text style={[listingStyles.label, { color: colors.textSecondary }]}>Your Photos ({listingPhotos.length}/6)</Text>
-                <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: "Outfit_400Regular" }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 10,
+                }}
+              >
+                <Text
+                  style={[listingStyles.label, { color: colors.textSecondary }]}
+                >
+                  Your Photos ({listingPhotos.length}/6)
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: colors.textMuted,
+                    fontFamily: "Outfit_400Regular",
+                  }}
+                >
                   So buyers can see the actual card
                 </Text>
               </View>
@@ -851,7 +1334,15 @@ export default function CardDetailScreen() {
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
                 {listingPhotos.map((uri, idx) => (
                   <View key={idx} style={listingStyles.photoThumb}>
-                    <Image source={{ uri }} style={{ width: "100%", height: "100%", borderRadius: 10 }} contentFit="cover" />
+                    <Image
+                      source={{ uri }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        borderRadius: 10,
+                      }}
+                      contentFit="cover"
+                    />
                     <Pressable
                       style={listingStyles.photoRemoveBtn}
                       onPress={() => removePhoto(idx)}
@@ -863,18 +1354,54 @@ export default function CardDetailScreen() {
                 {listingPhotos.length < 6 && (
                   <View style={{ gap: 8 }}>
                     <Pressable
-                      style={[listingStyles.photoAddBtn, { borderColor: colors.borderLight, backgroundColor: colors.card }]}
+                      style={[
+                        listingStyles.photoAddBtn,
+                        {
+                          borderColor: colors.borderLight,
+                          backgroundColor: colors.card,
+                        },
+                      ]}
                       onPress={pickPhoto}
                     >
-                      <Ionicons name="images-outline" size={22} color={colors.textSecondary} />
-                      <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: "Outfit_500Medium" }}>Library</Text>
+                      <Ionicons
+                        name="images-outline"
+                        size={22}
+                        color={colors.textSecondary}
+                      />
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: colors.textMuted,
+                          fontFamily: "Outfit_500Medium",
+                        }}
+                      >
+                        Library
+                      </Text>
                     </Pressable>
                     <Pressable
-                      style={[listingStyles.photoAddBtn, { borderColor: colors.borderLight, backgroundColor: colors.card }]}
+                      style={[
+                        listingStyles.photoAddBtn,
+                        {
+                          borderColor: colors.borderLight,
+                          backgroundColor: colors.card,
+                        },
+                      ]}
                       onPress={takePhoto}
                     >
-                      <Ionicons name="camera-outline" size={22} color={colors.textSecondary} />
-                      <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: "Outfit_500Medium" }}>Camera</Text>
+                      <Ionicons
+                        name="camera-outline"
+                        size={22}
+                        color={colors.textSecondary}
+                      />
+                      <Text
+                        style={{
+                          fontSize: 11,
+                          color: colors.textMuted,
+                          fontFamily: "Outfit_500Medium",
+                        }}
+                      >
+                        Camera
+                      </Text>
                     </Pressable>
                   </View>
                 )}
@@ -882,10 +1409,38 @@ export default function CardDetailScreen() {
             </View>
 
             {/* Condition reminder */}
-            <View style={[listingStyles.conditionReminder, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
-              <Ionicons name="information-circle-outline" size={16} color={colors.textMuted} />
-              <Text style={{ flex: 1, fontSize: 12, color: colors.textMuted, fontFamily: "Outfit_400Regular" }}>
-                Listing condition: <Text style={{ fontFamily: "Outfit_600SemiBold", color: colors.text }}>{selectedCondition}</Text>. Change this on the card detail page before listing.
+            <View
+              style={[
+                listingStyles.conditionReminder,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.borderLight,
+                },
+              ]}
+            >
+              <Ionicons
+                name="information-circle-outline"
+                size={16}
+                color={colors.textMuted}
+              />
+              <Text
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  color: colors.textMuted,
+                  fontFamily: "Outfit_400Regular",
+                }}
+              >
+                Listing condition:{" "}
+                <Text
+                  style={{
+                    fontFamily: "Outfit_600SemiBold",
+                    color: colors.text,
+                  }}
+                >
+                  {selectedCondition}
+                </Text>
+                . Change this on the card detail page before listing.
               </Text>
             </View>
 
@@ -893,7 +1448,13 @@ export default function CardDetailScreen() {
             <Pressable
               style={({ pressed }) => [
                 listingStyles.submitBtn,
-                { backgroundColor: listingType === "sale" ? colors.success : colors.pokemonBlue, opacity: pressed || listingLoading ? 0.8 : 1 },
+                {
+                  backgroundColor:
+                    listingType === "sale"
+                      ? colors.success
+                      : colors.pokemonBlue,
+                  opacity: pressed || listingLoading ? 0.8 : 1,
+                },
               ]}
               onPress={submitListing}
               disabled={listingLoading}
@@ -902,9 +1463,19 @@ export default function CardDetailScreen() {
                 <ActivityIndicator color="#FFF" />
               ) : (
                 <>
-                  <Ionicons name={listingType === "sale" ? "cash-outline" : "swap-horizontal"} size={20} color="#FFF" />
+                  <Ionicons
+                    name={
+                      listingType === "sale"
+                        ? "cash-outline"
+                        : "swap-horizontal"
+                    }
+                    size={20}
+                    color="#FFF"
+                  />
                   <Text style={listingStyles.submitBtnText}>
-                    {listingType === "sale" ? "Publish Listing" : "List for Trade"}
+                    {listingType === "sale"
+                      ? "Publish Listing"
+                      : "List for Trade"}
                   </Text>
                 </>
               )}
@@ -925,8 +1496,18 @@ const listingStyles = StyleSheet.create({
     gap: 12,
   },
   modalTitle: { fontSize: 20, fontFamily: "Outfit_700Bold", color: "#FFF" },
-  modalSubtitle: { fontSize: 13, fontFamily: "Outfit_400Regular", color: "rgba(255,255,255,0.8)", marginTop: 2 },
-  closeBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  modalSubtitle: {
+    fontSize: 13,
+    fontFamily: "Outfit_400Regular",
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 2,
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   label: { fontSize: 13, fontFamily: "Outfit_600SemiBold", marginBottom: 6 },
   input: {
     borderRadius: 10,
@@ -990,8 +1571,18 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     gap: 8,
   },
-  backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  headerTitle: { flex: 1, fontSize: 18, fontFamily: "Outfit_600SemiBold", textAlign: "center" },
+  backBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontFamily: "Outfit_600SemiBold",
+    textAlign: "center",
+  },
   imageContainer: { alignItems: "center", paddingVertical: 8 },
   cardImage: {
     width: SCREEN_WIDTH * 0.65,
@@ -1012,8 +1603,18 @@ const styles = StyleSheet.create({
   },
   rarityText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
   detailsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  detailChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, borderWidth: 1.5, gap: 2 },
-  detailLabel: { fontSize: 10, fontFamily: "Outfit_400Regular", textTransform: "uppercase" },
+  detailChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    gap: 2,
+  },
+  detailLabel: {
+    fontSize: 10,
+    fontFamily: "Outfit_400Regular",
+    textTransform: "uppercase",
+  },
   detailValue: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
   priceSection: { borderRadius: 16, padding: 16, borderWidth: 1.5, gap: 12 },
   priceSectionHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -1023,7 +1624,11 @@ const styles = StyleSheet.create({
   mainPriceValue: { fontSize: 28, fontFamily: "Outfit_700Bold" },
   mainPriceSource: { fontSize: 11, fontFamily: "Outfit_400Regular" },
   priceDetails: { gap: 4 },
-  priceRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 4 },
+  priceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: 4,
+  },
   priceLabel: { fontSize: 13, fontFamily: "Outfit_400Regular" },
   priceValue: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
   ebaySection: { borderRadius: 16, padding: 16, borderWidth: 1, gap: 10 },
@@ -1038,7 +1643,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     gap: 6,
   },
-  ebayBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+  ebayBtnText: {
+    fontSize: 13,
+    fontFamily: "Outfit_600SemiBold",
+    color: "#FFF",
+  },
   conditionTitle: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
   variantRow: { flexDirection: "row", gap: 8, marginBottom: 4 },
   variantChip: {
@@ -1070,7 +1679,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     gap: 8,
   },
-  actionBtnText: { fontSize: 16, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+  actionBtnText: {
+    fontSize: 16,
+    fontFamily: "Outfit_600SemiBold",
+    color: "#FFF",
+  },
   actionRow: { flexDirection: "row", gap: 10 },
   actionBtnSmall: {
     flex: 1,
@@ -1081,28 +1694,92 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 6,
   },
-  actionBtnSmallText: { fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
+  actionBtnSmallText: {
+    fontSize: 13,
+    fontFamily: "Outfit_600SemiBold",
+    color: "#FFF",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
   errorTitle: { fontSize: 18, fontFamily: "Outfit_600SemiBold", marginTop: 4 },
-  errorSubtitle: { fontSize: 14, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 32 },
-  retryBtn: { marginTop: 8, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 24 },
-  soldLoadingRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
+  errorSubtitle: {
+    fontSize: 14,
+    fontFamily: "Outfit_400Regular",
+    textAlign: "center",
+    paddingHorizontal: 32,
+  },
+  retryBtn: {
+    marginTop: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  soldLoadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 6,
+  },
   soldLoadingText: { fontSize: 12, fontFamily: "Outfit_400Regular" },
-  soldBreakdownWrap: { borderRadius: 10, borderWidth: 1, borderColor: "rgba(0,0,0,0.08)", overflow: "hidden" },
+  soldBreakdownWrap: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(0,0,0,0.08)",
+    overflow: "hidden",
+  },
   soldRow: { flexDirection: "row", paddingVertical: 10, paddingHorizontal: 8 },
   soldStat: { flex: 1, alignItems: "center", gap: 2 },
   soldStatLabel: { fontSize: 11, fontFamily: "Outfit_500Medium" },
   soldStatValue: { fontSize: 16, fontFamily: "Outfit_700Bold" },
   soldDivider: { width: 1, marginVertical: 4 },
-  gradedToggle: { flexDirection: "row", alignItems: "center", gap: 6, borderTopWidth: 1, paddingVertical: 10, paddingHorizontal: 12 },
+  gradedToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderTopWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
   gradedToggleText: { flex: 1, fontSize: 12, fontFamily: "Outfit_500Medium" },
   gradedGrid: { paddingHorizontal: 12, paddingBottom: 10, gap: 0 },
-  gradedHeaderRow: { flexDirection: "row", alignItems: "center", paddingBottom: 6 },
+  gradedHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingBottom: 6,
+  },
   gradedLabelCol: { flex: 1 },
-  gradedColHeader: { width: 80, fontSize: 11, fontFamily: "Outfit_600SemiBold", textAlign: "center" },
-  gradedRow: { flexDirection: "row", alignItems: "center", borderTopWidth: 1, paddingVertical: 8 },
+  gradedColHeader: {
+    width: 80,
+    fontSize: 11,
+    fontFamily: "Outfit_600SemiBold",
+    textAlign: "center",
+  },
+  gradedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderTopWidth: 1,
+    paddingVertical: 8,
+  },
   graderName: { flex: 1, fontSize: 13, fontFamily: "Outfit_700Bold" },
-  gradedPrice: { width: 80, fontSize: 13, fontFamily: "Outfit_600SemiBold", textAlign: "center" },
-  noGradedText: { fontSize: 12, fontFamily: "Outfit_400Regular", textAlign: "center", paddingVertical: 8 },
-  retryBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+  gradedPrice: {
+    width: 80,
+    fontSize: 13,
+    fontFamily: "Outfit_600SemiBold",
+    textAlign: "center",
+  },
+  noGradedText: {
+    fontSize: 12,
+    fontFamily: "Outfit_400Regular",
+    textAlign: "center",
+    paddingVertical: 8,
+  },
+  retryBtnText: {
+    fontSize: 15,
+    fontFamily: "Outfit_600SemiBold",
+    color: "#FFF",
+  },
 });

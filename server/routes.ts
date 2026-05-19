@@ -100,7 +100,7 @@ function tcgHeaders(): Record<string, string> {
 
 // In-memory cache for set cards (avoids repeated TCG API hits within a server session)
 const setCardsMemCache = new Map<string, { data: any; ts: number }>();
-const MEM_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
+const MEM_CACHE_TTL_MS = 5 * 60 * 1000; //5 minutes
 function getMemCache(key: string) {
   const e = setCardsMemCache.get(key);
   return e && Date.now() - e.ts < MEM_CACHE_TTL_MS ? e.data : null;
@@ -120,10 +120,11 @@ function setCardCache(id: string, data: any) {
   cardMemCache.set(id, { data, ts: Date.now() });
 }
 // Bulk-populate card cache from a set response (call after any set load)
-function warmCardCache(cards: any[]) {
-  for (const card of cards) {
-    if (card?.id && !cardMemCache.has(card.id)) {
-      setCardCache(card.id, { data: card });
+
+  function warmCardCache(cards: any[]) {
+    // Don't warm individual card cache from set responses —
+    // set responses don't include variants, so warming here
+    // would serve variant-less cards for up to 20 minutes.
     }
   }
 }
