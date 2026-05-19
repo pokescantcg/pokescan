@@ -565,10 +565,21 @@ export default function CardDetailScreen() {
           </View>
 
           <Text style={[styles.conditionTitle, { color: colors.text }]}>Card Variant</Text>
-          <View style={styles.variantRow}>
-            {(["Non-Holo", "Holo", "Reverse Holo"] as CardVariant[]).map((v) => {
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.variantRow}>
+            {(card.variants && card.variants.length > 0
+              ? [...new Set(card.variants.map((v: any) => v.variantLabel || v.finishType || "Non-Holo"))]
+              : ["Non-Holo", "Holo", "Reverse Holo"]
+            ).map((v: string) => {
               const active = selectedVariant === v;
-              const iconName = v === "Non-Holo" ? "square-outline" : v === "Holo" ? "sparkles" : "refresh-circle";
+              const iconName =
+                v === "Non-Holo" ? "square-outline"
+                : v === "Holo" ? "sparkles"
+                : v === "Reverse Holo" ? "refresh-circle"
+                : v.toLowerCase().includes("alt") || v.toLowerCase().includes("art") ? "image-outline"
+                : v.toLowerCase().includes("full") ? "expand-outline"
+                : v.toLowerCase().includes("secret") ? "star"
+                : v.toLowerCase().includes("promo") ? "ribbon-outline"
+                : "card-outline";
               return (
                 <Pressable
                   key={v}
@@ -577,18 +588,19 @@ export default function CardDetailScreen() {
                     {
                       backgroundColor: active ? colors.pokemonYellow : colors.card,
                       borderColor: active ? colors.pokemonYellow : colors.borderLight,
+                      minWidth: 90,
                     },
                   ]}
-                  onPress={() => setSelectedVariant(v)}
+                  onPress={() => setSelectedVariant(v as CardVariant)}
                 >
                   <Ionicons name={iconName as any} size={14} color={active ? "#000" : colors.textSecondary} />
-                  <Text style={[styles.variantChipText, { color: active ? "#000" : colors.textSecondary }]}>
+                  <Text style={[styles.variantChipText, { color: active ? "#000" : colors.textSecondary }]} numberOfLines={1}>
                     {v}
                   </Text>
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
 
           <Text style={[styles.conditionTitle, { color: colors.text }]}>Card Condition</Text>
           <ScrollView
