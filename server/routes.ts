@@ -702,7 +702,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ]);
         const totalCount = totalCountResult[0]?.count ?? 0;
         const setRow = setInfoResult[0] ?? null;
-        const expectedTotal = setRow?.total ?? 0;
+        // Use printedTotal (base cards only) not total (which includes secret/variant extras).
+        // This prevents the 90% check from failing when variants inflate the total count.
+        const expectedTotal = setRow?.printedTotal ?? setRow?.total ?? 0;
 
         // For non-English sets: serve whatever cards we have (any amount).
         // For English sets: only serve if ≥90% seeded (ensures complete sets).
@@ -746,21 +748,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 cardMap.set(card.id, existing);
               }
 
-              // Push variant data
-              existing.variants.push({
-                variantId: variant?.id || `${card.id}-standard`,
-                finishType: variant?.finishType || "Non-Holo",
-                editionType: variant?.editionType || "Standard",
-                variantLabel: variant?.variantLabel || "Standard",
-                isStamped: variant?.isStamped || false,
-                language: variant?.language || "EN",
-                images: variant?.imageUrl
-                  ? {
-                      small: variant.imageUrl,
-                      large: variant.imageUrl,
-                    }
-                  : existing.images,
-              });
+              // Only push real variant rows (skip LEFT JOIN nulls).
+              // After the loop, cards with zero variants get a fallback "Non-Holo" entry.
+              if (variant?.id) {
+                existing.variants.push({
+                  variantId: variant.id,
+                  finishType: variant.finishType || "Non-Holo",
+                  editionType: variant.editionType || "Standard",
+                  variantLabel: variant.variantLabel || "Standard",
+                  isStamped: variant.isStamped || false,
+                  language: variant.language || "EN",
+                  images: variant.imageUrl
+                    ? { small: variant.imageUrl, large: variant.imageUrl }
+                    : existing.images,
+                });
+              }
+            }
+
+            // Add fallback variant for cards that have no variant rows in the DB (older sets).
+            for (const c of cardMap.values()) {
+              if (c.variants.length === 0) {
+                c.variants.push({
+                  variantId: `${c.id}-standard`,
+                  finishType: "Non-Holo",
+                  editionType: "Standard",
+                  variantLabel: "Standard",
+                  isStamped: false,
+                  language: "EN",
+                  images: c.images,
+                });
+              }
             }
 
             const formattedCards = Array.from(cardMap.values());
@@ -3308,7 +3325,7 @@ ${setReference}`
       res.status(500).json({ error: error.message || "Failed to delete scan history entry" });
     }
   });
-      
+
   // ─── Collection CRUD ─────────────────────────────────────────────────────────
 
   app.get("/api/collection", async (req: Request, res: Response) => {
