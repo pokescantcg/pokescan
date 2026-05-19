@@ -870,6 +870,10 @@ export default function CardDetailScreen() {
               </Pressable>
             </View>
           </View>
+          {(() => {
+            console.warn("VARIANTS DEBUG:", JSON.stringify(card.variants));
+            return null;
+          })()}
           {console.log("card.variants:", JSON.stringify(card.variants))}
           <Text style={[styles.conditionTitle, { color: colors.text }]}>
             Card Variant
