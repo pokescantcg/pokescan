@@ -17,7 +17,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { useThemeColors } from "@/constants/colors";
 import {
-  fetchSetCards,
   getUKPrice,
   formatGBP,
   PokemonCard,
@@ -55,21 +54,14 @@ function getVariantInfo(
   finishType?: string,
   variant?: string
 ): { label: string; color: string; icon: string } {
-  // Priority: variantLabel > finishType > variant
   const source = variantLabel || finishType || variant || "normal";
   const normalized = source.toLowerCase().trim().replace(/\s+/g, "_");
 
-  // Direct match in map
   if (VARIANT_INFO[normalized]) {
     return VARIANT_INFO[normalized];
   }
 
-  // Fuzzy matching
-  if (
-    normalized.includes("reverse") ||
-    normalized.includes("reversal") ||
-    normalized.includes("rev")
-  ) {
+  if (normalized.includes("reverse")) {
     return VARIANT_INFO.reverse_holo;
   }
   if (normalized.includes("holo") && !normalized.includes("reverse")) {
@@ -78,13 +70,13 @@ function getVariantInfo(
   if (normalized.includes("cosmos")) {
     return VARIANT_INFO.cosmos_holo;
   }
-  if (normalized.includes("cracked") || normalized.includes("crack")) {
+  if (normalized.includes("cracked")) {
     return VARIANT_INFO.cracked_ice;
   }
   if (normalized.includes("master")) {
     return VARIANT_INFO.master_ball;
   }
-  if (normalized.includes("poke") || normalized.includes("pokéball")) {
+  if (normalized.includes("poke")) {
     return VARIANT_INFO.poke_ball;
   }
   if (normalized.includes("staff")) {
@@ -106,7 +98,6 @@ function getVariantInfo(
     return VARIANT_INFO.set_stamp;
   }
 
-  // Default fallback
   return VARIANT_INFO.normal;
 }
 
@@ -133,62 +124,111 @@ export default function SetDetailScreen() {
       try {
         console.log(`[SetDetail] Fetching cards for set: ${id}`);
 
-        // Fetch directly from API - simple and reliable
-        const response = await fetchSetCards(id);
+        // Fetch from API with proper error handling
+        const response = await fetch(
+          `https://api.pokemontcg.io/v2/cards?q=set.id:${id}`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+          }
+        );
 
-        if (!response || response.length === 0) {
-          throw new Error("No cards returned from API");
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
         }
 
-        console.log(`[SetDetail] Received ${response.length} cards from API for set ${id}`);
+        const json = await response.json();
+        console.log("[SetDetail] API Response:", json);
 
-        // Expand variants inline - simple approach
+        // Handle different response formats
+        let cardsArray: PokemonCard[] = [];
+
+        if (json.data && Array.isArray(json.data)) {
+          cardsArray = json.data;
+        } else if (Array.isArray(json)) {
+          cardsArray = json;
+        } else {
+          throw new Error("Invalid API response format");
+        }
+
+        if (!cardsArray || cardsArray.length === 0) {
+          throw new Error("No cards found in set");
+        }
+
+        console.log(`[SetDetail] Received ${cardsArray.length} base cards`);
+
+        // Expand variants
         const expanded: PokemonCard[] = [];
 
-        for (const card of response) {
-          if (!card.tcgplayer?.prices) {
-            // No variants available, add base card
-            expanded.push(card);
-            continue;
-          }
+        for (const card of cardsArray) {
+          try {
+            if (!card.tcgplayer?.prices) {
+              expanded.push(card);
+              continue;
+            }
 
-          const prices = card.tcgplayer.prices;
-          const variants = [];
+            const prices = card.tcgplayer.prices;
+            const variants = [];
 
-          // Check each variant type
-          if (prices.normal) {
-            variants.push({ ...card, variantLabel: "Non-Holo", finishType: "normal" });
-          }
-          if (prices.holofoil) {
-            variants.push({ ...card, variantLabel: "Holo", finishType: "holo" });
-          }
-          if (prices.reverseHolofoil) {
-            variants.push({ ...card, variantLabel: "Reverse Holo", finishType: "reverse_holo" });
-          }
-          if (prices["1stEditionNormal"]) {
-            variants.push({ ...card, variantLabel: "1st Ed Non-Holo", finishType: "1st_edition" });
-          }
-          if (prices["1stEditionHolofoil"]) {
-            variants.push({ ...card, variantLabel: "1st Ed Holo", finishType: "1st_edition_holo" });
-          }
+            if (prices.normal) {
+              variants.push({
+                ...card,
+                variantLabel: "Non-Holo",
+                finishType: "normal",
+              });
+            }
+            if (prices.holofoil) {
+              variants.push({
+                ...card,
+                variantLabel: "Holo",
+                finishType: "holo",
+              });
+            }
+            if (prices.reverseHolofoil) {
+              variants.push({
+                ...card,
+                variantLabel: "Reverse Holo",
+                finishType: "reverse_holo",
+              });
+            }
+            if (prices["1stEditionNormal"]) {
+              variants.push({
+                ...card,
+                variantLabel: "1st Ed Non-Holo",
+                finishType: "1st_edition",
+              });
+            }
+            if (prices["1stEditionHolofoil"]) {
+              variants.push({
+                ...card,
+                variantLabel: "1st Ed Holo",
+                finishType: "1st_edition_holo",
+              });
+            }
 
-          // If variants found, add them; otherwise add base card
-          if (variants.length > 0) {
-            expanded.push(...variants);
-          } else {
+            if (variants.length > 0) {
+              expanded.push(...variants);
+            } else {
+              expanded.push(card);
+            }
+          } catch (cardErr) {
+            console.error(`[SetDetail] Error processing card:`, cardErr);
             expanded.push(card);
           }
         }
 
-        console.log(`[SetDetail] Expanded ${response.length} cards to ${expanded.length} variants`);
+        console.log(
+          `[SetDetail] Expanded ${cardsArray.length} cards to ${expanded.length} variants`
+        );
         return expanded;
       } catch (err: any) {
-        console.error("[SetDetail] Error fetching cards:", err.message);
+        console.error("[SetDetail] Error fetching cards:", err);
         throw new Error(`Failed to load cards: ${err.message}`);
       }
     },
     retry: 2,
-    staleTime: 1000 * 60 * 30, // 30 minutes
+    staleTime: 1000 * 60 * 30,
   });
 
   const rarities = useMemo(() => {
@@ -228,7 +268,6 @@ export default function SetDetailScreen() {
           });
         }}
       >
-        {/* Card Image Container */}
         <View
           style={[
             styles.cardImageContainer,
@@ -238,7 +277,6 @@ export default function SetDetailScreen() {
             },
           ]}
         >
-          {/* Card Image */}
           {item.images?.small ? (
             <Image
               source={{ uri: item.images.small }}
@@ -258,7 +296,6 @@ export default function SetDetailScreen() {
             </View>
           )}
 
-          {/* Variant Badge */}
           <View
             style={[
               styles.variantBadge,
@@ -274,7 +311,6 @@ export default function SetDetailScreen() {
           </View>
         </View>
 
-        {/* Card Name */}
         <Text
           style={[styles.cardName, { color: colors.text }]}
           numberOfLines={2}
@@ -282,12 +318,10 @@ export default function SetDetailScreen() {
           {item.name}
         </Text>
 
-        {/* Card Number */}
         <Text style={[styles.cardNumber, { color: colors.textSecondary }]}>
           #{item.number}
         </Text>
 
-        {/* Price */}
         {price.price ? (
           <Text style={[styles.cardPrice, { color: colors.success }]}>
             {formatGBP(price.price)}
@@ -394,7 +428,6 @@ export default function SetDetailScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={colors.text} />
@@ -405,14 +438,12 @@ export default function SetDetailScreen() {
         <View style={styles.backBtn} />
       </View>
 
-      {/* Card Count */}
       <View style={styles.cardCountContainer}>
         <Text style={[styles.cardCount, { color: colors.textSecondary }]}>
           {filteredCards.length}/{cards.length} variants
         </Text>
       </View>
 
-      {/* Rarity Filter */}
       {rarities.length > 1 && (
         <View style={styles.filterContainer}>
           {rarities.map((rarity) => (
@@ -450,7 +481,6 @@ export default function SetDetailScreen() {
         </View>
       )}
 
-      {/* Cards Grid */}
       <FlatList
         data={filteredCards}
         renderItem={renderCard}
