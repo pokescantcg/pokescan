@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -11,6 +11,7 @@ import {
   Alert,
   Dimensions,
   Linking,
+  TextInput,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -29,7 +30,7 @@ import {
   generateEbaySoldUrl,
 } from "@/lib/pokemon-api";
 import { useUser } from "@/lib/user-context";
-import { CardVariant } from "@/lib/storage";
+import { CardVariant, MarketListing } from "@/lib/storage";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const CONDITIONS = [
@@ -37,8 +38,9 @@ const CONDITIONS = [
   "Near Mint",
   "Excellent",
   "Good",
-  "Light Play",
+  "Lightly Played",
   "Played",
+  "Poor",
 ];
 const GRADERS = ["None", "PSA", "Beckett", "CGC", "ACE"];
 
@@ -77,14 +79,17 @@ export default function CardDetailScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user, addCard } = useUser();
+  const { user, addCard, addMarketListing } = useUser();
 
   const [selectedVariant, setSelectedVariant] = useState<string>(
-    routeVariant || "Non-Holo"
+    routeVariant || "Non-Holo",
   );
   const [selectedCondition, setSelectedCondition] = useState("Near Mint");
   const [selectedGrader, setSelectedGrader] = useState("None");
   const [gradeNumber, setGradeNumber] = useState("");
+  const [salePrice, setSalePrice] = useState("");
+  const [tradeMode, setTradeMode] = useState(false);
+  const [listingOpen, setListingOpen] = useState(false);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
@@ -138,7 +143,11 @@ export default function CardDetailScreen() {
           </Pressable>
         </View>
         <View style={styles.centerContent}>
-          <Ionicons name="alert-circle-outline" size={48} color={colors.pokemonRed} />
+          <Ionicons
+            name="alert-circle-outline"
+            size={48}
+            color={colors.pokemonRed}
+          />
           <Text style={[styles.text, { color: colors.text }]}>
             Card not found
           </Text>
@@ -162,11 +171,6 @@ export default function CardDetailScreen() {
       return;
     }
 
-    if (!user.isPremium) {
-      Alert.alert("Premium required", "Upgrade to Premium to add cards");
-      return;
-    }
-
     addCard({
       cardId: card.id,
       cardName: card.name,
@@ -186,11 +190,99 @@ export default function CardDetailScreen() {
     Alert.alert("Success", `${card.name} added to collection`);
   };
 
+  const handleListForSale = () => {
+    if (!user) {
+      Alert.alert("Sign in required", "Please sign in to list items");
+      return;
+    }
+
+    if (!salePrice || parseFloat(salePrice) <= 0) {
+      Alert.alert("Invalid price", "Please enter a valid price");
+      return;
+    }
+
+    const listing: MarketListing = {
+      id: `${card.id}-${selectedVariant}-${Date.now()}`,
+      cardId: card.id,
+      cardName: card.name,
+      setName: card.set?.name || "",
+      cardNumber: card.number || "",
+      cardImage: card.images?.small || "",
+      variant: selectedVariant as CardVariant,
+      condition: selectedCondition,
+      grade:
+        selectedGrader !== "None" ? `${selectedGrader} ${gradeNumber}` : null,
+      price: parseFloat(salePrice),
+      currency: "GBP",
+      type: "sale",
+      userId: user.id,
+      userName: user.name || "Anonymous",
+      description: `${card.name} ${selectedVariant} - ${selectedCondition} condition`,
+      createdAt: new Date(),
+      images: [card.images?.small || ""],
+      condition_notes: "",
+      shipping: {
+        cost: 0,
+        location: "UK",
+      },
+    };
+
+    addMarketListing(listing);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert(
+      "Listed!",
+      `${card.name} has been listed for sale at £${salePrice}`,
+    );
+    setListingOpen(false);
+    setSalePrice("");
+  };
+
+  const handleListForTrade = () => {
+    if (!user) {
+      Alert.alert("Sign in required", "Please sign in to list items");
+      return;
+    }
+
+    const listing: MarketListing = {
+      id: `${card.id}-trade-${Date.now()}`,
+      cardId: card.id,
+      cardName: card.name,
+      setName: card.set?.name || "",
+      cardNumber: card.number || "",
+      cardImage: card.images?.small || "",
+      variant: selectedVariant as CardVariant,
+      condition: selectedCondition,
+      grade:
+        selectedGrader !== "None" ? `${selectedGrader} ${gradeNumber}` : null,
+      price: 0,
+      currency: "GBP",
+      type: "trade",
+      userId: user.id,
+      userName: user.name || "Anonymous",
+      description: `${card.name} ${selectedVariant} - ${selectedCondition} condition - OPEN TO TRADES`,
+      createdAt: new Date(),
+      images: [card.images?.small || ""],
+      condition_notes: "",
+      shipping: {
+        cost: 0,
+        location: "UK",
+      },
+    };
+
+    addMarketListing(listing);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert(
+      "Trade Offer Posted!",
+      `${card.name} has been posted for trades`,
+    );
+    setTradeMode(false);
+  };
+
   const openEbayActive = () => {
     if (!card?.name) return;
     const url = generateEbaySearchUrl(card.name, card.set?.name, card.number);
     Linking.openURL(url).catch(() =>
-      Alert.alert("Error", "Could not open eBay")
+      Alert.alert("Error", "Could not open eBay"),
     );
   };
 
@@ -198,7 +290,7 @@ export default function CardDetailScreen() {
     if (!card?.name) return;
     const url = generateEbaySoldUrl(card.name, card.set?.name, card.number);
     Linking.openURL(url).catch(() =>
-      Alert.alert("Error", "Could not open eBay")
+      Alert.alert("Error", "Could not open eBay"),
     );
   };
 
@@ -210,7 +302,10 @@ export default function CardDetailScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+        <Text
+          style={[styles.headerTitle, { color: colors.text }]}
+          numberOfLines={1}
+        >
           {card.name}
         </Text>
         <View style={{ width: 36 }} />
@@ -244,7 +339,10 @@ export default function CardDetailScreen() {
               <View
                 style={[
                   styles.detailBox,
-                  { backgroundColor: colors.card, borderColor: colors.borderLight },
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.borderLight,
+                  },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
@@ -259,13 +357,18 @@ export default function CardDetailScreen() {
               <View
                 style={[
                   styles.detailBox,
-                  { backgroundColor: colors.card, borderColor: colors.borderLight },
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.borderLight,
+                  },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
                   HP
                 </Text>
-                <Text style={[styles.detailValue, { color: colors.pokemonRed }]}>
+                <Text
+                  style={[styles.detailValue, { color: colors.pokemonRed }]}
+                >
                   {card.hp}
                 </Text>
               </View>
@@ -274,7 +377,10 @@ export default function CardDetailScreen() {
               <View
                 style={[
                   styles.detailBox,
-                  { backgroundColor: colors.card, borderColor: colors.borderLight },
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.borderLight,
+                  },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
@@ -364,9 +470,13 @@ export default function CardDetailScreen() {
                     styles.chip,
                     {
                       backgroundColor:
-                        selectedVariant === v ? colors.pokemonYellow : colors.card,
+                        selectedVariant === v
+                          ? colors.pokemonYellow
+                          : colors.card,
                       borderColor:
-                        selectedVariant === v ? colors.pokemonYellow : colors.borderLight,
+                        selectedVariant === v
+                          ? colors.pokemonYellow
+                          : colors.borderLight,
                     },
                   ]}
                   onPress={() => setSelectedVariant(v)}
@@ -374,13 +484,16 @@ export default function CardDetailScreen() {
                   <Ionicons
                     name={getVariantIcon(v) as any}
                     size={14}
-                    color={selectedVariant === v ? "#000" : colors.textSecondary}
+                    color={
+                      selectedVariant === v ? "#000" : colors.textSecondary
+                    }
                   />
                   <Text
                     style={[
                       styles.chipText,
                       {
-                        color: selectedVariant === v ? "#000" : colors.textSecondary,
+                        color:
+                          selectedVariant === v ? "#000" : colors.textSecondary,
                       },
                     ]}
                   >
@@ -408,7 +521,9 @@ export default function CardDetailScreen() {
                     styles.chip,
                     {
                       backgroundColor:
-                        selectedCondition === c ? colors.pokemonRed : colors.card,
+                        selectedCondition === c
+                          ? colors.pokemonRed
+                          : colors.card,
                     },
                   ]}
                   onPress={() => setSelectedCondition(c)}
@@ -417,7 +532,10 @@ export default function CardDetailScreen() {
                     style={[
                       styles.chipText,
                       {
-                        color: selectedCondition === c ? "#FFF" : colors.textSecondary,
+                        color:
+                          selectedCondition === c
+                            ? "#FFF"
+                            : colors.textSecondary,
                       },
                     ]}
                   >
@@ -445,7 +563,9 @@ export default function CardDetailScreen() {
                     styles.chip,
                     {
                       backgroundColor:
-                        selectedGrader === g ? colors.pokemonYellow : colors.card,
+                        selectedGrader === g
+                          ? colors.pokemonYellow
+                          : colors.card,
                     },
                   ]}
                   onPress={() => setSelectedGrader(g)}
@@ -454,7 +574,8 @@ export default function CardDetailScreen() {
                     style={[
                       styles.chipText,
                       {
-                        color: selectedGrader === g ? "#000" : colors.textSecondary,
+                        color:
+                          selectedGrader === g ? "#000" : colors.textSecondary,
                       },
                     ]}
                   >
@@ -472,7 +593,10 @@ export default function CardDetailScreen() {
                 <View
                   style={[
                     styles.gradeInput,
-                    { backgroundColor: colors.card, borderColor: colors.borderLight },
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.borderLight,
+                    },
                   ]}
                 >
                   <Text style={[styles.gradeValue, { color: colors.text }]}>
@@ -533,8 +657,13 @@ export default function CardDetailScreen() {
                 styles.marketplaceBtn,
                 { backgroundColor: colors.success },
               ]}
+              onPress={() => setListingOpen(!listingOpen)}
             >
-              <MaterialCommunityIcons name="cash-multiple" size={18} color="#FFF" />
+              <MaterialCommunityIcons
+                name="cash-multiple"
+                size={18}
+                color="#FFF"
+              />
               <Text style={styles.actionBtnText}>List for Sale</Text>
             </Pressable>
             <Pressable
@@ -542,11 +671,55 @@ export default function CardDetailScreen() {
                 styles.marketplaceBtn,
                 { backgroundColor: colors.pokemonBlue },
               ]}
+              onPress={handleListForTrade}
             >
-              <MaterialCommunityIcons name="swap-horizontal" size={18} color="#FFF" />
+              <MaterialCommunityIcons
+                name="swap-horizontal"
+                size={18}
+                color="#FFF"
+              />
               <Text style={styles.actionBtnText}>List for Trade</Text>
             </Pressable>
           </View>
+
+          {/* Sale Price Input */}
+          {listingOpen && (
+            <View
+              style={[
+                styles.section,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.borderLight,
+                },
+              ]}
+            >
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>
+                💷 Set Price
+              </Text>
+              <View style={styles.priceInputContainer}>
+                <Text style={[styles.currencySymbol, { color: colors.text }]}>
+                  £
+                </Text>
+                <TextInput
+                  style={[
+                    styles.priceInput,
+                    { color: colors.text, borderColor: colors.borderLight },
+                  ]}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="decimal-pad"
+                  value={salePrice}
+                  onChangeText={setSalePrice}
+                />
+              </View>
+              <Pressable
+                style={[styles.button, { backgroundColor: colors.success }]}
+                onPress={handleListForSale}
+              >
+                <Text style={styles.buttonText}>✓ Confirm Listing</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       </ScrollView>
     </View>
@@ -742,6 +915,25 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 10,
     gap: 6,
+  },
+  priceInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+  currencySymbol: {
+    fontSize: 18,
+    fontFamily: "Outfit_700Bold",
+  },
+  priceInput: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    fontSize: 16,
+    fontFamily: "Outfit_600SemiBold",
   },
   text: {
     fontSize: 16,

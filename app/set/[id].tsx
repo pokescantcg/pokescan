@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -9,10 +9,13 @@ import {
   ActivityIndicator,
   Dimensions,
   RefreshControl,
+  Animated,
+  TextInput,
+  Modal,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { useThemeColors } from "@/constants/colors";
@@ -26,34 +29,28 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const CARD_WIDTH = (SCREEN_WIDTH - 48) / 3;
 const CARD_IMG_HEIGHT = CARD_WIDTH * 1.4;
 
-// Complete variant mapping with all 16 types
-const VARIANT_INFO: Record<string, { label: string; color: string; icon: string }> = {
-  // Base variants
-  normal: { label: "Non-Holo", color: "#95a5a6", icon: "square-outline" },
-  non_holo: { label: "Non-Holo", color: "#95a5a6", icon: "square-outline" },
-  holo: { label: "Holo", color: "#f39c12", icon: "sparkles" },
-  reverse_holo: { label: "Reverse Holo", color: "#3498db", icon: "refresh-circle" },
-
-  // Special finish variants
-  cosmos_holo: { label: "Cosmos Holo", color: "#9b59b6", icon: "star-box" },
-  cracked_ice: { label: "Cracked Ice", color: "#1abc9c", icon: "snowflake" },
-  master_ball: { label: "Master Ball", color: "#c0392b", icon: "circle-slice-8" },
-  poke_ball: { label: "Poké Ball", color: "#e74c3c", icon: "circle" },
-
-  // Stamp variants
-  staff_stamp: { label: "Staff Stamp", color: "#34495e", icon: "stamper" },
-  prerelease_stamp: { label: "Prerelease", color: "#16a085", icon: "stamp" },
-  winner_stamp: { label: "Winner", color: "#d4af37", icon: "trophy" },
-  league_stamp: { label: "League", color: "#2980b9", icon: "shield-star" },
-  champion_stamp: { label: "Champion", color: "#f39c12", icon: "crown" },
-  set_stamp: { label: "Set Stamp", color: "#8e44ad", icon: "tag" },
+const VARIANT_INFO: Record<string, { label: string; color: string }> = {
+  normal: { label: "Non-Holo", color: "#95a5a6" },
+  non_holo: { label: "Non-Holo", color: "#95a5a6" },
+  holo: { label: "Holo", color: "#f39c12" },
+  reverse_holo: { label: "Reverse Holo", color: "#3498db" },
+  cosmos_holo: { label: "Cosmos Holo", color: "#9b59b6" },
+  cracked_ice: { label: "Cracked Ice", color: "#1abc9c" },
+  master_ball: { label: "Master Ball", color: "#c0392b" },
+  poke_ball: { label: "Poké Ball", color: "#e74c3c" },
+  staff_stamp: { label: "Staff Stamp", color: "#34495e" },
+  prerelease_stamp: { label: "Prerelease", color: "#16a085" },
+  winner_stamp: { label: "Winner", color: "#d4af37" },
+  league_stamp: { label: "League", color: "#2980b9" },
+  champion_stamp: { label: "Champion", color: "#f39c12" },
+  set_stamp: { label: "Set Stamp", color: "#8e44ad" },
 };
 
 function getVariantInfo(
   variantLabel?: string,
   finishType?: string,
   variant?: string
-): { label: string; color: string; icon: string } {
+): { label: string; color: string } {
   const source = variantLabel || finishType || variant || "normal";
   const normalized = source.toLowerCase().trim().replace(/\s+/g, "_");
 
@@ -61,44 +58,60 @@ function getVariantInfo(
     return VARIANT_INFO[normalized];
   }
 
-  if (normalized.includes("reverse")) {
-    return VARIANT_INFO.reverse_holo;
-  }
-  if (normalized.includes("holo") && !normalized.includes("reverse")) {
-    return VARIANT_INFO.holo;
-  }
-  if (normalized.includes("cosmos")) {
-    return VARIANT_INFO.cosmos_holo;
-  }
-  if (normalized.includes("cracked")) {
-    return VARIANT_INFO.cracked_ice;
-  }
-  if (normalized.includes("master")) {
-    return VARIANT_INFO.master_ball;
-  }
-  if (normalized.includes("poke")) {
-    return VARIANT_INFO.poke_ball;
-  }
-  if (normalized.includes("staff")) {
-    return VARIANT_INFO.staff_stamp;
-  }
-  if (normalized.includes("prerelease")) {
-    return VARIANT_INFO.prerelease_stamp;
-  }
-  if (normalized.includes("winner")) {
-    return VARIANT_INFO.winner_stamp;
-  }
-  if (normalized.includes("league")) {
-    return VARIANT_INFO.league_stamp;
-  }
-  if (normalized.includes("champion")) {
-    return VARIANT_INFO.champion_stamp;
-  }
-  if (normalized.includes("set") && normalized.includes("stamp")) {
-    return VARIANT_INFO.set_stamp;
-  }
+  if (normalized.includes("reverse")) return VARIANT_INFO.reverse_holo;
+  if (normalized.includes("holo") && !normalized.includes("reverse")) return VARIANT_INFO.holo;
+  if (normalized.includes("cosmos")) return VARIANT_INFO.cosmos_holo;
+  if (normalized.includes("cracked")) return VARIANT_INFO.cracked_ice;
+  if (normalized.includes("master")) return VARIANT_INFO.master_ball;
+  if (normalized.includes("poke")) return VARIANT_INFO.poke_ball;
+  if (normalized.includes("staff")) return VARIANT_INFO.staff_stamp;
+  if (normalized.includes("prerelease")) return VARIANT_INFO.prerelease_stamp;
+  if (normalized.includes("winner")) return VARIANT_INFO.winner_stamp;
+  if (normalized.includes("league")) return VARIANT_INFO.league_stamp;
+  if (normalized.includes("champion")) return VARIANT_INFO.champion_stamp;
+  if (normalized.includes("set") && normalized.includes("stamp")) return VARIANT_INFO.set_stamp;
 
   return VARIANT_INFO.normal;
+}
+
+function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
+  const scaleAnim = new Animated.Value(1);
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1.1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [scaleAnim]);
+
+  return (
+    <Animated.View
+      style={[
+        styles.variantBadge,
+        { 
+          backgroundColor: variantInfo.color,
+          transform: [{ scale: scaleAnim }],
+        },
+      ]}
+    >
+      <View style={styles.pokeball}>
+        <View style={styles.pokeballTop} />
+        <View style={styles.pokeballMiddle} />
+        <View style={styles.pokeballBottom} />
+      </View>
+      <Text style={styles.variantBadgeText}>{variantInfo.label}</Text>
+    </Animated.View>
+  );
 }
 
 export default function SetDetailScreen() {
@@ -109,6 +122,8 @@ export default function SetDetailScreen() {
 
   const [selectedRarity, setSelectedRarity] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [showRarityDropdown, setShowRarityDropdown] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const {
     data: cards = [],
@@ -122,26 +137,16 @@ export default function SetDetailScreen() {
       if (!id) throw new Error("No set ID provided");
 
       try {
-        console.log(`[SetDetail] Fetching cards for set: ${id}`);
-
-        // Fetch from API with proper error handling
         const response = await fetch(
           `https://api.pokemontcg.io/v2/cards?q=set.id:${id}`,
           {
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json" },
           }
         );
 
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`API error: ${response.status}`);
 
         const json = await response.json();
-        console.log("[SetDetail] API Response:", json);
-
-        // Handle different response formats
         let cardsArray: PokemonCard[] = [];
 
         if (json.data && Array.isArray(json.data)) {
@@ -156,74 +161,62 @@ export default function SetDetailScreen() {
           throw new Error("No cards found in set");
         }
 
-        console.log(`[SetDetail] Received ${cardsArray.length} base cards`);
-
-        // Expand variants
         const expanded: PokemonCard[] = [];
 
         for (const card of cardsArray) {
-          try {
-            if (!card.tcgplayer?.prices) {
-              expanded.push(card);
-              continue;
-            }
+          if (!card.tcgplayer?.prices) {
+            expanded.push(card);
+            continue;
+          }
 
-            const prices = card.tcgplayer.prices;
-            const variants = [];
+          const prices = card.tcgplayer.prices;
+          const variants = [];
 
-            if (prices.normal) {
-              variants.push({
-                ...card,
-                variantLabel: "Non-Holo",
-                finishType: "normal",
-              });
-            }
-            if (prices.holofoil) {
-              variants.push({
-                ...card,
-                variantLabel: "Holo",
-                finishType: "holo",
-              });
-            }
-            if (prices.reverseHolofoil) {
-              variants.push({
-                ...card,
-                variantLabel: "Reverse Holo",
-                finishType: "reverse_holo",
-              });
-            }
-            if (prices["1stEditionNormal"]) {
-              variants.push({
-                ...card,
-                variantLabel: "1st Ed Non-Holo",
-                finishType: "1st_edition",
-              });
-            }
-            if (prices["1stEditionHolofoil"]) {
-              variants.push({
-                ...card,
-                variantLabel: "1st Ed Holo",
-                finishType: "1st_edition_holo",
-              });
-            }
+          if (prices.normal) {
+            variants.push({
+              ...card,
+              variantLabel: "Non-Holo",
+              finishType: "normal",
+            });
+          }
+          if (prices.holofoil) {
+            variants.push({
+              ...card,
+              variantLabel: "Holo",
+              finishType: "holo",
+            });
+          }
+          if (prices.reverseHolofoil) {
+            variants.push({
+              ...card,
+              variantLabel: "Reverse Holo",
+              finishType: "reverse_holo",
+            });
+          }
+          if (prices["1stEditionNormal"]) {
+            variants.push({
+              ...card,
+              variantLabel: "1st Ed Non-Holo",
+              finishType: "1st_edition",
+            });
+          }
+          if (prices["1stEditionHolofoil"]) {
+            variants.push({
+              ...card,
+              variantLabel: "1st Ed Holo",
+              finishType: "1st_edition_holo",
+            });
+          }
 
-            if (variants.length > 0) {
-              expanded.push(...variants);
-            } else {
-              expanded.push(card);
-            }
-          } catch (cardErr) {
-            console.error(`[SetDetail] Error processing card:`, cardErr);
+          if (variants.length > 0) {
+            expanded.push(...variants);
+          } else {
             expanded.push(card);
           }
         }
 
-        console.log(
-          `[SetDetail] Expanded ${cardsArray.length} cards to ${expanded.length} variants`
-        );
         return expanded;
       } catch (err: any) {
-        console.error("[SetDetail] Error fetching cards:", err);
         throw new Error(`Failed to load cards: ${err.message}`);
       }
     },
@@ -237,9 +230,23 @@ export default function SetDetailScreen() {
   }, [cards]);
 
   const filteredCards = useMemo(() => {
-    if (!selectedRarity || selectedRarity === "All") return cards;
-    return cards.filter((c) => c.rarity === selectedRarity);
-  }, [cards, selectedRarity]);
+    let filtered = cards;
+
+    if (selectedRarity && selectedRarity !== "All") {
+      filtered = filtered.filter((c) => c.rarity === selectedRarity);
+    }
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (c) =>
+          c.name?.toLowerCase().includes(query) ||
+          c.number?.toString().includes(query)
+      );
+    }
+
+    return filtered;
+  }, [cards, selectedRarity, searchQuery]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -285,36 +292,15 @@ export default function SetDetailScreen() {
               placeholder={{ color: colors.surfaceVariant }}
             />
           ) : (
-            <View
-              style={{
-                flex: 1,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
               <Ionicons name="image-outline" size={32} color={colors.textMuted} />
             </View>
           )}
 
-          <View
-            style={[
-              styles.variantBadge,
-              { backgroundColor: variantInfo.color },
-            ]}
-          >
-            <MaterialCommunityIcons
-              name={variantInfo.icon as any}
-              size={10}
-              color="#FFF"
-            />
-            <Text style={styles.variantBadgeText}>{variantInfo.label}</Text>
-          </View>
+          <AnimatedVariantBadge variantInfo={variantInfo} />
         </View>
 
-        <Text
-          style={[styles.cardName, { color: colors.text }]}
-          numberOfLines={2}
-        >
+        <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={2}>
           {item.name}
         </Text>
 
@@ -322,15 +308,15 @@ export default function SetDetailScreen() {
           #{item.number}
         </Text>
 
-        {price.price ? (
-          <Text style={[styles.cardPrice, { color: colors.success }]}>
-            {formatGBP(price.price)}
-          </Text>
-        ) : (
-          <Text style={[styles.cardPrice, { color: colors.textMuted }]}>
-            Price N/A
-          </Text>
-        )}
+        <View style={[styles.priceBadge, { backgroundColor: colors.success + "20" }]}>
+          {price.price ? (
+            <Text style={[styles.cardPrice, { color: colors.success }]}>
+              {formatGBP(price.price)}
+            </Text>
+          ) : (
+            <Text style={[styles.cardPrice, { color: colors.textMuted }]}>N/A</Text>
+          )}
+        </View>
       </Pressable>
     );
   };
@@ -349,9 +335,7 @@ export default function SetDetailScreen() {
         </View>
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.pokemonRed} />
-          <Text style={[styles.text, { color: colors.textSecondary }]}>
-            Loading cards...
-          </Text>
+          <Text style={[styles.text, { color: colors.textSecondary }]}>Loading cards...</Text>
         </View>
       </View>
     );
@@ -370,28 +354,15 @@ export default function SetDetailScreen() {
           <View style={styles.backBtn} />
         </View>
         <View style={styles.centerContent}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={48}
-            color={colors.pokemonRed}
-          />
+          <Ionicons name="alert-circle-outline" size={48} color={colors.pokemonRed} />
           <Text style={[styles.text, { color: colors.text }, { textAlign: "center" }]}>
             Error Loading Cards
-          </Text>
-          <Text style={[styles.errorText, { color: colors.textSecondary }]}>
-            {error?.message || "Unknown error"}
           </Text>
           <Pressable
             onPress={() => refetch()}
             style={[styles.button, { backgroundColor: colors.pokemonRed }]}
           >
             <Text style={styles.buttonText}>Retry</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => router.back()}
-            style={[styles.button, { backgroundColor: colors.textMuted }]}
-          >
-            <Text style={styles.buttonText}>Go Back</Text>
           </Pressable>
         </View>
       </View>
@@ -412,15 +383,7 @@ export default function SetDetailScreen() {
         </View>
         <View style={styles.centerContent}>
           <Ionicons name="card-outline" size={48} color={colors.textMuted} />
-          <Text style={[styles.text, { color: colors.text }]}>
-            No cards found
-          </Text>
-          <Pressable
-            onPress={() => router.back()}
-            style={[styles.button, { backgroundColor: colors.pokemonRed }]}
-          >
-            <Text style={styles.buttonText}>Go Back</Text>
-          </Pressable>
+          <Text style={[styles.text, { color: colors.text }]}>No cards found</Text>
         </View>
       </View>
     );
@@ -438,49 +401,89 @@ export default function SetDetailScreen() {
         <View style={styles.backBtn} />
       </View>
 
-      <View style={styles.cardCountContainer}>
-        <Text style={[styles.cardCount, { color: colors.textSecondary }]}>
-          {filteredCards.length}/{cards.length} variants
-        </Text>
-      </View>
-
+      {/* Rarity Dropdown - Above Grid */}
       {rarities.length > 1 && (
-        <View style={styles.filterContainer}>
-          {rarities.map((rarity) => (
+        <View style={styles.dropdownSection}>
+          <Pressable
+            style={[
+              styles.dropdownButton,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.borderLight,
+              },
+            ]}
+            onPress={() => setShowRarityDropdown(!showRarityDropdown)}
+          >
+            <Text style={[styles.dropdownButtonText, { color: colors.text }]}>
+              {selectedRarity || "All Rarities"}
+            </Text>
+            <Ionicons
+              name={showRarityDropdown ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={colors.textSecondary}
+            />
+          </Pressable>
+
+          <Modal
+            visible={showRarityDropdown}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowRarityDropdown(false)}
+          >
             <Pressable
-              key={rarity}
-              style={[
-                styles.filterBtn,
-                {
-                  backgroundColor:
-                    selectedRarity === rarity || (!selectedRarity && rarity === "All")
-                      ? colors.pokemonRed
-                      : colors.card,
-                  borderColor: colors.borderLight,
-                },
-              ]}
-              onPress={() =>
-                setSelectedRarity(rarity === "All" ? null : rarity)
-              }
+              style={styles.modalOverlay}
+              onPress={() => setShowRarityDropdown(false)}
             >
-              <Text
+              <View
                 style={[
-                  styles.filterBtnText,
-                  {
-                    color:
-                      selectedRarity === rarity || (!selectedRarity && rarity === "All")
-                        ? "#FFF"
-                        : colors.textSecondary,
-                  },
+                  styles.dropdownContent,
+                  { backgroundColor: colors.card, borderColor: colors.borderLight },
                 ]}
               >
-                {rarity}
-              </Text>
+                {rarities.map((rarity) => (
+                  <Pressable
+                    key={rarity}
+                    style={[
+                      styles.dropdownItem,
+                      {
+                        backgroundColor:
+                          selectedRarity === rarity || (!selectedRarity && rarity === "All")
+                            ? colors.pokemonRed + "20"
+                            : "transparent",
+                        borderBottomColor: colors.borderLight,
+                      },
+                    ]}
+                    onPress={() => {
+                      setSelectedRarity(rarity === "All" ? null : rarity);
+                      setShowRarityDropdown(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownItemText,
+                        {
+                          color: colors.text,
+                          fontWeight:
+                            selectedRarity === rarity || (!selectedRarity && rarity === "All")
+                              ? "700"
+                              : "400",
+                        },
+                      ]}
+                    >
+                      {rarity}
+                    </Text>
+                    {(selectedRarity === rarity || (!selectedRarity && rarity === "All")) && (
+                      <Ionicons name="checkmark" size={18} color={colors.pokemonRed} />
+                    )}
+                  </Pressable>
+                ))}
+              </View>
             </Pressable>
-          ))}
+          </Modal>
         </View>
       )}
 
+      {/* Cards Grid with Search */}
       <FlatList
         data={filteredCards}
         renderItem={renderCard}
@@ -492,10 +495,41 @@ export default function SetDetailScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
+        ListHeaderComponent={
+          <View style={styles.gridHeader}>
+            {/* Search Bar - Inside Grid */}
+            <View
+              style={[
+                styles.searchContainer,
+                { backgroundColor: colors.card, borderColor: colors.borderLight },
+              ]}
+            >
+              <Ionicons name="search" size={18} color={colors.textSecondary} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search by name or #..."
+                placeholderTextColor={colors.textMuted}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 && (
+                <Pressable onPress={() => setSearchQuery("")}>
+                  <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                </Pressable>
+              )}
+            </View>
+
+            {/* Results Count */}
+            <Text style={[styles.resultsCount, { color: colors.textSecondary }]}>
+              {filteredCards.length}/{cards.length} variants
+            </Text>
+          </View>
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={[styles.text, { color: colors.textMuted }]}>
-              No cards match this filter
+            <Ionicons name="search-outline" size={48} color={colors.textMuted} />
+            <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+              {searchQuery ? "No cards match" : "No cards found"}
             </Text>
           </View>
         }
@@ -528,29 +562,51 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
   },
-  cardCountContainer: {
+  dropdownSection: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
-  cardCount: {
-    fontSize: 13,
-    fontFamily: "Outfit_500Medium",
-  },
-  filterContainer: {
+  dropdownButton: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 8,
-  },
-  filterBtn: {
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
   },
-  filterBtnText: {
-    fontSize: 12,
+  dropdownButtonText: {
+    fontSize: 14,
     fontFamily: "Outfit_600SemiBold",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-start",
+    paddingTop: 130,
+  },
+  dropdownContent: {
+    marginHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    overflow: "hidden",
+    maxHeight: 300,
+  },
+  dropdownItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  dropdownItemText: {
+    fontSize: 14,
+    fontFamily: "Outfit_500Medium",
+  },
+  gridHeader: {
+    gap: 10,
+    marginBottom: 8,
   },
   gridContainer: {
     paddingHorizontal: 12,
@@ -559,6 +615,25 @@ const styles = StyleSheet.create({
   gridRow: {
     gap: 12,
     justifyContent: "space-between",
+  },
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: "Outfit_500Medium",
+  },
+  resultsCount: {
+    fontSize: 13,
+    fontFamily: "Outfit_500Medium",
+    paddingHorizontal: 12,
   },
   cardImageContainer: {
     position: "relative",
@@ -583,10 +658,45 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 4,
   },
+  pokeball: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    overflow: "hidden",
+    backgroundColor: "#FFF",
+    borderWidth: 1,
+    borderColor: "#000",
+  },
+  pokeballTop: {
+    flex: 1,
+    backgroundColor: "#E53238",
+    borderBottomWidth: 2,
+    borderBottomColor: "#000",
+  },
+  pokeballMiddle: {
+    width: 2,
+    height: 2,
+    backgroundColor: "#000",
+    alignSelf: "center",
+    marginVertical: -1,
+  },
+  pokeballBottom: {
+    flex: 1,
+    backgroundColor: "#FFF",
+  },
   variantBadgeText: {
     fontSize: 8,
-    fontFamily: "Outfit_600SemiBold",
+    fontFamily: "Outfit_700Bold",
     color: "#FFF",
+    textShadowColor: "#000",
+    textShadowOffset: { width: 0.5, height: 0.5 },
+    textShadowRadius: 1,
+  },
+  priceBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 4,
   },
   cardName: {
     fontSize: 12,
@@ -601,6 +711,7 @@ const styles = StyleSheet.create({
   cardPrice: {
     fontSize: 12,
     fontFamily: "Outfit_700Bold",
+    textAlign: "center",
   },
   centerContent: {
     flex: 1,
@@ -615,14 +726,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 40,
   },
+  emptyText: {
+    fontSize: 16,
+    fontFamily: "Outfit_500Medium",
+    marginTop: 12,
+  },
   text: {
     fontSize: 16,
     fontFamily: "Outfit_500Medium",
-  },
-  errorText: {
-    fontSize: 12,
-    fontFamily: "Outfit_400Regular",
-    textAlign: "center",
   },
   button: {
     paddingHorizontal: 24,
