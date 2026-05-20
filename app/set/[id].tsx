@@ -465,38 +465,54 @@ export default function SetDetailScreen() {
   }, [allCards]);
 
   const expandedCards = useMemo(() => {
+    if (!Array.isArray(allCards)) {
+      return [];
+    }
+
     return allCards.flatMap((card: any) => {
-      if (!card?.variants || card.variants.length === 0) {
+      // Safety fallback
+      if (!card || typeof card !== "object") {
+        return [];
+      }
+
+      const variants = Array.isArray(card.variants) ? card.variants : [];
+
+      // No variants fallback
+      if (variants.length === 0) {
         return [
           {
             ...card,
-            renderId: `${card.id}-standard`,
-            cardId: card.id,
-            finishType: card.finishType || "Non-Holo",
-            variantLabel: card.variantLabel || null,
-            isStamped: card.isStamped || false,
+            renderId: `${card.id}-default`,
+            finishType: "normal",
+            variantLabel: "Non-Holo",
+            images: card.images || null,
           },
         ];
       }
-      return card.variants.map((variant: any) => ({
-        ...card,
 
-        renderId: `${card.id}-${variant.variantId}`,
+      // Render one entry per variant
+      return variants.map((variant: any, index: number) => {
+        const finishType =
+          variant?.finishType || variant?.finish_type || "normal";
 
-        variantId: variant.variantId,
+        return {
+          ...card,
 
-        finishType: variant.finishType || "Non-Holo",
+          renderId: variant?.variantId || `${card.id}-${finishType}-${index}`,
 
-        editionType: variant.editionType || "Standard",
+          variantId: variant?.variantId || null,
 
-        variantLabel: variant.variantLabel || variant.finishType || "Standard",
+          finishType,
 
-        isStamped: variant.isStamped || false,
+          variantLabel:
+            FINISH_LABELS?.[finishType] ||
+            variant?.variantLabel ||
+            variant?.variant_label ||
+            finishType,
 
-        language: variant.language || "EN",
-
-        images: variant.images || card.images,
-      }));
+          images: variant?.images || card.images || null,
+        };
+      });
     });
   }, [allCards]);
 

@@ -299,30 +299,6 @@ async function syncCardsForSet(
 
       if (!alreadySynced || force) {
         await syncPricingForCard(card);
-        const existingPricing = await db
-          .select()
-          .from(cardPricing)
-          .where(eq(cardPricing.variantId, card.id))
-          .limit(1);
-
-        const hasAnyPrice =
-          existingPricing[0]?.tcgMarket ||
-          existingPricing[0]?.priceGBP ||
-          existingPricing[0]?.cardmarketAvg;
-
-        if (!hasAnyPrice) {
-          console.log(
-            `[PricingFallback] Using PokecardValues for ${card.name}`,
-          );
-
-          await syncGbpPricingForCard(card.id, card.name, card.number);
-        }
-
-        await sleep(GBP_THROTTLE_MS);
-        await syncGbpPricingForCard(card.id, card.name, card.number);
-
-        await sleep(EBAY_THROTTLE_MS);
-        await syncEbayPricesForCard(card.id, card.name, setName, card.number);
       }
 
       inserted++;
@@ -427,12 +403,23 @@ async function syncGbpPricingForCard(
       .insert(cardPricing)
       .values({
         variantId: cardId,
+
+        source: "pricecharting",
+        currency: "GBP",
+
+        rawPrice: match.priceGBP,
         priceGBP: match.priceGBP,
+
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
         target: cardPricing.variantId,
-        set: { priceGBP: fallbackPrice, updatedAt: new Date() },
+
+        set: {
+          rawPrice: match.priceGBP,
+          priceGBP: match.priceGBP,
+          updatedAt: new Date(),
+        },
       });
   } catch (err) {
     console.error(`[CardSync] GBP price sync failed for card ${cardId}:`, err);

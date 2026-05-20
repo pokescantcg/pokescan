@@ -1,3 +1,63 @@
+function sleep(ms: number) {
+  return new Promise(resolve =>
+    setTimeout(resolve, ms)
+  );
+}
+
+let scraperQueue = Promise.resolve();
+
+async function throttledRequest<T>(
+  fn: () => Promise<T>,
+  retries = 3
+): Promise<T> {
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+
+    while (scraperBusy) {
+      console.log(
+        "[SCRAPER] Waiting for queue..."
+      );
+
+      await sleep(1000);
+    }
+
+    scraperBusy = true;
+
+    try {
+
+      const delay =
+        2000 +
+        Math.floor(Math.random() * 3000);
+
+      console.log(
+        `[SCRAPER] Delaying ${delay}ms`
+      );
+
+      await sleep(delay);
+
+      return await fn();
+
+    } catch (err) {
+
+      console.error(
+        `[SCRAPER RETRY ${attempt}]`,
+        err
+      );
+
+      if (attempt === retries) {
+        throw err;
+      }
+
+      await sleep(5000);
+
+    } finally {
+
+      scraperBusy = false;
+    }
+  }
+
+  throw new Error("Request failed");
+}
 import * as cheerio from "cheerio";
 import {
   normalizeFinishType,
@@ -74,15 +134,59 @@ function setCache<T>(key: string, data: T): void {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
-async function fetchPage(url: string): Promise<string> {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; PokeScanTCG/1.0)",
-      "Accept": "text/html,application/xhtml+xml",
-    },
-  });
-  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
-  return res.text();
+async function fetchPage(
+  url: string
+): Promise<string> {
+
+  return await throttledRequest(
+    async () => {
+
+      console.log(
+        `[FETCH] ${url}`
+      );
+
+      const controller =
+        new AbortController();
+
+      const timeout = setTimeout(
+        () => controller.abort(),
+        30000
+      );
+
+      try {
+
+        const res = await fetch(url, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Accept":
+              "text/html,application/xhtml+xml",
+          },
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          throw new Error(
+            `Failed to fetch ${url}: ${res.status}`
+          );
+        }
+
+        const html = await res.text();
+
+        // Cloudflare detection
+       {
+          throw new Error(
+            "Blocked by scraper protection"
+          );
+        }
+       return html;
+
+      } finally {
+
+        clearTimeout(timeout);
+      }
+    }
+  );
 }
 
 function parsePrice(text: string): number | null {
@@ -452,13 +556,20 @@ export async function scrapeTopCards(condition: string = "ungraded"): Promise<PC
 }
 
 export async function scrapeCardSearch(query: string): Promise<PCVCard[]> {
+  console.log(
+    `[PRICE SEARCH] ${query}`
+  );
   const cacheKey = `search-${query.toLowerCase()}`;
   const cached = getCached<PCVCard[]>(cacheKey);
   if (cached) return cached;
 
   try {
-    const html = await fetchPage(`${BASE_URL}/search/?q=${encodeURIComponent(query)}`);
-    const $ = cheerio.load(html);
+
+  const html = await fetchPage(
+    `${BASE_URL}/search/?q=${encodeURIComponent(query)}`
+  );
+
+  const $ = cheerio.load(html);
     const cards: PCVCard[] = [];
 
     $("a[href*='/cards/']").each((_, el) => {

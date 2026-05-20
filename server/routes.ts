@@ -846,11 +846,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // For non-English sets: serve whatever cards we have (any amount).
           // For English sets: only serve if ≥90% seeded (ensures complete sets).
           const hasCards = totalCount > 0;
-          const fullySeeded =
-            hasCards &&
-            (isNonEnglish ||
-              expectedTotal === 0 ||
-              totalCount >= Math.floor(expectedTotal * 0.9));
+          const fullySeeded = dbCards.length > 0;
 
           // LEFT JOIN so cards without any variant row are still included (older sets).
           // Without this, only cards that have a pokemonCardVariants row would appear.
@@ -871,10 +867,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
               ),
             )
             .orderBy(pokemonCards.number);
-
-          console.log(
-            `[SetCards] ${setId}: dbCards=${totalCount} expected=${expectedTotal} rows=${dbCards.length} fullySeeded=${fullySeeded}`,
-          );
 
           if (fullySeeded && dbCards.length > 0) {
             const cardMap = new Map();
@@ -1172,17 +1164,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .limit(1);
         const expectedTotal = setInfoResult[0]?.total ?? 0;
 
-        const dbCountResult = await db
+        const dbCards = await db
           .select({ count: sql<number>`count(*)::int` })
           .from(pokemonCards)
           .where(
             and(eq(pokemonCards.setId, setId), isNull(pokemonCards.deletedAt)),
           );
+        console.log(
+          `[SetCards] ${setId}: dbCards=${totalCount} expected=${expectedTotal} rows=${dbCards.length} fullySeeded=${fullySeeded}`,
+        );
         const dbCount = dbCountResult[0]?.count ?? 0;
-        const fullySeeded =
-          expectedTotal > 0 && dbCount >= Math.floor(expectedTotal * 0.9);
 
-        if (fullySeeded) {
+        {
           // LEFT JOIN so cards without a variant row still appear (older/incompletely seeded sets)
           const dbCards = await db
             .select({
@@ -1203,7 +1196,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
             .orderBy(pokemonCards.number);
 
           const formattedCards = dbCards.map(({ card, variant }) => {
-            const f = dbVariantToApiFormat(card, null);
+            let f;
+
+            try {
+              f = dbVariantToApiFormat(card, null);
+            } catch (err) {
+              console.error("[FORMAT ERROR]", card?.id, card?.name, err);
+
+              // Fallback safe object so one bad card
+              // doesn't kill the whole API
+              f = {
+                id: card.id,
+                cardId: card.id,
+                name: card.name,
+                number: card.number,
+                images: {
+                  small: card.imageSmall || null,
+                  large: card.imageLarge || null,
+                },
+                variants: [],
+              };
+            }
             // Keep card.id — do NOT overwrite with variant.id
             f.cardId = card.id;
             if (variant) {
@@ -1230,34 +1243,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return;
         }
 
-        let allCards: any[] = [];
-        let page = 1;
-        let hasMore = true;
-
-        while (hasMore) {
-          const response = await fetch(
-            `${POKEMON_API}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=250`,
-          );
-
-          const text = await response.text();
-          if (!response.ok) break;
-
-          try {
-            const data = JSON.parse(text);
-            const cards = data.data || [];
-            allCards = allCards.concat(cards);
-            hasMore =
-              allCards.length < (data.totalCount || 0) && cards.length === 250;
-            page++;
-          } catch {
-            break;
-          }
-        }
-
-        res.json({
-          data: allCards,
-          count: allCards.length,
-        });
+        return;
       } catch (error) {
         console.error("Failed to fetch all set cards:", error);
         res.status(500).json({ error: "Failed to fetch cards" });
@@ -1314,11 +1300,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { cardId } = req.params;
 
       // 0. Check in-memory card cache first (populated when the set was browsed)
-      const cached = getCardCache(cardId);
-      if (cached) {
-        res.json(cached);
-        return;
-      }
+      // TEMP: disable cache while debugging variants
+      // const cached = getCardCache(cardId);
+      // if (cached) {
+      //   res.json(cached);
+      //   return;
+      // }
 
       // Strip variant suffixes for backward-compat (e.g. "xy1-1-normal" → "xy1-1").
       // The set-cards endpoint previously overwrote card.id with variant.id, so any
@@ -1340,10 +1327,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .limit(1);
 
       if (dbCard.length > 0) {
+        const variantRows = await db
+          .select()
+          .from(pokemonCardVariants)
+          .where(eq(pokemonCardVariants.cardId, resolvedCardId));
+
+        const firstVariantId = variantRows[0]?.id ?? resolvedCardId;
+
         const pricing = await db
           .select()
           .from(cardPricing)
-          .where(eq(cardPricing.variantId, resolvedCardId))
+          .where(eq(cardPricing.variantId, firstVariantId))
           .limit(1);
 
         const ebayData = await db
@@ -1353,11 +1347,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .orderBy(desc(ebayPrices.fetchedAt))
           .limit(10);
 
-        const variantRows = await db
-          .select()
-          .from(pokemonCardVariants)
-          .where(eq(pokemonCardVariants.cardId, resolvedCardId));
-
         const formattedCard = dbVariantToApiFormat(
           dbCard[0],
           pricing[0] ?? null,
@@ -1366,17 +1355,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         formattedCard.variants = (variantRows || []).map((v) => ({
           variantId: v?.id || null,
-          finishType: v?.finishType || "normal",
-          editionType: v?.editionType || null,
-          variantLabel: v?.variantLabel || "Non-Holo",
-          isStamped: Boolean(v?.isStamped),
+
+          finishType: v?.finishType || v?.finish_type || "normal",
+
+          editionType: v?.editionType || v?.edition_type || null,
+
+          variantLabel: v?.variantLabel || v?.variant_label || "Non-Holo",
+
+          isStamped: Boolean(v?.isStamped || v?.is_stamped),
+
           language: v?.language || "en",
-          images: v?.imageUrl
-            ? {
-                small: v.imageUrl,
-                large: v.imageUrl,
-              }
-            : formattedCard.images || null,
+
+          images:
+            v?.imageUrl || v?.image_url
+              ? {
+                  small: v?.imageUrl || v?.image_url,
+                  large: v?.imageUrl || v?.image_url,
+                }
+              : formattedCard.images || null,
         }));
         setCardCache(cardId, { data: formattedCard, source: "db" });
         const setData = await db
@@ -1749,27 +1745,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const cardBase = `${cardName}${setName ? " " + setName : ""}`;
-      const [psa9, psa10, beckett9, beckett10, ace9, ace10, cgc9, cgc10] =
-        await Promise.allSettled([
-          scrapeGradedMedian(cardBase, "PSA", 9),
-          scrapeGradedMedian(cardBase, "PSA", 10),
-          scrapeGradedMedian(cardBase, "Beckett", 9),
-          scrapeGradedMedian(cardBase, "Beckett", 10),
-          scrapeGradedMedian(cardBase, "ACE", 9),
-          scrapeGradedMedian(cardBase, "ACE", 10),
-          scrapeGradedMedian(cardBase, "CGC", 9),
-          scrapeGradedMedian(cardBase, "CGC", 10),
-        ]);
+      async function safeGradedMedian(
+        cardBase: string,
+        company: string,
+        grade: number,
+      ): Promise<number | null> {
+        try {
+          return await scrapeGradedMedian(cardBase, company, grade);
+        } catch (err) {
+          console.error(`[GRADED FAILED] ${company} ${grade}`, err);
 
-      function getVal(r: PromiseSettledResult<number | null>): number | null {
-        return r.status === "fulfilled" ? r.value : null;
+          return null;
+        }
       }
+      const psa9 = await safeGradedMedian(cardBase, "PSA", 9);
+
+      const psa10 = await safeGradedMedian(cardBase, "PSA", 10);
+
+      const beckett9 = await safeGradedMedian(cardBase, "Beckett", 9);
+
+      const beckett10 = await safeGradedMedian(cardBase, "Beckett", 10);
+
+      const ace9 = await safeGradedMedian(cardBase, "ACE", 9);
+
+      const ace10 = await safeGradedMedian(cardBase, "ACE", 10);
+
+      const cgc9 = await safeGradedMedian(cardBase, "CGC", 9);
+
+      const cgc10 = await safeGradedMedian(cardBase, "CGC", 10);
 
       const gradedPrices = {
-        PSA: { 9: getVal(psa9), 10: getVal(psa10) },
-        Beckett: { 9: getVal(beckett9), 10: getVal(beckett10) },
-        ACE: { 9: getVal(ace9), 10: getVal(ace10) },
-        CGC: { 9: getVal(cgc9), 10: getVal(cgc10) },
+        PSA: { 9: psa9, 10: psa10 },
+        Beckett: {
+          9: beckett9,
+          10: beckett10,
+        },
+        ACE: {
+          9: ace9,
+          10: ace10,
+        },
+        CGC: {
+          9: cgc9,
+          10: cgc10,
+        },
       };
 
       res.json({

@@ -545,6 +545,7 @@ export async function runScrydexSync(
           } else {
             // Fill in missing images
             const existingImg = existingCards.get(card.id);
+
             if (!existingImg || existingImg === "") {
               try {
                 await db
@@ -562,21 +563,18 @@ export async function runScrydexSync(
                       ),
                     ),
                   );
+
                 progress.cardsUpdated++;
               } catch (err: any) {
-                /* ignore */
+                console.error(
+                  `[Scrydex] Image update failed for ${card.id}:`,
+                  err.message,
+                );
               }
             }
           }
 
-          // Step 2: Upsert variant row (card is guaranteed to exist at this point)
-          console.log({
-            id: card.id,
-            name: card.name,
-            finishType: card.finishType,
-            editionType: card.editionType,
-            variants: card.variants,
-          });
+          // Variant upsert
           try {
             await db
               .insert(pokemonCardVariants)
@@ -595,47 +593,266 @@ export async function runScrydexSync(
               .onConflictDoNothing();
           } catch (err: any) {
             console.error(
-              `[Scrydex] Variant insert failed for ${card.id} variant=${card.variantId}:`,
+              `[Scrydex] Variant insert failed ${card.variantId}:`,
               err.message,
             );
           }
 
-          // Step 3: Upsert price (tied to variantId, not a FK so always safe)
+          // Price upsert
           if (card.priceUsd !== null) {
+            const priceGBP = Math.round(card.priceUsd * 0.79 * 100) / 100;
+
             try {
               await db
                 .insert(cardPricing)
                 .values({
                   variantId: card.variantId,
-                  priceGBP: Math.round(card.priceUsd * 0.79 * 100) / 100,
+                  source: "scrydex",
+                  currency: "GBP",
+                  rawPrice: priceGBP,
+                  priceGBP,
                   updatedAt: new Date(),
                 })
-                .onConflictDoNothing();
+                .onConflictDoUpdate({
+                  target: cardPricing.variantId,
+                  set: {
+                    rawPrice: priceGBP,
+                    priceGBP,
+                    updatedAt: new Date(),
+                  },
+                });
             } catch (err: any) {
               console.error(
-                `[Scrydex] Price insert failed for ${card.id}:`,
+                `[Scrydex] Price upsert failed ${card.variantId}:`,
                 err.message,
               );
             }
           }
         }
 
-        report({ setsProcessed: progress.setsProcessed + 1 });
+        report({
+          setsProcessed: progress.setsProcessed + 1,
+        });
       } catch (err: any) {
         console.error(
           `[Scrydex] Failed to process cards for ${setId}:`,
           err.message,
         );
-        report({ setsProcessed: progress.setsProcessed + 1 });
+
+        report({
+          setsProcessed: progress.setsProcessed + 1,
+        });
       }
     }
+
     report({
       phase: "done",
-      message: `Sync complete. ${progress.setsAdded} sets added, ${progress.cardsAdded} cards added, ${progress.cardsUpdated} card images updated.`,
+      message:
+        `Sync complete. ${progress.setsAdded} sets added, ` +
+        `${progress.cardsAdded} cards added, ` +
+        `${progress.cardsUpdated} card images updated.`,
     });
   } catch (err: any) {
-    report({ phase: "error", message: err.message || "Sync failed" });
+    report({
+      phase: "error",
+      message: err.message || "Sync failed",
+    });
   }
 
   return progress;
+}
+// ─── TCG API variant + price sync ─────────────────────────────────────────────
+// Scrydex is missing reverse_holo and other variants for most sets.
+// This function uses the TCG API's tcgplayer.prices keys as the source of truth,
+// inserting one variant row + one price row per price key per card.
+
+const TCG_FINISH_MAP: Record<string, string> = {
+  normal: "normal",
+  holofoil: "holo",
+  reverseHolofoil: "reverse_holo",
+  "1stEditionHolofoil": "holo",
+  "1stEditionNormal": "normal",
+};
+
+// ─── TCG API variant + price sync ─────────────────────────────────────────────
+
+const TCG_EDITION_MAP: Record<string, string> = {
+  normal: "standard",
+  holofoil: "standard",
+  reverseHolofoil: "standard",
+  "1stEditionHolofoil": "1st_edition",
+  "1stEditionNormal": "1st_edition",
+};
+
+export async function syncVariantsFromTcgApi(
+  setId: string,
+  report: (msg: string) => void = console.log,
+): Promise<void> {
+  report(`[TCG Variant Sync] Starting for set ${setId}`);
+
+  let page = 1;
+  let fetched = 0;
+  let total = 999;
+
+  while (fetched < total) {
+    const url =
+      `https://api.pokemontcg.io/v2/cards?q=set.id:${setId}` +
+      `&page=${page}` +
+      `&pageSize=50` +
+      `&select=id,tcgplayer`;
+
+    const res = await fetch(url, {
+      headers: tcgApiHeaders(),
+    });
+
+    if (!res.ok) {
+      report(`[TCG Variant Sync] TCG API error ${res.status} for ${setId}`);
+
+      return;
+    }
+
+    const json = await res.json();
+
+    total = json.totalCount ?? 0;
+
+    const cards: any[] = json.data ?? [];
+
+    fetched += cards.length;
+
+    page++;
+
+    for (const card of cards) {
+      const prices = card?.tcgplayer?.prices;
+
+      if (!prices || typeof prices !== "object") {
+        continue;
+      }
+
+      for (const [tcgKey, priceData] of Object.entries(prices)) {
+        if (!priceData || typeof priceData !== "object") {
+          continue;
+        }
+
+        const finishType = TCG_FINISH_MAP[tcgKey] ?? "normal";
+
+        const editionType = TCG_EDITION_MAP[tcgKey] ?? "standard";
+
+        const language = "english";
+
+        const variantId = createVariantId(
+          card.id,
+          finishType,
+          editionType,
+          language,
+        );
+
+        const variantLabel = buildVariantLabel(finishType, editionType);
+
+        const priceUsd =
+          (priceData as any).market ||
+          (priceData as any).mid ||
+          (priceData as any).low ||
+          null;
+
+        // ─────────────────────────────
+        // Variant upsert
+        // ─────────────────────────────
+
+        try {
+          await db
+            .insert(pokemonCardVariants)
+            .values({
+              id: variantId,
+              cardId: card.id,
+              finishType,
+              editionType,
+              language,
+              variantLabel,
+              imageUrl: null,
+            })
+            .onConflictDoUpdate({
+              target: pokemonCardVariants.id,
+              set: {
+                variantLabel,
+              },
+            });
+        } catch (err: any) {
+          console.error(
+            `[TCG Variant Sync] Variant upsert failed ${variantId}:`,
+            err,
+          );
+
+          if (err instanceof Error) {
+            console.error(err.message);
+            console.error(err.stack);
+          }
+
+          continue;
+        }
+
+        // ─────────────────────────────
+        // Price upsert
+        // ─────────────────────────────
+
+        if (priceUsd !== null) {
+          const priceGBP = Math.round(priceUsd * 0.79 * 100) / 100;
+
+          try {
+            await db
+              .insert(cardPricing)
+              .values({
+                variantId,
+
+                source: "tcgplayer",
+                currency: "GBP",
+
+                rawPrice: priceGBP,
+                priceGBP,
+
+                updatedAt: new Date(),
+              })
+              .onConflictDoUpdate({
+                target: cardPricing.variantId,
+
+                set: {
+                  rawPrice: priceGBP,
+                  priceGBP,
+                  updatedAt: new Date(),
+                },
+              });
+          } catch (err: any) {
+            console.error(
+              `[TCG Variant Sync] Price upsert failed ${variantId}:`,
+              err,
+            );
+
+            if (err instanceof Error) {
+              console.error(err.message);
+              console.error(err.stack);
+            }
+          }
+        }
+      }
+    }
+
+    if (cards.length === 0) {
+      break;
+    }
+
+    await delay(300);
+  }
+
+  report(`[TCG Variant Sync] Done for set ${setId}`);
+}
+
+function tcgApiHeaders(): Record<string, string> {
+  const h: Record<string, string> = {
+    "User-Agent": "PokeScanTCG/1.0",
+  };
+
+  if (process.env.POKEMON_TCG_API_KEY) {
+    h["X-Api-Key"] = process.env.POKEMON_TCG_API_KEY;
+  }
+
+  return h;
 }

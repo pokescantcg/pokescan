@@ -36,6 +36,33 @@ function normalizeEdition(raw) {
 function createVariantId(cardId, finishType, editionType, language) {
   return `${cardId}_${finishType}_${editionType}_${language}`.toLowerCase().replace(/\s+/g, "_");
 }
+function buildVariantLabel(finishType, editionType) {
+  const finishMap = {
+    normal: "Non-Holo",
+    non_holo: "Non-Holo",
+    holo: "Holo",
+    reverse_holo: "Reverse Holo",
+    cosmos_holo: "Cosmos Holo",
+    cracked_ice: "Cracked Ice",
+    master_ball: "Master Ball",
+    poke_ball: "Pok\xE9 Ball",
+    staff_stamp: "Staff Stamp",
+    prerelease_stamp: "Prerelease Stamp",
+    winner_stamp: "Winner Stamp",
+    league_stamp: "League Stamp",
+    champion_stamp: "Champion Stamp",
+    set_stamp: "Set Stamp"
+  };
+  const editionMap = {
+    standard: "",
+    unlimited: "",
+    "1st_edition": "1st Edition",
+    shadowless: "Shadowless"
+  };
+  const finish = finishMap[finishType] || finishType;
+  const edition = editionMap[editionType] ?? editionType;
+  return edition ? `${finish} (${edition})` : finish;
+}
 var init_card_normalizers = __esm({
   "server/utils/card-normalizers.ts"() {
     "use strict";
@@ -595,8 +622,8 @@ var init_schema = __esm({
     });
     cardPriceHistory = pgTable("card_price_history", {
       id: serial("id").primaryKey(),
-      variantId: text("variant_id").notNull().references(() => pokemonCardVariants.id, {
-        onDelete: "cascade"
+      variantId: text("variant_id").references(() => pokemonCardVariants.id, {
+        onDelete: "set null"
       }),
       source: text("source").notNull(),
       price: real("price"),
@@ -1341,7 +1368,8 @@ __export(scrydex_scraper_exports, {
   scrapeScrydexSetCards: () => scrapeScrydexSetCards,
   scrapeScrydexSetDetail: () => scrapeScrydexSetDetail,
   scrapeScrydexSets: () => scrapeScrydexSets,
-  scrapeScrydexTcgPocketSets: () => scrapeScrydexTcgPocketSets
+  scrapeScrydexTcgPocketSets: () => scrapeScrydexTcgPocketSets,
+  syncVariantsFromTcgApi: () => syncVariantsFromTcgApi
 });
 import { count, inArray, isNull, eq, or, and } from "drizzle-orm";
 function delay(ms) {
@@ -1397,7 +1425,16 @@ function parseSetsFromHtml(html) {
     const total = countM ? parseInt(countM[1], 10) : 0;
     const logoUrl = `${IMAGE_BASE}/${id}-logo/logo`;
     const symbolUrl = `${IMAGE_BASE}/${id}-symbol/symbol`;
-    sets.push({ id, slug, name, series, releaseDate, total, logoUrl, symbolUrl });
+    sets.push({
+      id,
+      slug,
+      name,
+      series,
+      releaseDate,
+      total,
+      logoUrl,
+      symbolUrl
+    });
   }
   return sets;
 }
@@ -1453,10 +1490,7 @@ function parseCardsFromSetHtml(html, setId) {
       /src="(https:\/\/images\.scrydex\.com\/pokemon\/[^"]+\/medium)"/
     );
     const imageSmall = imgM ? imgM[1] : `${IMAGE_BASE}/${cardId}/medium`;
-    const imageLarge = imageSmall.replace(
-      "/medium",
-      "/large"
-    );
+    const imageLarge = imageSmall.replace("/medium", "/large");
     let name = htmlDecode(slugToName2(cardSlug));
     let number = cardId.replace(`${setId}-`, "");
     const nameM = block.match(
@@ -1502,7 +1536,8 @@ function inferSeries2(id) {
   if (lower.startsWith("xy")) return "XY";
   if (lower.startsWith("bw")) return "Black & White";
   if (/^me\d/.test(lower)) return "Mega Evolution";
-  if (lower.startsWith("rsv") || lower.startsWith("zsv")) return "Scarlet & Violet";
+  if (lower.startsWith("rsv") || lower.startsWith("zsv"))
+    return "Scarlet & Violet";
   if (lower.startsWith("me")) return "Mega Evolution";
   if (lower.startsWith("neo")) return "Neo";
   if (lower.startsWith("ecard")) return "E-Card";
@@ -1545,7 +1580,10 @@ async function runScrydexSync(onProgress) {
       if (!allSetsMap.has(s.id)) allSetsMap.set(s.id, s);
     }
     const allSets = [...allSetsMap.values()];
-    report({ setsTotal: allSets.length, message: `Found ${allSets.length} sets on scrydex.com (EN + TCG Pocket + JP)` });
+    report({
+      setsTotal: allSets.length,
+      message: `Found ${allSets.length} sets on scrydex.com (EN + TCG Pocket + JP)`
+    });
     const existingSetRows = await db.select({ id: pokemonSets.id, cardCount: count(pokemonCards.id) }).from(pokemonSets).leftJoin(pokemonCards, eq(pokemonCards.setId, pokemonSets.id)).groupBy(pokemonSets.id);
     const existingSetIds = /* @__PURE__ */ new Set();
     const setsWithCards = /* @__PURE__ */ new Set();
@@ -1580,7 +1618,10 @@ async function runScrydexSync(onProgress) {
           existingSetIds.add(setId);
           report({ setsAdded: progress.setsAdded + 1 });
         } catch (err) {
-          console.error(`[Scrydex] Failed to insert set ${setId}:`, err.message);
+          console.error(
+            `[Scrydex] Failed to insert set ${setId}:`,
+            err.message
+          );
         }
       }
       try {
@@ -1611,19 +1652,34 @@ async function runScrydexSync(onProgress) {
               existingCards.set(card.id, card.imageSmall);
               progress.cardsAdded++;
             } catch (err) {
-              console.error(`[Scrydex] Card insert failed for ${card.id}:`, err.message);
+              console.error(
+                `[Scrydex] Card insert failed for ${card.id}:`,
+                err.message
+              );
               continue;
             }
           } else {
             const existingImg = existingCards.get(card.id);
             if (!existingImg || existingImg === "") {
               try {
-                await db.update(pokemonCards).set({ imageSmall: card.imageSmall, imageLarge: card.imageLarge }).where(and(
-                  eq(pokemonCards.id, card.id),
-                  or(isNull(pokemonCards.imageSmall), eq(pokemonCards.imageSmall, ""))
-                ));
+                await db.update(pokemonCards).set({
+                  imageSmall: card.imageSmall,
+                  imageLarge: card.imageLarge
+                }).where(
+                  and(
+                    eq(pokemonCards.id, card.id),
+                    or(
+                      isNull(pokemonCards.imageSmall),
+                      eq(pokemonCards.imageSmall, "")
+                    )
+                  )
+                );
                 progress.cardsUpdated++;
               } catch (err) {
+                console.error(
+                  `[Scrydex] Image update failed for ${card.id}:`,
+                  err.message
+                );
               }
             }
           }
@@ -1635,27 +1691,54 @@ async function runScrydexSync(onProgress) {
               editionType: card.editionType,
               language: card.language,
               imageUrl: card.imageLarge,
-              variantLabel: `${card.finishType} ${card.editionType}`.trim()
+              variantLabel: buildVariantLabel(
+                card.finishType,
+                card.editionType
+              )
             }).onConflictDoNothing();
           } catch (err) {
-            console.error(`[Scrydex] Variant insert failed for ${card.id} variant=${card.variantId}:`, err.message);
+            console.error(
+              `[Scrydex] Variant insert failed ${card.variantId}:`,
+              err.message
+            );
           }
           if (card.priceUsd !== null) {
+            const priceGBP = Math.round(card.priceUsd * 0.79 * 100) / 100;
             try {
               await db.insert(cardPricing).values({
                 variantId: card.variantId,
-                priceGBP: Math.round(card.priceUsd * 0.79 * 100) / 100,
+                source: "scrydex",
+                currency: "GBP",
+                rawPrice: priceGBP,
+                priceGBP,
                 updatedAt: /* @__PURE__ */ new Date()
-              }).onConflictDoNothing();
+              }).onConflictDoUpdate({
+                target: cardPricing.variantId,
+                set: {
+                  rawPrice: priceGBP,
+                  priceGBP,
+                  updatedAt: /* @__PURE__ */ new Date()
+                }
+              });
             } catch (err) {
-              console.error(`[Scrydex] Price insert failed for ${card.id}:`, err.message);
+              console.error(
+                `[Scrydex] Price upsert failed ${card.variantId}:`,
+                err.message
+              );
             }
           }
         }
-        report({ setsProcessed: progress.setsProcessed + 1 });
+        report({
+          setsProcessed: progress.setsProcessed + 1
+        });
       } catch (err) {
-        console.error(`[Scrydex] Failed to process cards for ${setId}:`, err.message);
-        report({ setsProcessed: progress.setsProcessed + 1 });
+        console.error(
+          `[Scrydex] Failed to process cards for ${setId}:`,
+          err.message
+        );
+        report({
+          setsProcessed: progress.setsProcessed + 1
+        });
       }
     }
     report({
@@ -1663,11 +1746,126 @@ async function runScrydexSync(onProgress) {
       message: `Sync complete. ${progress.setsAdded} sets added, ${progress.cardsAdded} cards added, ${progress.cardsUpdated} card images updated.`
     });
   } catch (err) {
-    report({ phase: "error", message: err.message || "Sync failed" });
+    report({
+      phase: "error",
+      message: err.message || "Sync failed"
+    });
   }
   return progress;
 }
-var BASE_URL2, IMAGE_BASE, DELAY_MS;
+async function syncVariantsFromTcgApi(setId, report = console.log) {
+  report(`[TCG Variant Sync] Starting for set ${setId}`);
+  let page = 1;
+  let fetched = 0;
+  let total = 999;
+  while (fetched < total) {
+    const url = `https://api.pokemontcg.io/v2/cards?q=set.id:${setId}&page=${page}&pageSize=50&select=id,tcgplayer`;
+    const res = await fetch(url, {
+      headers: tcgApiHeaders()
+    });
+    if (!res.ok) {
+      report(`[TCG Variant Sync] TCG API error ${res.status} for ${setId}`);
+      return;
+    }
+    const json = await res.json();
+    total = json.totalCount ?? 0;
+    const cards = json.data ?? [];
+    fetched += cards.length;
+    page++;
+    for (const card of cards) {
+      const prices = card?.tcgplayer?.prices;
+      if (!prices || typeof prices !== "object") {
+        continue;
+      }
+      for (const [tcgKey, priceData] of Object.entries(prices)) {
+        if (!priceData || typeof priceData !== "object") {
+          continue;
+        }
+        const finishType = TCG_FINISH_MAP[tcgKey] ?? "normal";
+        const editionType = TCG_EDITION_MAP[tcgKey] ?? "standard";
+        const language = "english";
+        const variantId = createVariantId(
+          card.id,
+          finishType,
+          editionType,
+          language
+        );
+        const variantLabel = buildVariantLabel(finishType, editionType);
+        const priceUsd = priceData.market || priceData.mid || priceData.low || null;
+        try {
+          await db.insert(pokemonCardVariants).values({
+            id: variantId,
+            cardId: card.id,
+            finishType,
+            editionType,
+            language,
+            variantLabel,
+            imageUrl: null
+          }).onConflictDoUpdate({
+            target: pokemonCardVariants.id,
+            set: {
+              variantLabel
+            }
+          });
+        } catch (err) {
+          console.error(
+            `[TCG Variant Sync] Variant upsert failed ${variantId}:`,
+            err
+          );
+          if (err instanceof Error) {
+            console.error(err.message);
+            console.error(err.stack);
+          }
+          continue;
+        }
+        if (priceUsd !== null) {
+          const priceGBP = Math.round(priceUsd * 0.79 * 100) / 100;
+          try {
+            await db.insert(cardPricing).values({
+              variantId,
+              source: "tcgplayer",
+              currency: "GBP",
+              rawPrice: priceGBP,
+              priceGBP,
+              updatedAt: /* @__PURE__ */ new Date()
+            }).onConflictDoUpdate({
+              target: cardPricing.variantId,
+              set: {
+                rawPrice: priceGBP,
+                priceGBP,
+                updatedAt: /* @__PURE__ */ new Date()
+              }
+            });
+          } catch (err) {
+            console.error(
+              `[TCG Variant Sync] Price upsert failed ${variantId}:`,
+              err
+            );
+            if (err instanceof Error) {
+              console.error(err.message);
+              console.error(err.stack);
+            }
+          }
+        }
+      }
+    }
+    if (cards.length === 0) {
+      break;
+    }
+    await delay(300);
+  }
+  report(`[TCG Variant Sync] Done for set ${setId}`);
+}
+function tcgApiHeaders() {
+  const h = {
+    "User-Agent": "PokeScanTCG/1.0"
+  };
+  if (process.env.POKEMON_TCG_API_KEY) {
+    h["X-Api-Key"] = process.env.POKEMON_TCG_API_KEY;
+  }
+  return h;
+}
+var BASE_URL2, IMAGE_BASE, DELAY_MS, TCG_FINISH_MAP, TCG_EDITION_MAP;
 var init_scrydex_scraper = __esm({
   "server/scrydex-scraper.ts"() {
     "use strict";
@@ -1677,6 +1875,20 @@ var init_scrydex_scraper = __esm({
     BASE_URL2 = "https://scrydex.com";
     IMAGE_BASE = "https://images.scrydex.com/pokemon";
     DELAY_MS = 150;
+    TCG_FINISH_MAP = {
+      normal: "normal",
+      holofoil: "holo",
+      reverseHolofoil: "reverse_holo",
+      "1stEditionHolofoil": "holo",
+      "1stEditionNormal": "normal"
+    };
+    TCG_EDITION_MAP = {
+      normal: "standard",
+      holofoil: "standard",
+      reverseHolofoil: "standard",
+      "1stEditionHolofoil": "1st_edition",
+      "1stEditionNormal": "1st_edition"
+    };
   }
 });
 
@@ -2180,6 +2392,43 @@ import bcrypt from "bcryptjs";
 // server/pokecardvalues-scraper.ts
 init_card_normalizers();
 import * as cheerio from "cheerio";
+function sleep(ms) {
+  return new Promise(
+    (resolve2) => setTimeout(resolve2, ms)
+  );
+}
+var scraperQueue = Promise.resolve();
+async function throttledRequest(fn, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    while (scraperBusy) {
+      console.log(
+        "[SCRAPER] Waiting for queue..."
+      );
+      await sleep(1e3);
+    }
+    scraperBusy = true;
+    try {
+      const delay3 = 2e3 + Math.floor(Math.random() * 3e3);
+      console.log(
+        `[SCRAPER] Delaying ${delay3}ms`
+      );
+      await sleep(delay3);
+      return await fn();
+    } catch (err) {
+      console.error(
+        `[SCRAPER RETRY ${attempt}]`,
+        err
+      );
+      if (attempt === retries) {
+        throw err;
+      }
+      await sleep(5e3);
+    } finally {
+      scraperBusy = false;
+    }
+  }
+  throw new Error("Request failed");
+}
 var BASE_URL = "https://pokecardvalues.co.uk";
 var CDN_BASE = "https://doujkbm8mih0s.cloudfront.net/static/images/alt";
 var CACHE_TTL = 1e3 * 60 * 60;
@@ -2197,14 +2446,41 @@ function setCache(key, data) {
   cache.set(key, { data, timestamp: Date.now() });
 }
 async function fetchPage(url) {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; PokeScanTCG/1.0)",
-      "Accept": "text/html,application/xhtml+xml"
+  return await throttledRequest(
+    async () => {
+      console.log(
+        `[FETCH] ${url}`
+      );
+      const controller = new AbortController();
+      const timeout = setTimeout(
+        () => controller.abort(),
+        3e4
+      );
+      try {
+        const res = await fetch(url, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Accept": "text/html,application/xhtml+xml"
+          },
+          signal: controller.signal
+        });
+        if (!res.ok) {
+          throw new Error(
+            `Failed to fetch ${url}: ${res.status}`
+          );
+        }
+        const html = await res.text();
+        {
+          throw new Error(
+            "Blocked by scraper protection"
+          );
+        }
+        return html;
+      } finally {
+        clearTimeout(timeout);
+      }
     }
-  });
-  if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
-  return res.text();
+  );
 }
 function parsePrice(text2) {
   const match = text2.match(/£([\d,]+\.?\d*)/);
@@ -2516,11 +2792,16 @@ async function scrapeTopCards(condition = "ungraded") {
   }
 }
 async function scrapeCardSearch(query) {
+  console.log(
+    `[PRICE SEARCH] ${query}`
+  );
   const cacheKey = `search-${query.toLowerCase()}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
   try {
-    const html = await fetchPage(`${BASE_URL}/search/?q=${encodeURIComponent(query)}`);
+    const html = await fetchPage(
+      `${BASE_URL}/search/?q=${encodeURIComponent(query)}`
+    );
     const $ = cheerio.load(html);
     const cards = [];
     $("a[href*='/cards/']").each((_, el) => {
@@ -2757,7 +3038,19 @@ setInterval(() => {
 // server/routes.ts
 init_db();
 init_schema();
-import { eq as eq3, desc, sql as sql4, ilike, or as or2, and as and3, ne, exists, lt, isNull as isNull2, isNotNull } from "drizzle-orm";
+import {
+  eq as eq3,
+  desc,
+  sql as sql4,
+  ilike,
+  or as or2,
+  and as and3,
+  ne,
+  exists,
+  lt,
+  isNull as isNull2,
+  isNotNull
+} from "drizzle-orm";
 
 // server/card-sync.ts
 init_db();
@@ -2775,7 +3068,14 @@ var SYNC_STATUS_ID = 1;
 async function getOrCreateSyncStatus() {
   const rows = await db.select().from(syncStatus).where(eq2(syncStatus.id, SYNC_STATUS_ID)).limit(1);
   if (rows.length === 0) {
-    const inserted = await db.insert(syncStatus).values({ id: SYNC_STATUS_ID, totalSets: 0, syncedSets: 0, totalCards: 0, syncedCards: 0, isRunning: false }).onConflictDoNothing().returning();
+    const inserted = await db.insert(syncStatus).values({
+      id: SYNC_STATUS_ID,
+      totalSets: 0,
+      syncedSets: 0,
+      totalCards: 0,
+      syncedCards: 0,
+      isRunning: false
+    }).onConflictDoNothing().returning();
     if (inserted.length > 0) return inserted[0];
     const refetched = await db.select().from(syncStatus).where(eq2(syncStatus.id, SYNC_STATUS_ID)).limit(1);
     return refetched[0];
@@ -2799,11 +3099,14 @@ async function fetchJson(url, retries = 2) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2e4);
     try {
-      const res = await fetch(url, { headers: buildTcgHeaders(), signal: controller.signal });
+      const res = await fetch(url, {
+        headers: buildTcgHeaders(),
+        signal: controller.signal
+      });
       clearTimeout(timer);
       if (res.status === 429 || res.status === 503 || res.status === 504) {
         if (attempt < retries) {
-          await sleep(1e4 * (attempt + 1));
+          await sleep2(1e4 * (attempt + 1));
           continue;
         }
         throw new Error(`HTTP ${res.status} for ${url}`);
@@ -2813,7 +3116,7 @@ async function fetchJson(url, retries = 2) {
     } catch (err) {
       clearTimeout(timer);
       if (attempt < retries && (err.name === "AbortError" || err.message?.includes("fetch"))) {
-        await sleep(5e3 * (attempt + 1));
+        await sleep2(5e3 * (attempt + 1));
         continue;
       }
       throw err;
@@ -2821,12 +3124,14 @@ async function fetchJson(url, retries = 2) {
   }
   throw new Error(`fetchJson exhausted retries for ${url}`);
 }
-function sleep(ms) {
+function sleep2(ms) {
   return new Promise((resolve2) => setTimeout(resolve2, ms));
 }
 async function syncAllSets() {
   console.log("[CardSync] Fetching all sets from Pokemon TCG API...");
-  const responseData = await fetchJson(`${POKEMON_API}/sets?orderBy=-releaseDate&pageSize=250`);
+  const responseData = await fetchJson(
+    `${POKEMON_API}/sets?orderBy=-releaseDate&pageSize=250`
+  );
   const sets = responseData.data ?? [];
   console.log(`[CardSync] Got ${sets.length} sets.`);
   await updateSyncStatus({ totalSets: sets.length });
@@ -2921,16 +3226,14 @@ async function syncCardsForSet(setId, setName, force = false) {
         const existingPricing = await db.select().from(cardPricing).where(eq2(cardPricing.variantId, card.id)).limit(1);
         const hasAnyPrice = existingPricing[0]?.tcgMarket || existingPricing[0]?.priceGBP || existingPricing[0]?.cardmarketAvg;
         if (!hasAnyPrice) {
-          console.log(`[PricingFallback] Using PokecardValues for ${card.name}`);
-          await syncGbpPricingForCard(
-            card.id,
-            card.name,
-            card.number
+          console.log(
+            `[PricingFallback] Using PokecardValues for ${card.name}`
           );
+          await syncGbpPricingForCard(card.id, card.name, card.number);
         }
-        await sleep(GBP_THROTTLE_MS);
+        await sleep2(GBP_THROTTLE_MS);
         await syncGbpPricingForCard(card.id, card.name, card.number);
-        await sleep(EBAY_THROTTLE_MS);
+        await sleep2(EBAY_THROTTLE_MS);
         await syncEbayPricesForCard(card.id, card.name, setName, card.number);
       }
       inserted++;
@@ -2979,7 +3282,10 @@ async function syncPricingForCard(card) {
       }
     });
   } catch (err) {
-    console.error(`[CardSync] Failed to upsert pricing for card ${card.id}:`, err);
+    console.error(
+      `[CardSync] Failed to upsert pricing for card ${card.id}:`,
+      err
+    );
   }
 }
 async function syncGbpPricingForCard(cardId, cardName, cardNumber) {
@@ -2998,9 +3304,20 @@ async function syncGbpPricingForCard(cardId, cardName, cardNumber) {
     if (!match) return;
     const fallbackPrice = match.priceGBP ?? match.price ?? null;
     if (fallbackPrice === null) return;
-    await db.insert(cardPricing).values({ variantId: cardId, priceGBP: match.priceGBP, updatedAt: /* @__PURE__ */ new Date() }).onConflictDoUpdate({
+    await db.insert(cardPricing).values({
+      variantId: cardId,
+      source: "pricecharting",
+      currency: "GBP",
+      rawPrice: match.priceGBP,
+      priceGBP: match.priceGBP,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).onConflictDoUpdate({
       target: cardPricing.variantId,
-      set: { priceGBP: fallbackPrice, updatedAt: /* @__PURE__ */ new Date() }
+      set: {
+        rawPrice: match.priceGBP,
+        priceGBP: match.priceGBP,
+        updatedAt: /* @__PURE__ */ new Date()
+      }
     });
   } catch (err) {
     console.error(`[CardSync] GBP price sync failed for card ${cardId}:`, err);
@@ -3011,7 +3328,7 @@ async function scrapeEbayListings(url, isSold) {
     const res = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "text/html,application/xhtml+xml",
+        Accept: "text/html,application/xhtml+xml",
         "Accept-Language": "en-GB,en;q=0.9"
       }
     });
@@ -3046,7 +3363,10 @@ async function syncEbayPricesForCard(cardId, cardName, setName, cardNumber) {
       scrapeEbayListings(soldUrl, true),
       scrapeEbayListings(activeUrl, false)
     ]);
-    const allListings = [...soldListings.slice(0, 10), ...activeListings.slice(0, 5)];
+    const allListings = [
+      ...soldListings.slice(0, 10),
+      ...activeListings.slice(0, 5)
+    ];
     if (allListings.length === 0) return;
     const existingRows = await db.select({ listingUrl: ebayPrices.listingUrl, isSold: ebayPrices.isSold }).from(ebayPrices).where(eq2(ebayPrices.cardId, cardId));
     const existingKeys = new Set(
@@ -3091,8 +3411,13 @@ async function runFullSync(force = false) {
         const count2 = await syncCardsForSet(set.id, set.name, force);
         totalSynced += count2;
         syncedSetsCount++;
-        await updateSyncStatus({ syncedSets: syncedSetsCount, syncedCards: totalSynced });
-        console.log(`[CardSync] Set ${set.id} (${set.name}): ${count2} cards synced.`);
+        await updateSyncStatus({
+          syncedSets: syncedSetsCount,
+          syncedCards: totalSynced
+        });
+        console.log(
+          `[CardSync] Set ${set.id} (${set.name}): ${count2} cards synced.`
+        );
       } catch (err) {
         console.error(`[CardSync] Error syncing set ${set.id}:`, err);
       }
@@ -3103,7 +3428,9 @@ async function runFullSync(force = false) {
       totalCards: totalSynced,
       syncedCards: totalSynced
     });
-    console.log(`[CardSync] Full sync complete. ${totalSynced} cards across ${syncedSetsCount} sets.`);
+    console.log(
+      `[CardSync] Full sync complete. ${totalSynced} cards across ${syncedSetsCount} sets.`
+    );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[CardSync] Sync failed:", err);
@@ -3131,11 +3458,16 @@ async function runPriceRefresh() {
           if (typed.data) {
             await syncPricingForCard(typed.data);
           }
-          await sleep(TCG_REQUEST_DELAY_MS);
-          await sleep(GBP_THROTTLE_MS);
+          await sleep2(TCG_REQUEST_DELAY_MS);
+          await sleep2(GBP_THROTTLE_MS);
           await syncGbpPricingForCard(card.id, card.name, card.number);
-          await sleep(EBAY_THROTTLE_MS);
-          await syncEbayPricesForCard(card.id, card.name, set.name, card.number);
+          await sleep2(EBAY_THROTTLE_MS);
+          await syncEbayPricesForCard(
+            card.id,
+            card.name,
+            set.name,
+            card.number
+          );
         } catch (err) {
           console.error(`[CardSync] Price refresh failed for ${card.id}:`, err);
         }
@@ -3147,156 +3479,11 @@ async function runPriceRefresh() {
     console.error("[CardSync] Pricing refresh error:", err);
   }
 }
-//async function runFastCardSeed() {
-  console.log("[CardSync] Starting fast card seed (basic data, no pricing)...");
-  const allSets = await db.select({ id: pokemonSets.id, name: pokemonSets.name }).from(pokemonSets);
-  const alreadySeededRows = await db.select({ setId: pokemonCards.setId }).from(pokemonCards).groupBy(pokemonCards.setId);
-  const alreadySeeded = new Set(alreadySeededRows.map((r) => r.setId));
-  const sets = allSets.filter((s) => !alreadySeeded.has(s.id));
-  console.log(`[CardSync] ${alreadySeeded.size} sets already seeded, ${sets.length} remaining...`);
-  let totalInserted = 0;
-  const NO_CARD_PREFIXES = [];
-  const isNonTcgApiSet = (id) => id.endsWith("_ko") || id.endsWith("_zh") || id.endsWith("_cn") || id.endsWith("_ja") || id.startsWith("babanuki-") || id.startsWith("mengka-");
-  for (const set of sets) {
-    await new Promise((r) => setTimeout(r, 10));
-    if (isNonTcgApiSet(set.id)) {
-      continue;
-    }
-    if (NO_CARD_PREFIXES.some((p) => set.id.startsWith(p))) {
-      console.log(`[CardSync] Skipped set ${set.id} (regional set, no TCG API cards)`);
-      await sleep(200);
-      continue;
-    }
-    try {
-      let allCards = [];
-      let page = 1;
-      while (true) {
-        let pageData = null;
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 12e3);
-        try {
-          const res = await fetch(
-            `${POKEMON_API}/cards?q=set.id:${set.id}&orderBy=number&page=${page}&pageSize=250`,
-            { headers: buildTcgHeaders(), signal: ctrl.signal }
-          );
-          clearTimeout(timer);
-          if (res.status === 429) {
-            console.log(`[CardSync] Rate limited for ${set.id}, waiting 20s...`);
-            await sleep(2e4);
-          } else if (res.ok) {
-            const ct = res.headers.get("content-type") || "";
-            if (ct.includes("application/json")) {
-              pageData = await res.json();
-            }
-          }
-        } catch (fetchErr) {
-          clearTimeout(timer);
-          if (fetchErr.name === "AbortError") {
-            console.log(`[CardSync] Timeout for ${set.id} page ${page}, skipping set`);
-          }
-        }
-        if (!pageData) break;
-        const cards = pageData.data ?? [];
-        allCards = allCards.concat(cards);
-        if (allCards.length >= (pageData.totalCount ?? 0) || cards.length < 250) break;
-        page++;
-        await sleep(1500);
-      }
-      for (const card of allCards) {
-        try {
-          await db.insert(pokemonCards).values({
-            id: card.id,
-            setId: card.set?.id ?? set.id,
-            name: card.name,
-            number: card.number,
-            rarity: card.rarity ?? null,
-            supertype: card.supertype ?? null,
-            subtypes: card.subtypes ? card.subtypes.join(",") : null,
-            imageSmall: card.images?.small ?? null,
-            imageLarge: card.images?.large ?? null,
-            artist: card.artist ?? null,
-            hp: card.hp ?? null,
-            nationalPokedexNumbers: card.nationalPokedexNumbers ? card.nationalPokedexNumbers.join(",") : null,
-            syncedAt: /* @__PURE__ */ new Date()
-          }).onConflictDoNothing();
-          const prices = card.tcgplayer?.prices || {};
-          const variantsToInsert = [];
-          if (prices.normal) {
-            variantsToInsert.push({
-              id: `${card.id}-normal`,
-              cardId: card.id,
-              finishType: "Non-Holo",
-              editionType: "Unlimited",
-              language: "English",
-              variantLabel: "Non-Holo",
-              imageUrl: card.images?.large || card.images?.small || null,
-              isPromo: card.rarity === "Promo",
-              isStamped: false
-            });
-          }
-          if (prices.holofoil) {
-            variantsToInsert.push({
-              id: `${card.id}-holo`,
-              cardId: card.id,
-              finishType: "Holo",
-              editionType: "Unlimited",
-              language: "English",
-              variantLabel: "Holo",
-              imageUrl: card.images?.large || card.images?.small || null,
-              isPromo: card.rarity === "Promo",
-              isStamped: false
-            });
-          }
-          if (prices.reverseHolofoil) {
-            variantsToInsert.push({
-              id: `${card.id}-reverse`,
-              cardId: card.id,
-              finishType: "Reverse Holo",
-              editionType: "Unlimited",
-              language: "English",
-              variantLabel: "Reverse Holo",
-              imageUrl: card.images?.large || card.images?.small || null,
-              isPromo: card.rarity === "Promo",
-              isStamped: false
-            });
-          }
-          if (variantsToInsert.length === 0) {
-            variantsToInsert.push({
-              id: `${card.id}-default`,
-              cardId: card.id,
-              finishType: "Non-Holo",
-              editionType: "Unlimited",
-              language: "English",
-              variantLabel: "Standard",
-              imageUrl: card.images?.large || card.images?.small || null,
-              isPromo: card.rarity === "Promo",
-              isStamped: false
-            });
-          }
-          await db.insert(
-            pokemonCardVariants
-          ).values(variantsToInsert).onConflictDoNothing();
-          totalInserted++;
-        } catch (err) {
-          console.error(
-            `[CardSync] Card insert failed ${card.id}`,
-            err
-          );
-        }
-      }
-      if (allCards.length > 0) {
-        console.log(`[CardSync] Fast seeded ${allCards.length} cards for set ${set.id} (${set.name})`);
-      } else {
-        console.log(`[CardSync] Skipped set ${set.id} (no cards available)`);
-      }
-      await sleep(5e3);
-    } catch (err) {
-      console.error(`[CardSync] Fast seed error for set ${set.id}:`, err);
-      await sleep(1e3);
-    }
-  }
-  await updateSyncStatus({ totalCards: totalInserted, syncedCards: totalInserted, lastCardSyncAt: /* @__PURE__ */ new Date() });
-  console.log(`[CardSync] Fast card seed complete \u2014 ${totalInserted} cards in DB.`);
+async function runFastCardSeed() {
+  console.log(
+    "[CardSync] Fast card seed temporarily disabled for production stability."
+  );
+  return;
 }
 async function startSyncService() {
   console.log("[CardSync] Sync service starting...");
@@ -3390,6 +3577,7 @@ async function getSyncStatus() {
 
 // server/full-resync.ts
 init_db();
+init_schema();
 init_scrydex_scraper();
 import { sql as sql3 } from "drizzle-orm";
 async function runFullResync(onProgress) {
@@ -3407,12 +3595,28 @@ async function runFullResync(onProgress) {
     );
     onProgress?.(p);
   });
-  console.log("Full resync complete");
+  console.log("[FullResync] Starting TCG API variant sync...");
+  const sets = await db.selectDistinct({ setId: pokemonCards.setId }).from(pokemonCards);
+  for (const { setId } of sets) {
+    if (!setId) continue;
+    try {
+      await syncVariantsFromTcgApi(setId, (msg) => console.log(msg));
+    } catch (err) {
+      console.error(`[FullResync] TCG variant sync failed for ${setId}:`, err.message);
+    }
+  }
+  console.log("[FullResync] Full resync complete");
   return result;
 }
 
 // server/routes.ts
-var resyncState = { running: false, progress: null, error: null, startedAt: null, finishedAt: null };
+var resyncState = {
+  running: false,
+  progress: null,
+  error: null,
+  startedAt: null,
+  finishedAt: null
+};
 async function cleanupOldChatroomMessages() {
   try {
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1e3);
@@ -3429,11 +3633,12 @@ var openai = new OpenAI({
 var POKEMON_API2 = "https://api.pokemontcg.io/v2";
 function tcgHeaders() {
   const h = { "User-Agent": "PokeScanTCG/1.0" };
-  if (process.env.POKEMON_TCG_API_KEY) h["X-Api-Key"] = process.env.POKEMON_TCG_API_KEY;
+  if (process.env.POKEMON_TCG_API_KEY)
+    h["X-Api-Key"] = process.env.POKEMON_TCG_API_KEY;
   return h;
 }
 var setCardsMemCache = /* @__PURE__ */ new Map();
-var MEM_CACHE_TTL_MS = 20 * 60 * 1e3;
+var MEM_CACHE_TTL_MS = 5 * 60 * 1e3;
 function getMemCache(key) {
   const e = setCardsMemCache.get(key);
   return e && Date.now() - e.ts < MEM_CACHE_TTL_MS ? e.data : null;
@@ -3442,19 +3647,10 @@ function setMemCache(key, data) {
   setCardsMemCache.set(key, { data, ts: Date.now() });
 }
 var cardMemCache = /* @__PURE__ */ new Map();
-function getCardCache(id) {
-  const e = cardMemCache.get(id);
-  return e && Date.now() - e.ts < MEM_CACHE_TTL_MS ? e.data : null;
-}
 function setCardCache(id, data) {
   cardMemCache.set(id, { data, ts: Date.now() });
 }
 function warmCardCache(cards) {
-  for (const card of cards) {
-    if (card?.id && !cardMemCache.has(card.id)) {
-      setCardCache(card.id, { data: card });
-    }
-  }
 }
 function detectSetLanguage(setId) {
   const id = setId.toLowerCase();
@@ -3468,7 +3664,8 @@ var _setRefCacheAt = 0;
 var SET_REF_TTL_MS = 60 * 60 * 1e3;
 async function buildSetReferencePrompt() {
   const now = Date.now();
-  if (_setRefCache && now - _setRefCacheAt < SET_REF_TTL_MS) return _setRefCache;
+  if (_setRefCache && now - _setRefCacheAt < SET_REF_TTL_MS)
+    return _setRefCache;
   try {
     const sets = await db.select({
       id: pokemonSets.id,
@@ -3515,7 +3712,9 @@ async function buildSetReferencePrompt() {
     ];
     _setRefCache = lines.join("\n");
     _setRefCacheAt = now;
-    console.log(`[SetRef] Built set reference prompt: ${sets.length} sets, ${_setRefCache.length} chars`);
+    console.log(
+      `[SetRef] Built set reference prompt: ${sets.length} sets, ${_setRefCache.length} chars`
+    );
     return _setRefCache;
   } catch (e) {
     console.error("[SetRef] Failed to build set reference:", e);
@@ -3589,7 +3788,9 @@ function dbVariantToApiFormat(card, pricing, ebay) {
 function getSuperadminEmail() {
   const email = process.env.SUPERADMIN_EMAIL;
   if (!email) {
-    console.warn("[superadmin] SUPERADMIN_EMAIL env var is not set. Superadmin features will be unavailable.");
+    console.warn(
+      "[superadmin] SUPERADMIN_EMAIL env var is not set. Superadmin features will be unavailable."
+    );
     return "";
   }
   return email.toLowerCase().trim();
@@ -3636,7 +3837,9 @@ async function seedSuperadmin() {
     const existing = await storage.getUserByEmail(email);
     if (!existing) {
       if (!initialPassword) {
-        console.warn("[seedSuperadmin] SUPERADMIN_INITIAL_PASSWORD env var not set \u2014 cannot create initial superadmin.");
+        console.warn(
+          "[seedSuperadmin] SUPERADMIN_INITIAL_PASSWORD env var not set \u2014 cannot create initial superadmin."
+        );
         return;
       }
       const passwordHash = await bcrypt.hash(initialPassword, 10);
@@ -3664,7 +3867,11 @@ async function seedSuperadmin() {
         console.log("[seedSuperadmin] Synced password for superadmin:", email);
       }
       if (Object.keys(updates).length > 0) {
-        console.log("[seedSuperadmin] Updated superadmin user:", email, Object.keys(updates));
+        console.log(
+          "[seedSuperadmin] Updated superadmin user:",
+          email,
+          Object.keys(updates)
+        );
       }
     }
   } catch (err) {
@@ -3803,9 +4010,13 @@ async function cancelStripeForUser(userId, immediate = true) {
         if (immediate) {
           await stripe.subscriptions.cancel(subId);
         } else {
-          await stripe.subscriptions.update(subId, { cancel_at_period_end: true });
+          await stripe.subscriptions.update(subId, {
+            cancel_at_period_end: true
+          });
         }
-        console.log(`[Mod] Cancelled Stripe sub ${subId} for user ${userId} (immediate=${immediate})`);
+        console.log(
+          `[Mod] Cancelled Stripe sub ${subId} for user ${userId} (immediate=${immediate})`
+        );
       } catch (e) {
         console.error(`[Mod] Stripe cancel failed for ${userId}:`, e?.message);
       }
@@ -3842,14 +4053,21 @@ async function addBlockedCredential(email, mobile, reason, blockedBy) {
   try {
     await pool3.query(
       `INSERT INTO pokescan_blocked_credentials (email, mobile_number, reason, blocked_by) VALUES ($1, $2, $3, $4)`,
-      [email ? email.toLowerCase().trim() : null, mobile ? mobile.trim() : null, reason, blockedBy]
+      [
+        email ? email.toLowerCase().trim() : null,
+        mobile ? mobile.trim() : null,
+        reason,
+        blockedBy
+      ]
     );
   } catch (e) {
     console.warn("[Mod] addBlockedCredential failed:", e?.message);
   }
 }
 async function registerRoutes(app2) {
-  startSyncService().catch((e) => console.error("[CardSync] startSyncService failed:", e));
+  startSyncService().catch(
+    (e) => console.error("[CardSync] startSyncService failed:", e)
+  );
   seedSuperadmin().catch((e) => console.error("[seedSuperadmin] failed:", e));
   runSchemaMigrations().catch((e) => console.error("[Migration] failed:", e));
   app2.get("/api/config", (_req, res) => {
@@ -3875,13 +4093,25 @@ async function registerRoutes(app2) {
         and3(
           isNull2(pokemonSets.deletedAt),
           exists(
-            db.select({ id: pokemonCards.id }).from(pokemonCards).where(and3(eq3(pokemonCards.setId, pokemonSets.id), isNull2(pokemonCards.deletedAt)))
+            db.select({ id: pokemonCards.id }).from(pokemonCards).where(
+              and3(
+                eq3(pokemonCards.setId, pokemonSets.id),
+                isNull2(pokemonCards.deletedAt)
+              )
+            )
           ),
-          or2(eq3(pokemonSets.hidden, false), sql4`${pokemonSets.hidden} IS NULL`)
+          or2(
+            eq3(pokemonSets.hidden, false),
+            sql4`${pokemonSets.hidden} IS NULL`
+          )
         )
       ).orderBy(desc(pokemonSets.releaseDate));
       if (dbSets.length > 0) {
-        res.json({ data: dbSets.map(dbSetToApiFormat), count: dbSets.length, source: "db" });
+        res.json({
+          data: dbSets.map(dbSetToApiFormat),
+          count: dbSets.length,
+          source: "db"
+        });
         return;
       }
     } catch (dbError) {
@@ -3890,7 +4120,10 @@ async function registerRoutes(app2) {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 1e4);
-      const response = await fetch(`${POKEMON_API2}/sets?orderBy=-releaseDate&pageSize=250`, { signal: controller.signal });
+      const response = await fetch(
+        `${POKEMON_API2}/sets?orderBy=-releaseDate&pageSize=250`,
+        { signal: controller.signal }
+      );
       clearTimeout(timeout);
       if (!response.ok) throw new Error(`TCG API returned ${response.status}`);
       const data = await response.json();
@@ -3900,173 +4133,209 @@ async function registerRoutes(app2) {
       res.status(500).json({ error: "Failed to fetch sets" });
     }
   });
-  app2.get("/api/pokemon/sets/:setId/cards", async (req, res) => {
-    try {
-      const { setId } = req.params;
-      const page = parseInt(req.query.page || "1", 10);
-      const pageSize = parseInt(req.query.pageSize || "250", 10);
-      const offset = (page - 1) * pageSize;
-      const cacheKey = `${setId}:${page}:${pageSize}`;
-      const memHit = getMemCache(cacheKey);
-      if (memHit) {
-        res.json(memHit);
-        return;
-      }
-      const nonEnglishPatterns = ["_ja", "_ko", "_zh", "_cn", "topsun", "babanuki", "mengka", "oldmaid", "hanafuda", "_pocket"];
-      const isNonEnglish = nonEnglishPatterns.some((p) => setId.toLowerCase().includes(p));
+  app2.get(
+    "/api/pokemon/sets/:setId/cards",
+    async (req, res) => {
       try {
-        const [totalCountResult, setInfoResult] = await Promise.all([
-          db.select({ count: sql4`count(*)::int` }).from(pokemonCards).where(and3(eq3(pokemonCards.setId, setId), isNull2(pokemonCards.deletedAt))),
-          db.select().from(pokemonSets).where(and3(eq3(pokemonSets.id, setId), isNull2(pokemonSets.deletedAt))).limit(1)
-        ]);
-        const totalCount = totalCountResult[0]?.count ?? 0;
-        const setRow = setInfoResult[0] ?? null;
-        const expectedTotal = setRow?.printedTotal ?? setRow?.total ?? 0;
-        const hasCards = totalCount > 0;
-        const fullySeeded = hasCards && (isNonEnglish || expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
-        const dbCards = await db.select({
-          card: pokemonCards,
-          variant: pokemonCardVariants
-        }).from(pokemonCards).leftJoin(
-          pokemonCardVariants,
-          eq3(pokemonCardVariants.cardId, pokemonCards.id)
-        ).where(and3(eq3(pokemonCards.setId, setId), isNull2(pokemonCards.deletedAt))).orderBy(pokemonCards.number);
-        console.log(`[SetCards] ${setId}: dbCards=${totalCount} expected=${expectedTotal} rows=${dbCards.length} fullySeeded=${fullySeeded}`);
-        if (fullySeeded && dbCards.length > 0) {
-          const cardMap = /* @__PURE__ */ new Map();
-          for (const { card, variant } of dbCards) {
-            let existing = cardMap.get(card.id);
-            if (!existing) {
-              existing = {
-                ...dbVariantToApiFormat(card, null),
-                cardId: card.id,
-                variants: []
-              };
-              if (setRow) {
-                existing.set = dbSetToApiFormat(setRow);
-              }
-              cardMap.set(card.id, existing);
-            }
-            if (variant?.id) {
-              existing.variants.push({
-                variantId: variant.id,
-                finishType: variant.finishType || "Non-Holo",
-                editionType: variant.editionType || "Standard",
-                variantLabel: variant.variantLabel || "Standard",
-                isStamped: variant.isStamped || false,
-                language: variant.language || "EN",
-                images: variant.imageUrl ? { small: variant.imageUrl, large: variant.imageUrl } : existing.images
-              });
-            }
-          }
-          for (const c of cardMap.values()) {
-            if (c.variants.length === 0) {
-              c.variants.push({
-                variantId: `${c.id}-standard`,
-                finishType: "Non-Holo",
-                editionType: "Standard",
-                variantLabel: "Standard",
-                isStamped: false,
-                language: "EN",
-                images: c.images
-              });
-            }
-          }
-          const formattedCards = Array.from(cardMap.values());
-          console.log(
-            `[SetCards] ${setId}: serving ${formattedCards.length} grouped cards from DB`
-          );
-          const payload = {
-            data: formattedCards,
-            count: formattedCards.length,
-            totalCount: formattedCards.length,
-            page,
-            source: "db-variants"
-          };
-          setMemCache(cacheKey, payload);
-          warmCardCache(formattedCards);
-          res.json(payload);
+        const { setId } = req.params;
+        const page = parseInt(req.query.page || "1", 10);
+        const pageSize = parseInt(req.query.pageSize || "250", 10);
+        const offset = (page - 1) * pageSize;
+        const cacheKey = `${setId}:${page}:${pageSize}`;
+        const memHit = getMemCache(cacheKey);
+        if (memHit) {
+          res.json(memHit);
           return;
-        } else {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3e4);
-          const response = await fetch(
-            `${POKEMON_API2}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`,
-            { signal: controller.signal, headers: tcgHeaders() }
+        }
+        const nonEnglishPatterns = [
+          "_ja",
+          "_ko",
+          "_zh",
+          "_cn",
+          "topsun",
+          "babanuki",
+          "mengka",
+          "oldmaid",
+          "hanafuda",
+          "_pocket"
+        ];
+        const isNonEnglish = nonEnglishPatterns.some(
+          (p) => setId.toLowerCase().includes(p)
+        );
+        try {
+          const [totalCountResult, setInfoResult] = await Promise.all([
+            db.select({ count: sql4`count(*)::int` }).from(pokemonCards).where(
+              and3(
+                eq3(pokemonCards.setId, setId),
+                isNull2(pokemonCards.deletedAt)
+              )
+            ),
+            db.select().from(pokemonSets).where(
+              and3(eq3(pokemonSets.id, setId), isNull2(pokemonSets.deletedAt))
+            ).limit(1)
+          ]);
+          const totalCount = totalCountResult[0]?.count ?? 0;
+          const setRow = setInfoResult[0] ?? null;
+          const expectedTotal = setRow?.printedTotal ?? setRow?.total ?? 0;
+          const hasCards = totalCount > 0;
+          const fullySeeded = hasCards && (isNonEnglish || expectedTotal === 0 || totalCount >= Math.floor(expectedTotal * 0.9));
+          const dbCards = await db.select({
+            card: pokemonCards,
+            variant: pokemonCardVariants
+          }).from(pokemonCards).leftJoin(
+            pokemonCardVariants,
+            eq3(pokemonCardVariants.cardId, pokemonCards.id)
+          ).where(
+            and3(
+              eq3(pokemonCards.setId, setId),
+              isNull2(pokemonCards.deletedAt)
+            )
+          ).orderBy(pokemonCards.number);
+          console.log(
+            `[SetCards] ${setId}: dbCards=${totalCount} expected=${expectedTotal} rows=${dbCards.length} fullySeeded=${fullySeeded}`
           );
-          clearTimeout(timeout);
-          if (!response.ok) throw new Error(`TCG API ${response.status}`);
-          const data = await response.json();
-          setMemCache(cacheKey, data);
-          warmCardCache(data.data || []);
-          res.json(data);
-          (async () => {
-            try {
-              let bgPage = 1;
-              let seeded = 0;
-              while (true) {
-                const ctrl2 = new AbortController();
-                const t2 = setTimeout(() => ctrl2.abort(), 3e4);
-                const r2 = await fetch(
-                  `${POKEMON_API2}/cards?q=set.id:${setId}&orderBy=number&page=${bgPage}&pageSize=250`,
-                  { signal: ctrl2.signal }
-                );
-                clearTimeout(t2);
-                if (!r2.ok) break;
-                const d2 = await r2.json();
-                const cards2 = d2.data || [];
-                if (cards2.length === 0) break;
-                for (const card of cards2) {
-                  try {
-                    await db.insert(pokemonCards).values({
-                      id: card.id,
-                      setId: card.set?.id || setId,
-                      name: card.name,
-                      number: card.number,
-                      rarity: card.rarity || null,
-                      supertype: card.supertype || null,
-                      subtypes: Array.isArray(card.subtypes) ? card.subtypes.join(",") : null,
-                      hp: card.hp || null,
-                      artist: card.artist || null,
-                      imageSmall: card.images?.small || null,
-                      imageLarge: card.images?.large || null
-                    }).onConflictDoNothing();
-                  } catch {
+          if (fullySeeded && dbCards.length > 0) {
+            const cardMap = /* @__PURE__ */ new Map();
+            for (const { card, variant } of dbCards) {
+              let existing = cardMap.get(card.id);
+              if (!existing) {
+                existing = {
+                  ...dbVariantToApiFormat(card, null),
+                  cardId: card.id,
+                  variants: []
+                };
+                if (setRow) {
+                  existing.set = dbSetToApiFormat(setRow);
+                }
+                cardMap.set(card.id, existing);
+              }
+              if (variant?.id) {
+                existing.variants.push({
+                  variantId: variant.id,
+                  finishType: variant.finishType || "Non-Holo",
+                  editionType: variant.editionType || "Standard",
+                  variantLabel: variant.variantLabel || "Standard",
+                  isStamped: variant.isStamped || false,
+                  language: variant.language || "EN",
+                  images: variant.imageUrl ? { small: variant.imageUrl, large: variant.imageUrl } : existing.images
+                });
+              }
+            }
+            for (const c of cardMap.values()) {
+              if (c.variants.length === 0) {
+                c.variants.push({
+                  variantId: `${c.id}-standard`,
+                  finishType: "Non-Holo",
+                  editionType: "Standard",
+                  variantLabel: "Standard",
+                  isStamped: false,
+                  language: "EN",
+                  images: c.images
+                });
+              }
+            }
+            const formattedCards = Array.from(cardMap.values());
+            console.log(
+              `[SetCards] ${setId}: serving ${formattedCards.length} grouped cards from DB`
+            );
+            const payload = {
+              data: formattedCards,
+              count: formattedCards.length,
+              totalCount: formattedCards.length,
+              page,
+              source: "db-variants"
+            };
+            setMemCache(cacheKey, payload);
+            warmCardCache(formattedCards);
+            res.json(payload);
+            return;
+          } else {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 3e4);
+            const response = await fetch(
+              `${POKEMON_API2}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=${pageSize}`,
+              { signal: controller.signal, headers: tcgHeaders() }
+            );
+            clearTimeout(timeout);
+            if (!response.ok) throw new Error(`TCG API ${response.status}`);
+            const data = await response.json();
+            setMemCache(cacheKey, data);
+            warmCardCache(data.data || []);
+            res.json(data);
+            async () => {
+              try {
+                let bgPage = 1;
+                let seeded = 0;
+                while (true) {
+                  const ctrl2 = new AbortController();
+                  const t2 = setTimeout(() => ctrl2.abort(), 3e4);
+                  const r2 = await fetch(
+                    `${POKEMON_API2}/cards?q=set.id:${setId}&orderBy=number&page=${bgPage}&pageSize=250`,
+                    { signal: ctrl2.signal }
+                  );
+                  clearTimeout(t2);
+                  if (!r2.ok) break;
+                  const d2 = await r2.json();
+                  const cards2 = d2.data || [];
+                  if (cards2.length === 0) break;
+                  for (const card of cards2) {
+                    try {
+                      await db.insert(pokemonCards).values({
+                        id: card.id,
+                        setId: card.set?.id || setId,
+                        name: card.name,
+                        number: card.number,
+                        rarity: card.rarity || null,
+                        supertype: card.supertype || null,
+                        subtypes: Array.isArray(card.subtypes) ? card.subtypes.join(",") : null,
+                        hp: card.hp || null,
+                        artist: card.artist || null,
+                        imageSmall: card.images?.small || null,
+                        imageLarge: card.images?.large || null
+                      }).onConflictDoNothing();
+                    } catch {
+                    }
+                  }
+                  seeded += cards2.length;
+                  if (cards2.length < 250) break;
+                  bgPage++;
+                }
+                if (seeded > 0) {
+                  console.log(
+                    `[BgSeed] Seeded ${seeded} cards for set ${setId}`
+                  );
+                  for (const k of setCardsMemCache.keys()) {
+                    if (k.startsWith(`${setId}:`)) setCardsMemCache.delete(k);
                   }
                 }
-                seeded += cards2.length;
-                if (cards2.length < 250) break;
-                bgPage++;
+              } catch (bgErr) {
               }
-              if (seeded > 0) {
-                console.log(`[BgSeed] Seeded ${seeded} cards for set ${setId}`);
-                for (const k of setCardsMemCache.keys()) {
-                  if (k.startsWith(`${setId}:`)) setCardsMemCache.delete(k);
-                }
-              }
-            } catch (bgErr) {
-            }
-          });
+            };
+          }
+        } catch (error) {
+          if (error?.name === "AbortError") {
+            res.status(504).json({
+              error: "Cards took too long to load. Please try again."
+            });
+          } else {
+            console.error("Failed to fetch set cards:", error);
+            res.status(500).json({ error: "Failed to fetch cards. Please try again." });
+          }
         }
-      } catch (error) {
-        if (error?.name === "AbortError") {
-          res.status(504).json({ error: "Cards took too long to load. Please try again." });
-        } else {
-          console.error("Failed to fetch set cards:", error);
-          res.status(500).json({ error: "Failed to fetch cards. Please try again." });
-        }
-      }
-    } catch (err) {
-      if (!res.headersSent) {
-        if (err?.name === "AbortError") {
-          res.status(504).json({ error: "Cards took too long to load. Please try again." });
-        } else {
-          console.error("Failed to fetch set cards (outer):", err);
-          res.status(500).json({ error: "Failed to fetch cards. Please try again." });
+      } catch (err) {
+        if (!res.headersSent) {
+          if (err?.name === "AbortError") {
+            res.status(504).json({
+              error: "Cards took too long to load. Please try again."
+            });
+          } else {
+            console.error("Failed to fetch set cards (outer):", err);
+            res.status(500).json({ error: "Failed to fetch cards. Please try again." });
+          }
         }
       }
     }
-  });
+  );
   app2.get("/api/pokemon/cards/search", async (req, res) => {
     try {
       const query = req.query.q;
@@ -4078,7 +4347,12 @@ async function registerRoutes(app2) {
       const pageSize = 20;
       const offset = (page - 1) * pageSize;
       try {
-        const dbResults = await db.select({ card: pokemonCards, set: pokemonSets }).from(pokemonCards).leftJoin(pokemonSets, eq3(pokemonCards.setId, pokemonSets.id)).where(and3(ilike(pokemonCards.name, `%${query.trim()}%`), isNull2(pokemonCards.deletedAt))).orderBy(desc(pokemonSets.releaseDate)).limit(pageSize).offset(offset);
+        const dbResults = await db.select({ card: pokemonCards, set: pokemonSets }).from(pokemonCards).leftJoin(pokemonSets, eq3(pokemonCards.setId, pokemonSets.id)).where(
+          and3(
+            ilike(pokemonCards.name, `%${query.trim()}%`),
+            isNull2(pokemonCards.deletedAt)
+          )
+        ).orderBy(desc(pokemonSets.releaseDate)).limit(pageSize).offset(offset);
         if (dbResults.length > 0) {
           const formatted = dbResults.map(({ card, set }) => {
             const base = dbVariantToApiFormat(card, null);
@@ -4095,9 +4369,19 @@ async function registerRoutes(app2) {
             }
             return base;
           });
-          const totalCountResult = await db.select({ count: sql4`count(*)::int` }).from(pokemonCards).where(and3(ilike(pokemonCards.name, `%${query.trim()}%`), isNull2(pokemonCards.deletedAt)));
+          const totalCountResult = await db.select({ count: sql4`count(*)::int` }).from(pokemonCards).where(
+            and3(
+              ilike(pokemonCards.name, `%${query.trim()}%`),
+              isNull2(pokemonCards.deletedAt)
+            )
+          );
           const totalCount = totalCountResult[0]?.count ?? formatted.length;
-          res.json({ data: formatted, count: formatted.length, totalCount, source: "db" });
+          res.json({
+            data: formatted,
+            count: formatted.length,
+            totalCount,
+            source: "db"
+          });
           return;
         }
       } catch (dbErr) {
@@ -4114,7 +4398,9 @@ async function registerRoutes(app2) {
         clearTimeout(timer);
         const text2 = await response.text();
         if (!response.ok) {
-          console.error(`Pokemon TCG API error ${response.status}: ${text2.substring(0, 200)}`);
+          console.error(
+            `Pokemon TCG API error ${response.status}: ${text2.substring(0, 200)}`
+          );
           res.json({ data: [], count: 0, totalCount: 0 });
           return;
         }
@@ -4123,7 +4409,12 @@ async function registerRoutes(app2) {
       } catch (apiErr) {
         clearTimeout(timer);
         if (apiErr.name === "AbortError") {
-          res.json({ data: [], count: 0, totalCount: 0, error: "Search timed out" });
+          res.json({
+            data: [],
+            count: 0,
+            totalCount: 0,
+            error: "Search timed out"
+          });
         } else {
           console.error("Failed to search cards:", apiErr);
           res.json({ data: [], count: 0, totalCount: 0 });
@@ -4134,72 +4425,85 @@ async function registerRoutes(app2) {
       res.json({ data: [], count: 0, totalCount: 0 });
     }
   });
-  app2.get("/api/pokemon/sets/:setId/all-cards", async (req, res) => {
-    try {
-      const { setId } = req.params;
-      const setInfoResult = await db.select({ total: pokemonSets.total }).from(pokemonSets).where(and3(eq3(pokemonSets.id, setId), isNull2(pokemonSets.deletedAt))).limit(1);
-      const expectedTotal = setInfoResult[0]?.total ?? 0;
-      const dbCountResult = await db.select({ count: sql4`count(*)::int` }).from(pokemonCards).where(and3(eq3(pokemonCards.setId, setId), isNull2(pokemonCards.deletedAt)));
-      const dbCount = dbCountResult[0]?.count ?? 0;
-      const fullySeeded = expectedTotal > 0 && dbCount >= Math.floor(expectedTotal * 0.9);
-      if (fullySeeded) {
-        const dbCards = await db.select({
-          card: pokemonCards,
-          variant: pokemonCardVariants
-        }).from(pokemonCards).leftJoin(pokemonCardVariants, eq3(pokemonCardVariants.cardId, pokemonCards.id)).where(and3(eq3(pokemonCards.setId, setId), isNull2(pokemonCards.deletedAt))).orderBy(pokemonCards.number);
-        const formattedCards = dbCards.map(({ card, variant }) => {
-          const f = dbVariantToApiFormat(card, null);
-          f.cardId = card.id;
-          if (variant) {
-            f.variantId = variant.id;
-            f.finishType = variant.finishType;
-            f.editionType = variant.editionType;
-            f.variantLabel = variant.variantLabel;
-            f.isStamped = variant.isStamped;
-            f.language = variant.language;
-            if (variant.imageUrl) {
-              f.images = { small: variant.imageUrl, large: variant.imageUrl };
-            }
-          } else {
-            f.finishType = "Non-Holo";
-            f.variantLabel = "Standard";
-          }
-          return f;
-        });
-        res.json({
-          data: formattedCards,
-          count: formattedCards.length
-        });
-        return;
-      }
-      let allCards = [];
-      let page = 1;
-      let hasMore = true;
-      while (hasMore) {
-        const response = await fetch(
-          `${POKEMON_API2}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=250`
+  app2.get(
+    "/api/pokemon/sets/:setId/all-cards",
+    async (req, res) => {
+      try {
+        const { setId } = req.params;
+        const setInfoResult = await db.select({ total: pokemonSets.total }).from(pokemonSets).where(and3(eq3(pokemonSets.id, setId), isNull2(pokemonSets.deletedAt))).limit(1);
+        const expectedTotal = setInfoResult[0]?.total ?? 0;
+        const dbCountResult = await db.select({ count: sql4`count(*)::int` }).from(pokemonCards).where(
+          and3(eq3(pokemonCards.setId, setId), isNull2(pokemonCards.deletedAt))
         );
-        const text2 = await response.text();
-        if (!response.ok) break;
-        try {
-          const data = JSON.parse(text2);
-          const cards = data.data || [];
-          allCards = allCards.concat(cards);
-          hasMore = allCards.length < (data.totalCount || 0) && cards.length === 250;
-          page++;
-        } catch {
-          break;
+        const dbCount = dbCountResult[0]?.count ?? 0;
+        const fullySeeded = expectedTotal > 0 && dbCount >= Math.floor(expectedTotal * 0.9);
+        if (fullySeeded) {
+          const dbCards = await db.select({
+            card: pokemonCards,
+            variant: pokemonCardVariants
+          }).from(pokemonCards).leftJoin(
+            pokemonCardVariants,
+            eq3(pokemonCardVariants.cardId, pokemonCards.id)
+          ).where(
+            and3(
+              eq3(pokemonCards.setId, setId),
+              isNull2(pokemonCards.deletedAt)
+            )
+          ).orderBy(pokemonCards.number);
+          const formattedCards = dbCards.map(({ card, variant }) => {
+            const f = dbVariantToApiFormat(card, null);
+            f.cardId = card.id;
+            if (variant) {
+              f.variantId = variant.id;
+              f.finishType = variant.finishType;
+              f.editionType = variant.editionType;
+              f.variantLabel = variant.variantLabel;
+              f.isStamped = variant.isStamped;
+              f.language = variant.language;
+              if (variant.imageUrl) {
+                f.images = { small: variant.imageUrl, large: variant.imageUrl };
+              }
+            } else {
+              f.finishType = "Non-Holo";
+              f.variantLabel = "Standard";
+            }
+            return f;
+          });
+          res.json({
+            data: formattedCards,
+            count: formattedCards.length
+          });
+          return;
         }
+        let allCards = [];
+        let page = 1;
+        let hasMore = true;
+        while (hasMore) {
+          const response = await fetch(
+            `${POKEMON_API2}/cards?q=set.id:${setId}&orderBy=number&page=${page}&pageSize=250`
+          );
+          const text2 = await response.text();
+          if (!response.ok) break;
+          try {
+            const data = JSON.parse(text2);
+            const cards = data.data || [];
+            allCards = allCards.concat(cards);
+            hasMore = allCards.length < (data.totalCount || 0) && cards.length === 250;
+            page++;
+          } catch {
+            break;
+          }
+        }
+        res.json({
+          data: allCards,
+          count: allCards.length
+        });
+      } catch (error) {
+        console.error("Failed to fetch all set cards:", error);
+        res.status(500).json({ error: "Failed to fetch cards" });
       }
-      res.json({
-        data: allCards,
-        count: allCards.length
-      });
-    } catch (error) {
-      console.error("Failed to fetch all set cards:", error);
-      res.status(500).json({ error: "Failed to fetch cards" });
     }
-  });
+  );
   app2.get("/api/pokemon/cards/find", async (req, res) => {
     try {
       const name = req.query.name;
@@ -4244,20 +4548,40 @@ async function registerRoutes(app2) {
   app2.get("/api/pokemon/cards/:cardId", async (req, res) => {
     try {
       const { cardId } = req.params;
-      const cached = getCardCache(cardId);
-      if (cached) {
-        res.json(cached);
-        return;
-      }
       const resolvedCardId = cardId.replace(
         /-(normal|holo|holofoil|reverse|reverseHolofoil|default|non-holo|1stEditionHolofoil|1stEditionNormal)$/i,
         ""
       );
-      const dbCard = await db.select().from(pokemonCards).where(and3(eq3(pokemonCards.id, resolvedCardId), isNull2(pokemonCards.deletedAt))).limit(1);
+      const dbCard = await db.select().from(pokemonCards).where(
+        and3(
+          eq3(pokemonCards.id, resolvedCardId),
+          isNull2(pokemonCards.deletedAt)
+        )
+      ).limit(1);
       if (dbCard.length > 0) {
-        const pricing = await db.select().from(cardPricing).where(eq3(cardPricing.variantId, resolvedCardId)).limit(1);
+        const variantRows = await db.select().from(pokemonCardVariants).where(eq3(pokemonCardVariants.cardId, resolvedCardId));
+        const firstVariantId = variantRows[0]?.id ?? resolvedCardId;
+        const pricing = await db.select().from(cardPricing).where(eq3(cardPricing.variantId, firstVariantId)).limit(1);
         const ebayData = await db.select().from(ebayPrices).where(eq3(ebayPrices.cardId, resolvedCardId)).orderBy(desc(ebayPrices.fetchedAt)).limit(10);
-        const formattedCard = dbVariantToApiFormat(dbCard[0], pricing[0] ?? null, ebayData);
+        const formattedCard = dbVariantToApiFormat(
+          dbCard[0],
+          pricing[0] ?? null,
+          ebayData
+        );
+        throw new Error(JSON.stringify(variantRows, null, 2));
+        formattedCard.variants = (variantRows || []).map((v) => ({
+          variantId: v?.id || null,
+          finishType: v?.finishType || v?.finish_type || "normal",
+          editionType: v?.editionType || v?.edition_type || null,
+          variantLabel: v?.variantLabel || v?.variant_label || "Non-Holo",
+          isStamped: Boolean(v?.isStamped || v?.is_stamped),
+          language: v?.language || "en",
+          images: v?.imageUrl || v?.image_url ? {
+            small: v?.imageUrl || v?.image_url,
+            large: v?.imageUrl || v?.image_url
+          } : formattedCard.images || null
+        }));
+        setCardCache(cardId, { data: formattedCard, source: "db" });
         const setData = await db.select().from(pokemonSets).where(eq3(pokemonSets.id, dbCard[0].setId)).limit(1);
         if (setData.length > 0) {
           formattedCard.set = dbSetToApiFormat(setData[0]);
@@ -4269,7 +4593,9 @@ async function registerRoutes(app2) {
       const cardTimeout = setTimeout(() => cardAbort.abort(), 15e3);
       let response;
       try {
-        response = await fetch(`${POKEMON_API2}/cards/${resolvedCardId}`, { signal: cardAbort.signal });
+        response = await fetch(`${POKEMON_API2}/cards/${resolvedCardId}`, {
+          signal: cardAbort.signal
+        });
       } finally {
         clearTimeout(cardTimeout);
       }
@@ -4308,14 +4634,20 @@ async function registerRoutes(app2) {
       const isDevMode = process.env.NODE_ENV === "development";
       if (syncSecret) {
         if (authHeader !== syncSecret) {
-          res.status(401).json({ error: "Unauthorized: valid x-sync-secret header required" });
+          res.status(401).json({
+            error: "Unauthorized: valid x-sync-secret header required"
+          });
           return;
         }
       } else if (!isDevMode) {
-        res.status(403).json({ error: "Forbidden: set SYNC_SECRET environment variable to enable manual sync in production" });
+        res.status(403).json({
+          error: "Forbidden: set SYNC_SECRET environment variable to enable manual sync in production"
+        });
         return;
       }
-      runFullSync(true).catch((err) => console.error("[CardSync] Manual sync error:", err));
+      runFullSync(true).catch(
+        (err) => console.error("[CardSync] Manual sync error:", err)
+      );
       res.json({ message: "Sync triggered", running: true });
     } catch (error) {
       console.error("Failed to trigger sync:", error);
@@ -4331,16 +4663,19 @@ async function registerRoutes(app2) {
       res.status(500).json({ error: "Failed to fetch UK card sets" });
     }
   });
-  app2.get("/api/pcv/sets/:setId/:slug/cards", async (req, res) => {
-    try {
-      const { setId, slug } = req.params;
-      const cards = await scrapeSetCards(setId, slug);
-      res.json({ data: cards, count: cards.length });
-    } catch (error) {
-      console.error("Failed to scrape PCV set cards:", error);
-      res.status(500).json({ error: "Failed to fetch UK card data" });
+  app2.get(
+    "/api/pcv/sets/:setId/:slug/cards",
+    async (req, res) => {
+      try {
+        const { setId, slug } = req.params;
+        const cards = await scrapeSetCards(setId, slug);
+        res.json({ data: cards, count: cards.length });
+      } catch (error) {
+        console.error("Failed to scrape PCV set cards:", error);
+        res.status(500).json({ error: "Failed to fetch UK card data" });
+      }
     }
-  });
+  );
   app2.get("/api/pcv/top/:condition", async (req, res) => {
     try {
       const { condition } = req.params;
@@ -4431,7 +4766,8 @@ async function registerRoutes(app2) {
       return [...new Set(prices)].slice(0, 20);
     }
     function computeStats(prices) {
-      if (prices.length === 0) return { lowest: null, median: null, highest: null };
+      if (prices.length === 0)
+        return { lowest: null, median: null, highest: null };
       const sorted = [...prices].sort((a, b) => a - b);
       const mid = Math.floor(sorted.length / 2);
       const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
@@ -4453,10 +4789,6 @@ async function registerRoutes(app2) {
       }
     }
     try {
-      let getVal2 = function(r) {
-        return r.status === "fulfilled" ? r.value : null;
-      };
-      var getVal = getVal2;
       if (cardId) {
         const cached = await db.select().from(ebayPrices).where(eq3(ebayPrices.cardId, cardId)).orderBy(desc(ebayPrices.fetchedAt)).limit(20);
         if (cached.length > 0) {
@@ -4470,7 +4802,16 @@ async function registerRoutes(app2) {
               var getValCached = getValCached2;
               const stats2 = computeStats(prices);
               const cardBase2 = `${cardName}${setName ? " " + setName : ""}`;
-              const [psa92, psa102, beckett92, beckett102, ace92, ace102, cgc92, cgc102] = await Promise.allSettled([
+              const [
+                psa92,
+                psa102,
+                beckett92,
+                beckett102,
+                ace92,
+                ace102,
+                cgc92,
+                cgc102
+              ] = await Promise.allSettled([
                 scrapeGradedMedian(cardBase2, "PSA", 9),
                 scrapeGradedMedian(cardBase2, "PSA", 10),
                 scrapeGradedMedian(cardBase2, "Beckett", 9),
@@ -4482,7 +4823,10 @@ async function registerRoutes(app2) {
               ]);
               const gradedPrices2 = {
                 PSA: { 9: getValCached2(psa92), 10: getValCached2(psa102) },
-                Beckett: { 9: getValCached2(beckett92), 10: getValCached2(beckett102) },
+                Beckett: {
+                  9: getValCached2(beckett92),
+                  10: getValCached2(beckett102)
+                },
                 ACE: { 9: getValCached2(ace92), 10: getValCached2(ace102) },
                 CGC: { 9: getValCached2(cgc92), 10: getValCached2(cgc102) }
               };
@@ -4504,7 +4848,8 @@ async function registerRoutes(app2) {
       const numberFirst = number ? number.split("/")[0].replace(/^0+/, "") : null;
       const queries = [];
       if (setName) queries.push(`${cardName} pokemon ${setName}`);
-      if (numberFirst && parseInt(numberFirst, 10) > 0) queries.push(`${cardName} pokemon ${numberFirst}`);
+      if (numberFirst && parseInt(numberFirst, 10) > 0)
+        queries.push(`${cardName} pokemon ${numberFirst}`);
       queries.push(`${cardName} pokemon card`);
       let rawPrices = [];
       for (const q of queries) {
@@ -4512,7 +4857,15 @@ async function registerRoutes(app2) {
         if (rawPrices.length >= 3) break;
       }
       if (rawPrices.length === 0) {
-        res.json({ price: null, lowestSold: null, medianSold: null, highestSold: null, source: "eBay UK (Sold)", count: 0, gradedPrices: null });
+        res.json({
+          price: null,
+          lowestSold: null,
+          medianSold: null,
+          highestSold: null,
+          source: "eBay UK (Sold)",
+          count: 0,
+          gradedPrices: null
+        });
         return;
       }
       const stats = computeStats(rawPrices);
@@ -4532,21 +4885,36 @@ async function registerRoutes(app2) {
         }
       }
       const cardBase = `${cardName}${setName ? " " + setName : ""}`;
-      const [psa9, psa10, beckett9, beckett10, ace9, ace10, cgc9, cgc10] = await Promise.allSettled([
-        scrapeGradedMedian(cardBase, "PSA", 9),
-        scrapeGradedMedian(cardBase, "PSA", 10),
-        scrapeGradedMedian(cardBase, "Beckett", 9),
-        scrapeGradedMedian(cardBase, "Beckett", 10),
-        scrapeGradedMedian(cardBase, "ACE", 9),
-        scrapeGradedMedian(cardBase, "ACE", 10),
-        scrapeGradedMedian(cardBase, "CGC", 9),
-        scrapeGradedMedian(cardBase, "CGC", 10)
-      ]);
+      async function safeGradedMedian(cardBase2, company, grade) {
+        try {
+          return await scrapeGradedMedian(cardBase2, company, grade);
+        } catch (err) {
+          console.error(`[GRADED FAILED] ${company} ${grade}`, err);
+          return null;
+        }
+      }
+      const psa9 = await safeGradedMedian(cardBase, "PSA", 9);
+      const psa10 = await safeGradedMedian(cardBase, "PSA", 10);
+      const beckett9 = await safeGradedMedian(cardBase, "Beckett", 9);
+      const beckett10 = await safeGradedMedian(cardBase, "Beckett", 10);
+      const ace9 = await safeGradedMedian(cardBase, "ACE", 9);
+      const ace10 = await safeGradedMedian(cardBase, "ACE", 10);
+      const cgc9 = await safeGradedMedian(cardBase, "CGC", 9);
+      const cgc10 = await safeGradedMedian(cardBase, "CGC", 10);
       const gradedPrices = {
-        PSA: { 9: getVal2(psa9), 10: getVal2(psa10) },
-        Beckett: { 9: getVal2(beckett9), 10: getVal2(beckett10) },
-        ACE: { 9: getVal2(ace9), 10: getVal2(ace10) },
-        CGC: { 9: getVal2(cgc9), 10: getVal2(cgc10) }
+        PSA: { 9: psa9, 10: psa10 },
+        Beckett: {
+          9: beckett9,
+          10: beckett10
+        },
+        ACE: {
+          9: ace9,
+          10: ace10
+        },
+        CGC: {
+          9: cgc9,
+          10: cgc10
+        }
       };
       res.json({
         price: stats.median,
@@ -4562,24 +4930,27 @@ async function registerRoutes(app2) {
       res.status(500).json({ error: error.message || "Failed to fetch eBay prices" });
     }
   });
-  app2.post("/api/identify-card", express.json({ limit: "15mb" }), async (req, res) => {
-    try {
-      const { imageBase64, mode } = req.body;
-      if (!imageBase64) {
-        res.status(400).json({ error: "imageBase64 is required" });
-        return;
-      }
-      const isNumberStripMode = mode === "number-strip";
-      const authToken = req.headers.authorization?.replace("Bearer ", "");
-      if (isNumberStripMode) {
-        let stripResponse;
-        try {
-          const stripPromise = openai.chat.completions.create({
-            model: "gpt-5.2",
-            messages: [
-              {
-                role: "system",
-                content: `You are examining a close-up photo of the bottom edge of a Pok\xE9mon card. This strip contains the collector number and possibly a set code and regulation mark.
+  app2.post(
+    "/api/identify-card",
+    express.json({ limit: "15mb" }),
+    async (req, res) => {
+      try {
+        const { imageBase64, mode } = req.body;
+        if (!imageBase64) {
+          res.status(400).json({ error: "imageBase64 is required" });
+          return;
+        }
+        const isNumberStripMode = mode === "number-strip";
+        const authToken = req.headers.authorization?.replace("Bearer ", "");
+        if (isNumberStripMode) {
+          let stripResponse;
+          try {
+            const stripPromise = openai.chat.completions.create({
+              model: "gpt-5.2",
+              messages: [
+                {
+                  role: "system",
+                  content: `You are examining a close-up photo of the bottom edge of a Pok\xE9mon card. This strip contains the collector number and possibly a set code and regulation mark.
 
 READ THESE THREE ELEMENTS:
 
@@ -4612,62 +4983,77 @@ Rules:
 - "regulationMark": single letter if visible, otherwise "".
 - "confidence": "high"=fully clear \xB7 "medium"=some digits uncertain \xB7 "low"=unreadable.
 - NEVER invent digits you cannot see. If a digit is uncertain, use "medium" and note which one.`
-              },
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: "Read the collector number, set code, and regulation mark from this Pok\xE9mon card bottom strip. Return the JSON."
-                  },
-                  {
-                    type: "image_url",
-                    image_url: {
-                      url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
-                      detail: "high"
+                },
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: "Read the collector number, set code, and regulation mark from this Pok\xE9mon card bottom strip. Return the JSON."
+                    },
+                    {
+                      type: "image_url",
+                      image_url: {
+                        url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
+                        detail: "high"
+                      }
                     }
-                  }
-                ]
-              }
-            ],
-            response_format: { type: "json_object" },
-            max_completion_tokens: 300
-          });
-          const stripTimeoutPromise = new Promise(
-            (_, reject) => setTimeout(() => reject(Object.assign(new Error("AI identification timed out. Please try again."), { isTimeout: true })), 3e4)
-          );
-          stripResponse = await Promise.race([stripPromise, stripTimeoutPromise]);
-        } catch (aiErr) {
-          if (aiErr.isTimeout || aiErr.name === "AbortError" || aiErr.code === "ERR_CANCELED") {
-            res.status(408).json({ error: aiErr.message || "AI identification timed out. Please try again." });
+                  ]
+                }
+              ],
+              response_format: { type: "json_object" },
+              max_completion_tokens: 300
+            });
+            const stripTimeoutPromise = new Promise(
+              (_, reject) => setTimeout(
+                () => reject(
+                  Object.assign(
+                    new Error(
+                      "AI identification timed out. Please try again."
+                    ),
+                    { isTimeout: true }
+                  )
+                ),
+                3e4
+              )
+            );
+            stripResponse = await Promise.race([
+              stripPromise,
+              stripTimeoutPromise
+            ]);
+          } catch (aiErr) {
+            if (aiErr.isTimeout || aiErr.name === "AbortError" || aiErr.code === "ERR_CANCELED") {
+              res.status(408).json({
+                error: aiErr.message || "AI identification timed out. Please try again."
+              });
+              return;
+            }
+            throw aiErr;
+          }
+          const stripContent = stripResponse.choices[0]?.message?.content;
+          if (!stripContent) {
+            res.status(500).json({ error: "AI returned empty response" });
             return;
           }
-          throw aiErr;
-        }
-        const stripContent = stripResponse.choices[0]?.message?.content;
-        if (!stripContent) {
-          res.status(500).json({ error: "AI returned empty response" });
+          const stripResult = JSON.parse(stripContent);
+          res.json({
+            cardNumber: stripResult.cardNumber || "",
+            setCode: stripResult.setCode || "",
+            regulationMark: stripResult.regulationMark || "",
+            confidence: stripResult.confidence || "low",
+            notes: stripResult.notes || ""
+          });
           return;
         }
-        const stripResult = JSON.parse(stripContent);
-        res.json({
-          cardNumber: stripResult.cardNumber || "",
-          setCode: stripResult.setCode || "",
-          regulationMark: stripResult.regulationMark || "",
-          confidence: stripResult.confidence || "low",
-          notes: stripResult.notes || ""
-        });
-        return;
-      }
-      const setReference = await buildSetReferencePrompt();
-      let response;
-      try {
-        const aiPromise = openai.chat.completions.create({
-          model: "gpt-5.2",
-          messages: [
-            {
-              role: "system",
-              content: `You are a Pok\xE9mon TCG card identification system. Your job is to read what is physically printed on the card and return it as structured JSON. Study every visible detail of the image carefully.
+        const setReference = await buildSetReferencePrompt();
+        let response;
+        try {
+          const aiPromise = openai.chat.completions.create({
+            model: "gpt-5.2",
+            messages: [
+              {
+                role: "system",
+                content: `You are a Pok\xE9mon TCG card identification system. Your job is to read what is physically printed on the card and return it as structured JSON. Study every visible detail of the image carefully.
 
 \u2550\u2550 CARD LAYOUT \u2014 WHERE EACH ELEMENT LIVES \u2550\u2550
 
@@ -4748,179 +5134,198 @@ If the image shows the Pok\xE9mon card back (blue oval, Pok\xE9 Ball, "Pok\xE9mo
 \u2022 "notes": include regulation mark letter, any codes spotted, legibility observations
 
 ${setReference}`
-            },
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text: "Identify this Pok\xE9mon card. Start by zooming into the BOTTOM-LEFT corner to read the small collector number (e.g. '025/198'). Then read the card name from the top. Return the JSON."
-                },
-                {
-                  type: "image_url",
-                  image_url: {
-                    url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
-                    detail: "high"
+              },
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: "Identify this Pok\xE9mon card. Start by zooming into the BOTTOM-LEFT corner to read the small collector number (e.g. '025/198'). Then read the card name from the top. Return the JSON."
+                  },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: imageBase64.startsWith("data:") ? imageBase64 : `data:image/jpeg;base64,${imageBase64}`,
+                      detail: "high"
+                    }
                   }
-                }
-              ]
-            }
-          ],
-          response_format: { type: "json_object" },
-          max_completion_tokens: 800
-        });
-        const timeoutPromise = new Promise(
-          (_, reject) => setTimeout(() => reject(Object.assign(new Error("AI identification timed out. Please try again."), { isTimeout: true })), 3e4)
-        );
-        response = await Promise.race([aiPromise, timeoutPromise]);
-      } catch (aiErr) {
-        if (aiErr.isTimeout || aiErr.name === "AbortError" || aiErr.code === "ERR_CANCELED") {
-          res.status(408).json({ error: aiErr.message || "AI identification timed out. Please try again." });
-          return;
-        }
-        throw aiErr;
-      }
-      const content = response.choices[0]?.message?.content;
-      if (!content) {
-        res.status(500).json({ error: "AI returned empty response" });
-        return;
-      }
-      const identification = JSON.parse(content);
-      if (identification.isCardBack === true) {
-        res.json({ isCardBack: true });
-        return;
-      }
-      if (authToken) {
-        const scanUser = await storage.validateSession(authToken);
-        if (scanUser && !scanUser.isPremium) {
-          const result = await consumeScan(scanUser.id);
-          if (!result.allowed) {
-            res.status(429).json({
-              error: "Daily scan limit reached",
-              freeRemaining: 0,
-              bonusRemaining: 0,
-              message: "You've used all your scans for today. Come back tomorrow or upgrade to Premium for unlimited scans."
+                ]
+              }
+            ],
+            response_format: { type: "json_object" },
+            max_completion_tokens: 800
+          });
+          const timeoutPromise = new Promise(
+            (_, reject) => setTimeout(
+              () => reject(
+                Object.assign(
+                  new Error("AI identification timed out. Please try again."),
+                  { isTimeout: true }
+                )
+              ),
+              3e4
+            )
+          );
+          response = await Promise.race([aiPromise, timeoutPromise]);
+        } catch (aiErr) {
+          if (aiErr.isTimeout || aiErr.name === "AbortError" || aiErr.code === "ERR_CANCELED") {
+            res.status(408).json({
+              error: aiErr.message || "AI identification timed out. Please try again."
             });
             return;
           }
+          throw aiErr;
         }
-      }
-      let pcvResults = [];
-      try {
-        pcvResults = await scrapeCardSearch(identification.englishName);
-        if (identification.cardNumber && pcvResults.length > 1) {
-          const numberOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
-          const filtered = pcvResults.filter((c) => {
-            const cNum = c.number?.split("/")[0].replace(/^0+/, "");
-            return cNum === numberOnly;
-          });
-          if (filtered.length > 0) pcvResults = filtered;
+        const content = response.choices[0]?.message?.content;
+        if (!content) {
+          res.status(500).json({ error: "AI returned empty response" });
+          return;
         }
-      } catch (e) {
-        console.error("PCV search after identification failed:", e);
-      }
-      let tcgApiResults = [];
-      try {
-        const cardName = identification.englishName?.trim();
-        const origName = identification.originalName?.trim();
-        if (cardName && cardName.length >= 2) {
-          const nameConditions = [ilike(pokemonCards.name, `%${cardName}%`)];
-          if (origName && origName !== cardName) {
-            nameConditions.push(ilike(pokemonCards.name, `%${origName}%`));
-          }
-          const dbMatches = await db.select({ card: pokemonCards, set: pokemonSets, pricing: cardPricing }).from(pokemonCards).leftJoin(pokemonSets, eq3(pokemonCards.setId, pokemonSets.id)).leftJoin(cardPricing, eq3(cardPricing.variantId, pokemonCards.id)).where(and3(or2(...nameConditions), isNull2(pokemonCards.deletedAt))).orderBy(desc(pokemonSets.releaseDate)).limit(20);
-          if (dbMatches.length > 0) {
-            let formatted = dbMatches.map(({ card, set, pricing }) => {
-              const base = dbVariantToApiFormat(card, pricing ?? null);
-              if (set) {
-                base.set = {
-                  id: set.id,
-                  name: set.name,
-                  series: set.series ?? void 0,
-                  printedTotal: set.printedTotal,
-                  total: set.total,
-                  releaseDate: set.releaseDate,
-                  images: { symbol: set.symbolUrl, logo: set.logoUrl }
-                };
-              }
-              return base;
-            });
-            if (identification.setCode && formatted.length > 1) {
-              const aiCode = identification.setCode.toLowerCase().trim();
-              const codeMatch = formatted.filter((c) => {
-                const dbId = (c.set?.id ?? "").toLowerCase();
-                return dbId === aiCode || dbId.startsWith(aiCode) || aiCode.startsWith(dbId);
+        const identification = JSON.parse(content);
+        if (identification.isCardBack === true) {
+          res.json({ isCardBack: true });
+          return;
+        }
+        if (authToken) {
+          const scanUser = await storage.validateSession(authToken);
+          if (scanUser && !scanUser.isPremium) {
+            const result = await consumeScan(scanUser.id);
+            if (!result.allowed) {
+              res.status(429).json({
+                error: "Daily scan limit reached",
+                freeRemaining: 0,
+                bonusRemaining: 0,
+                message: "You've used all your scans for today. Come back tomorrow or upgrade to Premium for unlimited scans."
               });
-              if (codeMatch.length > 0) formatted = codeMatch;
+              return;
             }
-            if (identification.setName && formatted.length > 1) {
-              const aiSet = identification.setName.toLowerCase();
-              const setMatch = formatted.filter((c) => {
-                const dbSet = (c.set?.name ?? "").toLowerCase();
-                return dbSet.includes(aiSet) || aiSet.includes(dbSet);
-              });
-              if (setMatch.length > 0) formatted = setMatch;
-            }
-            if (identification.cardNumber && formatted.length > 1) {
-              const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
-              const exactMatch = formatted.filter((c) => {
-                const cn = String(c.number).replace(/^0+/, "");
-                return cn === numOnly;
-              });
-              if (exactMatch.length > 0) formatted = exactMatch;
-            }
-            formatted.sort((a, b) => {
-              const aHasImg = a.images?.small ? 1 : 0;
-              const bHasImg = b.images?.small ? 1 : 0;
-              return bHasImg - aHasImg;
-            });
-            tcgApiResults = formatted;
           }
         }
-      } catch (dbErr) {
-        console.error("DB card search after identification failed:", dbErr);
-      }
-      if (tcgApiResults.length === 0) {
+        let pcvResults = [];
         try {
-          const encodedQuery = encodeURIComponent(`name:"${identification.englishName}"`);
-          const apiCtrl = new AbortController();
-          const apiTimer = setTimeout(() => apiCtrl.abort(), 1e4);
-          const tcgRes = await fetch(
-            `${POKEMON_API2}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&pageSize=10`,
-            { signal: apiCtrl.signal, headers: tcgHeaders() }
-          );
-          clearTimeout(apiTimer);
-          if (tcgRes.ok) {
-            const tcgData = await tcgRes.json();
-            tcgApiResults = tcgData.data || [];
-            if (identification.cardNumber && tcgApiResults.length > 1) {
-              const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
-              const exactMatch = tcgApiResults.filter((c) => {
-                const cn = String(c.number).replace(/^0+/, "");
-                return cn === numOnly;
-              });
-              if (exactMatch.length > 0) tcgApiResults = exactMatch;
-            }
+          pcvResults = await scrapeCardSearch(identification.englishName);
+          if (identification.cardNumber && pcvResults.length > 1) {
+            const numberOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
+            const filtered = pcvResults.filter((c) => {
+              const cNum = c.number?.split("/")[0].replace(/^0+/, "");
+              return cNum === numberOnly;
+            });
+            if (filtered.length > 0) pcvResults = filtered;
           }
         } catch (e) {
-          console.error("TCG API search after identification failed:", e);
+          console.error("PCV search after identification failed:", e);
         }
+        let tcgApiResults = [];
+        try {
+          const cardName = identification.englishName?.trim();
+          const origName = identification.originalName?.trim();
+          if (cardName && cardName.length >= 2) {
+            const nameConditions = [ilike(pokemonCards.name, `%${cardName}%`)];
+            if (origName && origName !== cardName) {
+              nameConditions.push(ilike(pokemonCards.name, `%${origName}%`));
+            }
+            const dbMatches = await db.select({
+              card: pokemonCards,
+              set: pokemonSets,
+              pricing: cardPricing
+            }).from(pokemonCards).leftJoin(pokemonSets, eq3(pokemonCards.setId, pokemonSets.id)).leftJoin(cardPricing, eq3(cardPricing.variantId, pokemonCards.id)).where(and3(or2(...nameConditions), isNull2(pokemonCards.deletedAt))).orderBy(desc(pokemonSets.releaseDate)).limit(20);
+            if (dbMatches.length > 0) {
+              let formatted = dbMatches.map(({ card, set, pricing }) => {
+                const base = dbVariantToApiFormat(card, pricing ?? null);
+                if (set) {
+                  base.set = {
+                    id: set.id,
+                    name: set.name,
+                    series: set.series ?? void 0,
+                    printedTotal: set.printedTotal,
+                    total: set.total,
+                    releaseDate: set.releaseDate,
+                    images: { symbol: set.symbolUrl, logo: set.logoUrl }
+                  };
+                }
+                return base;
+              });
+              if (identification.setCode && formatted.length > 1) {
+                const aiCode = identification.setCode.toLowerCase().trim();
+                const codeMatch = formatted.filter((c) => {
+                  const dbId = (c.set?.id ?? "").toLowerCase();
+                  return dbId === aiCode || dbId.startsWith(aiCode) || aiCode.startsWith(dbId);
+                });
+                if (codeMatch.length > 0) formatted = codeMatch;
+              }
+              if (identification.setName && formatted.length > 1) {
+                const aiSet = identification.setName.toLowerCase();
+                const setMatch = formatted.filter((c) => {
+                  const dbSet = (c.set?.name ?? "").toLowerCase();
+                  return dbSet.includes(aiSet) || aiSet.includes(dbSet);
+                });
+                if (setMatch.length > 0) formatted = setMatch;
+              }
+              if (identification.cardNumber && formatted.length > 1) {
+                const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
+                const exactMatch = formatted.filter((c) => {
+                  const cn = String(c.number).replace(/^0+/, "");
+                  return cn === numOnly;
+                });
+                if (exactMatch.length > 0) formatted = exactMatch;
+              }
+              formatted.sort((a, b) => {
+                const aHasImg = a.images?.small ? 1 : 0;
+                const bHasImg = b.images?.small ? 1 : 0;
+                return bHasImg - aHasImg;
+              });
+              tcgApiResults = formatted;
+            }
+          }
+        } catch (dbErr) {
+          console.error("DB card search after identification failed:", dbErr);
+        }
+        if (tcgApiResults.length === 0) {
+          try {
+            const encodedQuery = encodeURIComponent(
+              `name:"${identification.englishName}"`
+            );
+            const apiCtrl = new AbortController();
+            const apiTimer = setTimeout(() => apiCtrl.abort(), 1e4);
+            const tcgRes = await fetch(
+              `${POKEMON_API2}/cards?q=${encodedQuery}&orderBy=-set.releaseDate&pageSize=10`,
+              { signal: apiCtrl.signal, headers: tcgHeaders() }
+            );
+            clearTimeout(apiTimer);
+            if (tcgRes.ok) {
+              const tcgData = await tcgRes.json();
+              tcgApiResults = tcgData.data || [];
+              if (identification.cardNumber && tcgApiResults.length > 1) {
+                const numOnly = identification.cardNumber.split("/")[0].replace(/^0+/, "");
+                const exactMatch = tcgApiResults.filter((c) => {
+                  const cn = String(c.number).replace(/^0+/, "");
+                  return cn === numOnly;
+                });
+                if (exactMatch.length > 0) tcgApiResults = exactMatch;
+              }
+            }
+          } catch (e) {
+            console.error("TCG API search after identification failed:", e);
+          }
+        }
+        res.json({
+          identification,
+          pcvResults: pcvResults.slice(0, 10),
+          tcgApiResults: tcgApiResults.slice(0, 10)
+        });
+      } catch (error) {
+        console.error("Card identification failed:", error);
+        res.status(500).json({ error: error.message || "Failed to identify card" });
       }
-      res.json({
-        identification,
-        pcvResults: pcvResults.slice(0, 10),
-        tcgApiResults: tcgApiResults.slice(0, 10)
-      });
-    } catch (error) {
-      console.error("Card identification failed:", error);
-      res.status(500).json({ error: error.message || "Failed to identify card" });
     }
-  });
+  );
   app2.post("/api/auth/register", async (req, res) => {
     try {
       const { username, displayName, email, mobileNumber, password } = req.body;
       if (!username || !displayName || !email || !password) {
-        res.status(400).json({ error: "Username, display name, email and password are required" });
+        res.status(400).json({
+          error: "Username, display name, email and password are required"
+        });
         return;
       }
       if (password.length < 6) {
@@ -4976,10 +5381,14 @@ ${setReference}`
       const result = verifyOtp(normalised, code);
       if (!result.valid) {
         if (result.tooManyAttempts) {
-          res.status(429).json({ error: "Too many incorrect attempts. Please request a new code." });
+          res.status(429).json({
+            error: "Too many incorrect attempts. Please request a new code."
+          });
           return;
         }
-        res.status(401).json({ error: result.expired ? "Code expired. Please request a new one." : "Incorrect code. Please try again." });
+        res.status(401).json({
+          error: result.expired ? "Code expired. Please request a new one." : "Incorrect code. Please try again."
+        });
         return;
       }
       const user = await storage.getUserByEmail(normalised);
@@ -4994,31 +5403,34 @@ ${setReference}`
       res.status(500).json({ error: error.message || "Verification failed" });
     }
   });
-  app2.post("/api/auth/resend-email-verification", async (req, res) => {
-    try {
-      const { email } = req.body;
-      if (!email) {
-        res.status(400).json({ error: "email is required" });
-        return;
+  app2.post(
+    "/api/auth/resend-email-verification",
+    async (req, res) => {
+      try {
+        const { email } = req.body;
+        if (!email) {
+          res.status(400).json({ error: "email is required" });
+          return;
+        }
+        const normalised = email.toLowerCase().trim();
+        const user = await storage.getUserByEmail(normalised);
+        if (!user) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+        const { code, rateLimited } = createOtp(normalised);
+        if (rateLimited) {
+          res.status(429).json({ error: "Please wait before requesting another code." });
+          return;
+        }
+        await sendOtpByEmail(user.email, code);
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Resend verification error:", error);
+        res.status(500).json({ error: error.message || "Failed to resend code" });
       }
-      const normalised = email.toLowerCase().trim();
-      const user = await storage.getUserByEmail(normalised);
-      if (!user) {
-        res.status(404).json({ error: "User not found" });
-        return;
-      }
-      const { code, rateLimited } = createOtp(normalised);
-      if (rateLimited) {
-        res.status(429).json({ error: "Please wait before requesting another code." });
-        return;
-      }
-      await sendOtpByEmail(user.email, code);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Resend verification error:", error);
-      res.status(500).json({ error: error.message || "Failed to resend code" });
     }
-  });
+  );
   app2.delete("/api/auth/account", async (req, res) => {
     try {
       const authHeader = req.headers.authorization || "";
@@ -5033,7 +5445,9 @@ ${setReference}`
         return;
       }
       if (caller.isPremium && caller.subscriptionStatus === "active") {
-        res.status(403).json({ error: "Please cancel your Premium subscription before deleting your account." });
+        res.status(403).json({
+          error: "Please cancel your Premium subscription before deleting your account."
+        });
         return;
       }
       await storage.deleteUser(caller.id);
@@ -5051,13 +5465,16 @@ ${setReference}`
         return;
       }
       let user = await storage.getUserByEmail(credential.toLowerCase().trim());
-      if (!user) user = await storage.getUserByUsername(credential.toLowerCase().trim());
+      if (!user)
+        user = await storage.getUserByUsername(credential.toLowerCase().trim());
       if (!user) {
         res.status(401).json({ error: "Invalid email/username or password" });
         return;
       }
       if (!user.passwordHash) {
-        res.status(401).json({ error: "This account does not have a password set. Contact an admin." });
+        res.status(401).json({
+          error: "This account does not have a password set. Contact an admin."
+        });
         return;
       }
       const valid = await bcrypt.compare(password, user.passwordHash);
@@ -5092,13 +5509,16 @@ ${setReference}`
         return;
       }
       let user = await storage.getUserByEmail(credential.toLowerCase().trim());
-      if (!user) user = await storage.getUserByUsername(credential.toLowerCase().trim());
+      if (!user)
+        user = await storage.getUserByUsername(credential.toLowerCase().trim());
       if (!user) {
         res.status(401).json({ error: "Invalid email/username or password" });
         return;
       }
       if (!user.passwordHash) {
-        res.status(401).json({ error: "This account does not have a password set. Contact an admin." });
+        res.status(401).json({
+          error: "This account does not have a password set. Contact an admin."
+        });
         return;
       }
       const valid = await bcrypt.compare(password, user.passwordHash);
@@ -5154,7 +5574,9 @@ ${setReference}`
       }
       const { code, rateLimited } = createOtp(credential);
       if (rateLimited) {
-        res.status(429).json({ error: "Too many requests. Please wait before requesting another code." });
+        res.status(429).json({
+          error: "Too many requests. Please wait before requesting another code."
+        });
         return;
       }
       let sent = false;
@@ -5173,47 +5595,54 @@ ${setReference}`
       res.status(500).json({ error: error.message || "Failed to send OTP" });
     }
   });
-  app2.post("/api/auth/send-otp-register", async (req, res) => {
-    try {
-      const { userId, channel } = req.body;
-      if (!userId || !channel) {
-        res.status(400).json({ error: "userId and channel are required" });
-        return;
-      }
-      const user = await storage.getUserById(userId);
-      if (!user) {
-        res.status(404).json({ error: "User not found" });
-        return;
-      }
-      let targetCredential;
-      let sent = false;
-      if (channel === "email") {
-        targetCredential = user.email;
-        const { code, rateLimited } = createOtp(targetCredential);
-        if (rateLimited) {
-          res.status(429).json({ error: "Too many requests. Please wait before requesting another code." });
+  app2.post(
+    "/api/auth/send-otp-register",
+    async (req, res) => {
+      try {
+        const { userId, channel } = req.body;
+        if (!userId || !channel) {
+          res.status(400).json({ error: "userId and channel are required" });
           return;
         }
-        sent = await sendOtpByEmail(user.email, code);
-      } else {
-        targetCredential = user.mobileNumber;
-        const { code, rateLimited } = createOtp(targetCredential);
-        if (rateLimited) {
-          res.status(429).json({ error: "Too many requests. Please wait before requesting another code." });
+        const user = await storage.getUserById(userId);
+        if (!user) {
+          res.status(404).json({ error: "User not found" });
           return;
         }
-        sent = await sendOtpBySms(user.mobileNumber, code);
+        let targetCredential;
+        let sent = false;
+        if (channel === "email") {
+          targetCredential = user.email;
+          const { code, rateLimited } = createOtp(targetCredential);
+          if (rateLimited) {
+            res.status(429).json({
+              error: "Too many requests. Please wait before requesting another code."
+            });
+            return;
+          }
+          sent = await sendOtpByEmail(user.email, code);
+        } else {
+          targetCredential = user.mobileNumber;
+          const { code, rateLimited } = createOtp(targetCredential);
+          if (rateLimited) {
+            res.status(429).json({
+              error: "Too many requests. Please wait before requesting another code."
+            });
+            return;
+          }
+          sent = await sendOtpBySms(user.mobileNumber, code);
+        }
+        if (!sent) {
+          res.status(500).json({ error: "Failed to send verification code" });
+          return;
+        }
+        res.json({ message: "Verification code sent" });
+      } catch (error) {
+        console.error("Send OTP register error:", error);
+        res.status(500).json({ error: error.message || "Failed to send OTP" });
       }
-      if (!sent) {
-        res.status(500).json({ error: "Failed to send verification code" });
-        return;
-      }
-      res.json({ message: "Verification code sent" });
-    } catch (error) {
-      console.error("Send OTP register error:", error);
-      res.status(500).json({ error: error.message || "Failed to send OTP" });
     }
-  });
+  );
   app2.post("/api/auth/verify-otp", async (req, res) => {
     try {
       const { credential, code } = req.body;
@@ -5224,10 +5653,14 @@ ${setReference}`
       const result = verifyOtp(credential, code);
       if (!result.valid) {
         if (result.tooManyAttempts) {
-          res.status(429).json({ error: "Too many incorrect attempts. Please request a new code." });
+          res.status(429).json({
+            error: "Too many incorrect attempts. Please request a new code."
+          });
           return;
         }
-        res.status(401).json({ error: result.expired ? "Verification code has expired. Please request a new one." : "Incorrect verification code. Please try again." });
+        res.status(401).json({
+          error: result.expired ? "Verification code has expired. Please request a new one." : "Incorrect verification code. Please try again."
+        });
         return;
       }
       let user = await storage.getUserByEmail(credential);
@@ -5299,44 +5732,47 @@ ${setReference}`
       res.status(500).json({ error: "Stripe not configured" });
     }
   });
-  app2.post("/api/stripe/create-checkout", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
+  app2.post(
+    "/api/stripe/create-checkout",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid or expired session" });
+          return;
+        }
+        const { priceId, successUrl, cancelUrl } = req.body;
+        if (!priceId || !successUrl || !cancelUrl) {
+          res.status(400).json({ error: "priceId, successUrl and cancelUrl are required" });
+          return;
+        }
+        const { getUncachableStripeClient: getUncachableStripeClient2, ensureStripeCustomer: ensureStripeCustomer2 } = await Promise.resolve().then(() => (init_stripe_client(), stripe_client_exports));
+        const stripe = await getUncachableStripeClient2();
+        const customerId = await ensureStripeCustomer2(stripe, user);
+        const session = await stripe.checkout.sessions.create({
+          customer: customerId,
+          payment_method_types: ["card"],
+          mode: "subscription",
+          line_items: [{ price: priceId, quantity: 1 }],
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          subscription_data: {
+            metadata: { pokescanUserId: user.id }
+          },
+          allow_promotion_codes: true
+        });
+        res.json({ url: session.url, sessionId: session.id });
+      } catch (err) {
+        console.error("[Stripe] Checkout error:", err.message);
+        res.status(500).json({ error: err.message || "Failed to create checkout session" });
       }
-      const user = await storage.validateSession(token);
-      if (!user) {
-        res.status(401).json({ error: "Invalid or expired session" });
-        return;
-      }
-      const { priceId, successUrl, cancelUrl } = req.body;
-      if (!priceId || !successUrl || !cancelUrl) {
-        res.status(400).json({ error: "priceId, successUrl and cancelUrl are required" });
-        return;
-      }
-      const { getUncachableStripeClient: getUncachableStripeClient2, ensureStripeCustomer: ensureStripeCustomer2 } = await Promise.resolve().then(() => (init_stripe_client(), stripe_client_exports));
-      const stripe = await getUncachableStripeClient2();
-      const customerId = await ensureStripeCustomer2(stripe, user);
-      const session = await stripe.checkout.sessions.create({
-        customer: customerId,
-        payment_method_types: ["card"],
-        mode: "subscription",
-        line_items: [{ price: priceId, quantity: 1 }],
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-        subscription_data: {
-          metadata: { pokescanUserId: user.id }
-        },
-        allow_promotion_codes: true
-      });
-      res.json({ url: session.url, sessionId: session.id });
-    } catch (err) {
-      console.error("[Stripe] Checkout error:", err.message);
-      res.status(500).json({ error: err.message || "Failed to create checkout session" });
     }
-  });
+  );
   app2.post("/api/stripe/portal", async (req, res) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -5391,7 +5827,9 @@ ${setReference}`
           expand: ["data.default_payment_method"]
         });
       } catch (e) {
-        console.warn(`[Stripe] Sync failed for customer ${customerId}: ${e.message}. Clearing stored ID.`);
+        console.warn(
+          `[Stripe] Sync failed for customer ${customerId}: ${e.message}. Clearing stored ID.`
+        );
         await storage.updateUser(user.id, { stripeCustomerId: null });
         res.json({ isPremium: false, subscriptionStatus: null });
         return;
@@ -5409,7 +5847,12 @@ ${setReference}`
           subscriptionStatus: resolvedStatus,
           subscriptionPeriodEnd: periodEnd
         });
-        res.json({ isPremium: true, subscriptionStatus: resolvedStatus, periodEnd: periodEnd.toISOString(), cancelAtPeriodEnd: !!active.cancel_at_period_end });
+        res.json({
+          isPremium: true,
+          subscriptionStatus: resolvedStatus,
+          periodEnd: periodEnd.toISOString(),
+          cancelAtPeriodEnd: !!active.cancel_at_period_end
+        });
       } else {
         const latestSub = subscriptions.data[0];
         const storedUser = user;
@@ -5419,13 +5862,21 @@ ${setReference}`
           await storage.updateUser(user.id, {
             subscriptionStatus: "canceling"
           });
-          res.json({ isPremium: true, subscriptionStatus: "canceling", periodEnd: periodEndDate.toISOString(), cancelAtPeriodEnd: true });
+          res.json({
+            isPremium: true,
+            subscriptionStatus: "canceling",
+            periodEnd: periodEndDate.toISOString(),
+            cancelAtPeriodEnd: true
+          });
         } else {
           await storage.updateUser(user.id, {
             isPremium: false,
             subscriptionStatus: latestSub?.status ?? "canceled"
           });
-          res.json({ isPremium: false, subscriptionStatus: latestSub?.status ?? "canceled" });
+          res.json({
+            isPremium: false,
+            subscriptionStatus: latestSub?.status ?? "canceled"
+          });
         }
       }
     } catch (err) {
@@ -5474,9 +5925,18 @@ ${setReference}`
                      stripe_price_id = $3, subscription_status = $4,
                      subscription_period_end = $5
                  WHERE id = $6`,
-                [isActive, sub.id, sub.items?.data?.[0]?.price?.id ?? null, resolvedStatus, periodEnd, userId]
+                [
+                  isActive,
+                  sub.id,
+                  sub.items?.data?.[0]?.price?.id ?? null,
+                  resolvedStatus,
+                  periodEnd,
+                  userId
+                ]
               );
-              console.log(`[Stripe Webhook] Updated user ${userId}: isPremium=${isActive} status=${resolvedStatus} cancelAtPeriodEnd=${sub.cancel_at_period_end}`);
+              console.log(
+                `[Stripe Webhook] Updated user ${userId}: isPremium=${isActive} status=${resolvedStatus} cancelAtPeriodEnd=${sub.cancel_at_period_end}`
+              );
             }
             break;
           }
@@ -5491,7 +5951,9 @@ ${setReference}`
                WHERE stripe_customer_id = $1`,
               [customerId, periodEnd]
             );
-            console.log(`[Stripe Webhook] Subscription ended for customer ${customerId} \u2014 premium removed`);
+            console.log(
+              `[Stripe Webhook] Subscription ended for customer ${customerId} \u2014 premium removed`
+            );
             break;
           }
           case "invoice.payment_failed": {
@@ -5524,11 +5986,15 @@ ${setReference}`
         return;
       }
       if (user.role === "admin" || user.role === "moderator") {
-        res.status(403).json({ error: "Staff premium cannot be self-cancelled. Contact a superadmin." });
+        res.status(403).json({
+          error: "Staff premium cannot be self-cancelled. Contact a superadmin."
+        });
         return;
       }
       if (!user.isPremium) {
-        res.status(400).json({ error: "Account does not have an active premium subscription." });
+        res.status(400).json({
+          error: "Account does not have an active premium subscription."
+        });
         return;
       }
       const subscriptionId = user.stripeSubscriptionId;
@@ -5536,10 +6002,19 @@ ${setReference}`
         try {
           const { getUncachableStripeClient: getUncachableStripeClient2, ensureStripeCustomer: ensureStripeCustomer2 } = await Promise.resolve().then(() => (init_stripe_client(), stripe_client_exports));
           const stripe = await getUncachableStripeClient2();
-          await stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
-          console.log(`[Premium] Stripe subscription ${subscriptionId} set to cancel at period end.`);
-          await storage.updateUser(user.id, { subscriptionStatus: "canceling" });
-          res.json({ success: true, message: "Subscription will cancel at end of billing period." });
+          await stripe.subscriptions.update(subscriptionId, {
+            cancel_at_period_end: true
+          });
+          console.log(
+            `[Premium] Stripe subscription ${subscriptionId} set to cancel at period end.`
+          );
+          await storage.updateUser(user.id, {
+            subscriptionStatus: "canceling"
+          });
+          res.json({
+            success: true,
+            message: "Subscription will cancel at end of billing period."
+          });
           return;
         } catch (stripeErr) {
           console.error("[Premium] Stripe cancel error:", stripeErr.message);
@@ -5550,7 +6025,9 @@ ${setReference}`
         res.status(404).json({ error: "User not found" });
         return;
       }
-      console.log(`[Premium] User ${user.id} (${user.email || user.username}) cancelled premium.`);
+      console.log(
+        `[Premium] User ${user.id} (${user.email || user.username}) cancelled premium.`
+      );
       res.json({ success: true });
     } catch (error) {
       console.error("Cancel premium error:", error);
@@ -5633,7 +6110,19 @@ ${setReference}`
         res.status(403).json({ error: "Premium required to list on the marketplace." });
         return;
       }
-      const { cardId, cardName, cardImage, setName, rarity, type, priceGBP, condition, description, photos, externalUrl } = req.body;
+      const {
+        cardId,
+        cardName,
+        cardImage,
+        setName,
+        rarity,
+        type,
+        priceGBP,
+        condition,
+        description,
+        photos,
+        externalUrl
+      } = req.body;
       if (!cardId || !cardName || !cardImage || !setName || !type || !condition) {
         res.status(400).json({ error: "Missing required listing fields." });
         return;
@@ -5686,7 +6175,10 @@ ${setReference}`
         return;
       }
       const { id } = req.params;
-      const existing = await pool3.query(`SELECT user_id FROM pokescan_market_listings WHERE id = $1`, [id]);
+      const existing = await pool3.query(
+        `SELECT user_id FROM pokescan_market_listings WHERE id = $1`,
+        [id]
+      );
       if (existing.rows.length === 0) {
         res.status(404).json({ error: "Listing not found" });
         return;
@@ -5697,7 +6189,9 @@ ${setReference}`
         res.status(403).json({ error: "Not authorised to delete this listing" });
         return;
       }
-      await pool3.query(`DELETE FROM pokescan_market_listings WHERE id = $1`, [id]);
+      await pool3.query(`DELETE FROM pokescan_market_listings WHERE id = $1`, [
+        id
+      ]);
       res.json({ success: true });
     } catch (err) {
       console.error("[Listings] DELETE error:", err.message);
@@ -5717,7 +6211,10 @@ ${setReference}`
         return;
       }
       const { id } = req.params;
-      const existing = await pool3.query(`SELECT user_id FROM pokescan_market_listings WHERE id = $1`, [id]);
+      const existing = await pool3.query(
+        `SELECT user_id FROM pokescan_market_listings WHERE id = $1`,
+        [id]
+      );
       if (existing.rows.length === 0) {
         res.status(404).json({ error: "Listing not found" });
         return;
@@ -5910,7 +6407,10 @@ ${setReference}`
         return;
       }
       const page = Math.max(1, parseInt(req.query.page || "1", 10));
-      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || "20", 10)));
+      const limit = Math.min(
+        50,
+        Math.max(1, parseInt(req.query.limit || "20", 10))
+      );
       const offset = (page - 1) * limit;
       const moderator = req.query.moderator || "";
       const dateFrom = req.query.dateFrom || "";
@@ -5998,7 +6498,10 @@ ${setReference}`
         return;
       }
       const page = Math.max(1, parseInt(req.query.page || "1", 10));
-      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || "20", 10)));
+      const limit = Math.min(
+        50,
+        Math.max(1, parseInt(req.query.limit || "20", 10))
+      );
       const offset = (page - 1) * limit;
       const status = req.query.status || "all";
       const reporter = req.query.reporter || "";
@@ -6199,108 +6702,126 @@ ${setReference}`
       res.status(500).json({ error: error.message || "Failed to fetch scan history" });
     }
   });
-  app2.post("/api/scan-history", express.json({ limit: "10mb" }), async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      const user = await storage.validateSession(token);
-      if (!user) {
-        res.status(401).json({ error: "Invalid or expired session" });
-        return;
-      }
-      const { cardName, setName, cardNumber, language, thumbnail, priceGBP, identification, tcgApiResults, pcvResults } = req.body;
-      if (!cardName) {
-        res.status(400).json({ error: "cardName is required" });
-        return;
-      }
-      const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      await db.execute(
-        sql4`INSERT INTO pokescan_scan_history (id, user_id, card_name, set_name, card_number, language, thumbnail, price_gbp, identification, tcg_api_results, pcv_results)
+  app2.post(
+    "/api/scan-history",
+    express.json({ limit: "10mb" }),
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid or expired session" });
+          return;
+        }
+        const {
+          cardName,
+          setName,
+          cardNumber,
+          language,
+          thumbnail,
+          priceGBP,
+          identification,
+          tcgApiResults,
+          pcvResults
+        } = req.body;
+        if (!cardName) {
+          res.status(400).json({ error: "cardName is required" });
+          return;
+        }
+        const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        await db.execute(
+          sql4`INSERT INTO pokescan_scan_history (id, user_id, card_name, set_name, card_number, language, thumbnail, price_gbp, identification, tcg_api_results, pcv_results)
             VALUES (${id}, ${user.id}, ${cardName}, ${setName || ""}, ${cardNumber || ""}, ${language || "english"},
                     ${thumbnail || null}, ${priceGBP ?? null},
                     ${JSON.stringify(identification || {})}, ${JSON.stringify(tcgApiResults || [])}, ${JSON.stringify(pcvResults || [])})`
-      );
-      await db.execute(
-        sql4`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id} AND id NOT IN (
+        );
+        await db.execute(
+          sql4`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id} AND id NOT IN (
               SELECT id FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25
             )`
-      );
-      const rows = await db.execute(
-        sql4`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`
-      );
-      const entries = rows.rows.map((r) => ({
-        id: r.id,
-        timestamp: r.scanned_at,
-        cardName: r.card_name,
-        setName: r.set_name,
-        cardNumber: r.card_number,
-        language: r.language,
-        thumbnail: r.thumbnail,
-        priceGBP: r.price_gbp,
-        identification: JSON.parse(r.identification || "{}"),
-        tcgApiResults: JSON.parse(r.tcg_api_results || "[]"),
-        pcvResults: JSON.parse(r.pcv_results || "[]")
-      }));
-      res.json({ history: entries });
-    } catch (error) {
-      console.error("Scan history add error:", error);
-      res.status(500).json({ error: error.message || "Failed to add scan history entry" });
+        );
+        const rows = await db.execute(
+          sql4`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`
+        );
+        const entries = rows.rows.map((r) => ({
+          id: r.id,
+          timestamp: r.scanned_at,
+          cardName: r.card_name,
+          setName: r.set_name,
+          cardNumber: r.card_number,
+          language: r.language,
+          thumbnail: r.thumbnail,
+          priceGBP: r.price_gbp,
+          identification: JSON.parse(r.identification || "{}"),
+          tcgApiResults: JSON.parse(r.tcg_api_results || "[]"),
+          pcvResults: JSON.parse(r.pcv_results || "[]")
+        }));
+        res.json({ history: entries });
+      } catch (error) {
+        console.error("Scan history add error:", error);
+        res.status(500).json({ error: error.message || "Failed to add scan history entry" });
+      }
     }
-  });
-  app2.post("/api/scan-history/bulk", express.json({ limit: "10mb" }), async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      const user = await storage.validateSession(token);
-      if (!user) {
-        res.status(401).json({ error: "Invalid or expired session" });
-        return;
-      }
-      const { entries } = req.body;
-      if (!Array.isArray(entries) || entries.length === 0) {
-        res.json({ migrated: 0, failed: 0 });
-        return;
-      }
-      let migrated = 0;
-      let failed = 0;
-      for (const entry of entries) {
-        try {
-          const existingRows = await db.execute(
-            sql4`SELECT id FROM pokescan_scan_history WHERE id = ${entry.id} AND user_id = ${user.id}`
-          );
-          if (existingRows.rows.length > 0) {
-            migrated++;
-            continue;
-          }
-          const scannedAt = entry.timestamp ? new Date(entry.timestamp) : /* @__PURE__ */ new Date();
-          await db.execute(
-            sql4`INSERT INTO pokescan_scan_history (id, user_id, card_name, set_name, card_number, language, thumbnail, price_gbp, identification, tcg_api_results, pcv_results, scanned_at)
+  );
+  app2.post(
+    "/api/scan-history/bulk",
+    express.json({ limit: "10mb" }),
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid or expired session" });
+          return;
+        }
+        const { entries } = req.body;
+        if (!Array.isArray(entries) || entries.length === 0) {
+          res.json({ migrated: 0, failed: 0 });
+          return;
+        }
+        let migrated = 0;
+        let failed = 0;
+        for (const entry of entries) {
+          try {
+            const existingRows = await db.execute(
+              sql4`SELECT id FROM pokescan_scan_history WHERE id = ${entry.id} AND user_id = ${user.id}`
+            );
+            if (existingRows.rows.length > 0) {
+              migrated++;
+              continue;
+            }
+            const scannedAt = entry.timestamp ? new Date(entry.timestamp) : /* @__PURE__ */ new Date();
+            await db.execute(
+              sql4`INSERT INTO pokescan_scan_history (id, user_id, card_name, set_name, card_number, language, thumbnail, price_gbp, identification, tcg_api_results, pcv_results, scanned_at)
                 VALUES (${entry.id}, ${user.id}, ${entry.cardName || ""}, ${entry.setName || ""}, ${entry.cardNumber || ""},
                         ${entry.language || "english"}, ${entry.thumbnail || null}, ${entry.priceGBP ?? null},
                         ${JSON.stringify(entry.identification || {})}, ${JSON.stringify(entry.tcgApiResults || [])}, ${JSON.stringify(entry.pcvResults || [])}, ${scannedAt})`
-          );
-          migrated++;
-        } catch {
-          failed++;
+            );
+            migrated++;
+          } catch {
+            failed++;
+          }
         }
-      }
-      await db.execute(
-        sql4`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id} AND id NOT IN (
+        await db.execute(
+          sql4`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id} AND id NOT IN (
               SELECT id FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25
             )`
-      );
-      res.json({ migrated, failed });
-    } catch (error) {
-      console.error("Scan history bulk migrate error:", error);
-      res.status(500).json({ error: error.message || "Migration failed" });
+        );
+        res.json({ migrated, failed });
+      } catch (error) {
+        console.error("Scan history bulk migrate error:", error);
+        res.status(500).json({ error: error.message || "Migration failed" });
+      }
     }
-  });
+  );
   app2.delete("/api/scan-history", async (req, res) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -6313,7 +6834,9 @@ ${setReference}`
         res.status(401).json({ error: "Invalid or expired session" });
         return;
       }
-      await db.execute(sql4`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id}`);
+      await db.execute(
+        sql4`DELETE FROM pokescan_scan_history WHERE user_id = ${user.id}`
+      );
       res.json({ history: [] });
     } catch (error) {
       console.error("Scan history clear error:", error);
@@ -6333,7 +6856,9 @@ ${setReference}`
         return;
       }
       const { id } = req.params;
-      await db.execute(sql4`DELETE FROM pokescan_scan_history WHERE id = ${id} AND user_id = ${user.id}`);
+      await db.execute(
+        sql4`DELETE FROM pokescan_scan_history WHERE id = ${id} AND user_id = ${user.id}`
+      );
       const rows = await db.execute(
         sql4`SELECT * FROM pokescan_scan_history WHERE user_id = ${user.id} ORDER BY scanned_at DESC LIMIT 25`
       );
@@ -6353,7 +6878,9 @@ ${setReference}`
       res.json({ history: entries });
     } catch (error) {
       console.error("Scan history delete error:", error);
-      res.status(500).json({ error: error.message || "Failed to delete scan history entry" });
+      res.status(500).json({
+        error: error.message || "Failed to delete scan history entry"
+      });
     }
   });
   app2.get("/api/collection", async (req, res) => {
@@ -6407,7 +6934,21 @@ ${setReference}`
         res.status(401).json({ error: "Invalid or expired session" });
         return;
       }
-      const { cardId, cardName, cardImage, setName, setId, rarity, quantity, condition, variant, priceGBP, migrate, gradingCompany, grade } = req.body;
+      const {
+        cardId,
+        cardName,
+        cardImage,
+        setName,
+        setId,
+        rarity,
+        quantity,
+        condition,
+        variant,
+        priceGBP,
+        migrate,
+        gradingCompany,
+        grade
+      } = req.body;
       const v = variant || "Non-Holo";
       const gc = gradingCompany || null;
       const gr = grade || null;
@@ -6473,13 +7014,19 @@ ${setReference}`
       const { id } = req.params;
       const { quantity, gradingCompany, grade } = req.body;
       if (quantity <= 0) {
-        await db.execute(sql4`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`);
+        await db.execute(
+          sql4`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`
+        );
       } else if (gradingCompany !== void 0) {
         const gc = gradingCompany || null;
         const gr = grade || null;
-        await db.execute(sql4`UPDATE pokescan_collections SET quantity = ${quantity}, grading_company = ${gc}, grade = ${gr} WHERE id = ${id} AND user_id = ${user.id}`);
+        await db.execute(
+          sql4`UPDATE pokescan_collections SET quantity = ${quantity}, grading_company = ${gc}, grade = ${gr} WHERE id = ${id} AND user_id = ${user.id}`
+        );
       } else {
-        await db.execute(sql4`UPDATE pokescan_collections SET quantity = ${quantity} WHERE id = ${id} AND user_id = ${user.id}`);
+        await db.execute(
+          sql4`UPDATE pokescan_collections SET quantity = ${quantity} WHERE id = ${id} AND user_id = ${user.id}`
+        );
       }
       const rows = await db.execute(
         sql4`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`
@@ -6521,7 +7068,9 @@ ${setReference}`
         return;
       }
       const { id } = req.params;
-      await db.execute(sql4`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`);
+      await db.execute(
+        sql4`DELETE FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`
+      );
       const rows = await db.execute(
         sql4`SELECT * FROM pokescan_collections WHERE user_id = ${user.id} ORDER BY added_at DESC`
       );
@@ -6549,34 +7098,39 @@ ${setReference}`
       res.status(500).json({ error: error.message || "Failed to remove card" });
     }
   });
-  app2.post("/api/collection/:id/verify", express.json({ limit: "25mb" }), async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      const user = await storage.validateSession(token);
-      if (!user) {
-        res.status(401).json({ error: "Invalid session" });
-        return;
-      }
-      const { id } = req.params;
-      const { frontImageBase64, backImageBase64 } = req.body;
-      if (!frontImageBase64 || !backImageBase64) {
-        res.status(400).json({ error: "Both frontImageBase64 and backImageBase64 are required" });
-        return;
-      }
-      const row = await db.execute(
-        sql4`SELECT card_name, set_name, card_id, card_image FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`
-      );
-      if (!row.rows.length) {
-        res.status(404).json({ error: "Collection item not found" });
-        return;
-      }
-      const card = row.rows[0];
-      const cardNumber = card.card_id?.split("-").pop() || "";
-      const prompt = `You are a Pok\xE9mon TCG card verification expert. A user claims this physical card is:
+  app2.post(
+    "/api/collection/:id/verify",
+    express.json({ limit: "25mb" }),
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        const { id } = req.params;
+        const { frontImageBase64, backImageBase64 } = req.body;
+        if (!frontImageBase64 || !backImageBase64) {
+          res.status(400).json({
+            error: "Both frontImageBase64 and backImageBase64 are required"
+          });
+          return;
+        }
+        const row = await db.execute(
+          sql4`SELECT card_name, set_name, card_id, card_image FROM pokescan_collections WHERE id = ${id} AND user_id = ${user.id}`
+        );
+        if (!row.rows.length) {
+          res.status(404).json({ error: "Collection item not found" });
+          return;
+        }
+        const card = row.rows[0];
+        const cardNumber = card.card_id?.split("-").pop() || "";
+        const prompt = `You are a Pok\xE9mon TCG card verification expert. A user claims this physical card is:
 Card Name: ${card.card_name}
 Set Name: ${card.set_name}
 Card Number: ${cardNumber}
@@ -6592,70 +7146,85 @@ Return ONLY valid JSON with no markdown:
 
 confidence must be "high", "medium", or "low".
 matches must be true or false.`;
-      const aiRes = await openai.chat.completions.create({
-        model: "gpt-4o",
-        max_tokens: 200,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "text", text: prompt },
-            { type: "image_url", image_url: { url: frontImageBase64, detail: "high" } },
-            { type: "image_url", image_url: { url: backImageBase64, detail: "low" } }
+        const aiRes = await openai.chat.completions.create({
+          model: "gpt-4o",
+          max_tokens: 200,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: prompt },
+                {
+                  type: "image_url",
+                  image_url: { url: frontImageBase64, detail: "high" }
+                },
+                {
+                  type: "image_url",
+                  image_url: { url: backImageBase64, detail: "low" }
+                }
+              ]
+            }
           ]
-        }]
-      });
-      const raw = aiRes.choices[0]?.message?.content?.trim() || "";
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("AI returned invalid response");
-      const parsed = JSON.parse(jsonMatch[0]);
-      const verified = !!(parsed.matches && parsed.confidence !== "low");
-      let verifiedPercent = 0;
-      let badgeEarned = false;
-      if (verified) {
-        await db.execute(
-          sql4`UPDATE pokescan_collections SET is_verified = true, verified_at = NOW() WHERE id = ${id} AND user_id = ${user.id}`
-        );
-        const countRow = await db.execute(
-          sql4`SELECT COUNT(*) FILTER (WHERE is_verified = true) AS verified_count, COUNT(*) AS total_count FROM pokescan_collections WHERE user_id = ${user.id}`
-        );
-        const counts = countRow.rows[0];
-        const total = parseInt(counts.total_count) || 0;
-        const verifiedCount = parseInt(counts.verified_count) || 0;
-        verifiedPercent = total > 0 ? Math.round(verifiedCount / total * 100) : 0;
-        if (total > 0 && verifiedCount / total >= 0.9) {
-          const alreadyBadged = await db.execute(sql4`SELECT is_verified_collector FROM pokescan_users WHERE id = ${user.id}`);
-          if (!alreadyBadged.rows[0]?.is_verified_collector) {
-            await db.execute(sql4`UPDATE pokescan_users SET is_verified_collector = true WHERE id = ${user.id}`);
-            badgeEarned = true;
+        });
+        const raw = aiRes.choices[0]?.message?.content?.trim() || "";
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) throw new Error("AI returned invalid response");
+        const parsed = JSON.parse(jsonMatch[0]);
+        const verified = !!(parsed.matches && parsed.confidence !== "low");
+        let verifiedPercent = 0;
+        let badgeEarned = false;
+        if (verified) {
+          await db.execute(
+            sql4`UPDATE pokescan_collections SET is_verified = true, verified_at = NOW() WHERE id = ${id} AND user_id = ${user.id}`
+          );
+          const countRow = await db.execute(
+            sql4`SELECT COUNT(*) FILTER (WHERE is_verified = true) AS verified_count, COUNT(*) AS total_count FROM pokescan_collections WHERE user_id = ${user.id}`
+          );
+          const counts = countRow.rows[0];
+          const total = parseInt(counts.total_count) || 0;
+          const verifiedCount = parseInt(counts.verified_count) || 0;
+          verifiedPercent = total > 0 ? Math.round(verifiedCount / total * 100) : 0;
+          if (total > 0 && verifiedCount / total >= 0.9) {
+            const alreadyBadged = await db.execute(
+              sql4`SELECT is_verified_collector FROM pokescan_users WHERE id = ${user.id}`
+            );
+            if (!alreadyBadged.rows[0]?.is_verified_collector) {
+              await db.execute(
+                sql4`UPDATE pokescan_users SET is_verified_collector = true WHERE id = ${user.id}`
+              );
+              badgeEarned = true;
+            }
           }
         }
+        res.json({
+          verified,
+          confidence: parsed.confidence || "low",
+          reason: parsed.reason || "Unable to determine.",
+          verifiedPercent,
+          badgeEarned
+        });
+      } catch (err) {
+        console.error("Card verify error:", err);
+        res.status(500).json({ error: "Verification failed" });
       }
-      res.json({
-        verified,
-        confidence: parsed.confidence || "low",
-        reason: parsed.reason || "Unable to determine.",
-        verifiedPercent,
-        badgeEarned
-      });
-    } catch (err) {
-      console.error("Card verify error:", err);
-      res.status(500).json({ error: "Verification failed" });
     }
-  });
-  app2.get("/api/collections/top-verified", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      const me = await storage.validateSession(token);
-      if (!me) {
-        res.status(401).json({ error: "Invalid session" });
-        return;
-      }
-      const result = await db.execute(
-        sql4`SELECT u.id, u.username, u.display_name, u.avatar_url, u.is_verified_collector,
+  );
+  app2.get(
+    "/api/collections/top-verified",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const me = await storage.validateSession(token);
+        if (!me) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        const result = await db.execute(
+          sql4`SELECT u.id, u.username, u.display_name, u.avatar_url, u.is_verified_collector,
                    COUNT(c.id) FILTER (WHERE c.is_verified = true)::int AS verified_count,
                    COUNT(c.id)::int AS total_count,
                    COALESCE(SUM(c.price_gbp * c.quantity) FILTER (WHERE c.is_verified = true), 0) AS verified_value
@@ -6666,42 +7235,50 @@ matches must be true or false.`;
             HAVING COUNT(c.id) FILTER (WHERE c.is_verified = true) > 0
             ORDER BY verified_value DESC
             LIMIT 10`
-      );
-      const top = result.rows.map((r) => ({
-        id: r.id,
-        username: r.username,
-        displayName: r.display_name,
-        avatarUrl: r.avatar_url || null,
-        isVerifiedCollector: r.is_verified_collector ?? false,
-        verifiedCount: r.verified_count,
-        totalCount: r.total_count,
-        verifiedValue: parseFloat(r.verified_value) || 0,
-        verifiedPercent: r.total_count > 0 ? Math.round(r.verified_count / r.total_count * 100) : 0
-      }));
-      res.json({ top });
-    } catch (err) {
-      res.status(500).json({ error: err.message || "Failed to fetch top verified" });
-    }
-  });
-  app2.patch("/api/user/collection-visible", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
+        );
+        const top = result.rows.map((r) => ({
+          id: r.id,
+          username: r.username,
+          displayName: r.display_name,
+          avatarUrl: r.avatar_url || null,
+          isVerifiedCollector: r.is_verified_collector ?? false,
+          verifiedCount: r.verified_count,
+          totalCount: r.total_count,
+          verifiedValue: parseFloat(r.verified_value) || 0,
+          verifiedPercent: r.total_count > 0 ? Math.round(r.verified_count / r.total_count * 100) : 0
+        }));
+        res.json({ top });
+      } catch (err) {
+        res.status(500).json({ error: err.message || "Failed to fetch top verified" });
       }
-      const user = await storage.validateSession(token);
-      if (!user) {
-        res.status(401).json({ error: "Invalid session" });
-        return;
-      }
-      const { visible } = req.body;
-      const updated = await storage.updateUser(user.id, { collectionVisible: !!visible });
-      res.json({ collectionVisible: updated?.collectionVisible ?? !!visible });
-    } catch (error) {
-      res.status(500).json({ error: error.message || "Failed to update visibility" });
     }
-  });
+  );
+  app2.patch(
+    "/api/user/collection-visible",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        const { visible } = req.body;
+        const updated = await storage.updateUser(user.id, {
+          collectionVisible: !!visible
+        });
+        res.json({
+          collectionVisible: updated?.collectionVisible ?? !!visible
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message || "Failed to update visibility" });
+      }
+    }
+  );
   app2.patch("/api/collection/privacy", async (req, res) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -6715,70 +7292,84 @@ matches must be true or false.`;
         return;
       }
       const { isPublic } = req.body;
-      const updated = await storage.updateUser(user.id, { collectionVisible: !!isPublic });
+      const updated = await storage.updateUser(user.id, {
+        collectionVisible: !!isPublic
+      });
       res.json({ isPublic: updated?.collectionVisible ?? !!isPublic });
     } catch (error) {
       res.status(500).json({ error: error.message || "Failed to update privacy" });
     }
   });
-  app2.get("/api/collection/user/:userId", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      const me = await storage.validateSession(token);
-      if (!me) {
-        res.status(401).json({ error: "Invalid session" });
-        return;
-      }
-      const { userId } = req.params;
-      const target = await storage.getUserById(userId);
-      if (!target) {
-        res.status(404).json({ error: "User not found" });
-        return;
-      }
-      if (!target.collectionVisible) {
-        res.status(403).json({ error: "This collection is private" });
-        return;
-      }
-      const friendship = await db.execute(
-        sql4`SELECT id FROM pokescan_friendships WHERE status = 'accepted' AND (
+  app2.get(
+    "/api/collection/user/:userId",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const me = await storage.validateSession(token);
+        if (!me) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        const { userId } = req.params;
+        const target = await storage.getUserById(userId);
+        if (!target) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+        if (!target.collectionVisible) {
+          res.status(403).json({ error: "This collection is private" });
+          return;
+        }
+        const friendship = await db.execute(
+          sql4`SELECT id FROM pokescan_friendships WHERE status = 'accepted' AND (
           (requester_id = ${me.id} AND addressee_id = ${userId}) OR
           (requester_id = ${userId} AND addressee_id = ${me.id})
         )`
-      );
-      if (friendship.rows.length === 0 && me.id !== userId) {
-        res.status(403).json({ error: "You are not friends with this user" });
-        return;
+        );
+        if (friendship.rows.length === 0 && me.id !== userId) {
+          res.status(403).json({ error: "You are not friends with this user" });
+          return;
+        }
+        const rows = await db.execute(
+          sql4`SELECT * FROM pokescan_collections WHERE user_id = ${userId} ORDER BY added_at DESC`
+        );
+        const items = rows.rows.map((r) => ({
+          id: r.id,
+          cardId: r.card_id,
+          cardName: r.card_name,
+          cardImage: r.card_image,
+          setName: r.set_name,
+          setId: r.set_id,
+          rarity: r.rarity,
+          quantity: r.quantity,
+          condition: r.condition,
+          variant: r.variant || "Non-Holo",
+          priceGBP: r.price_gbp,
+          gradingCompany: r.grading_company || null,
+          grade: r.grade || null,
+          isVerified: r.is_verified ?? false,
+          verifiedAt: r.verified_at || null,
+          addedAt: r.added_at
+        }));
+        res.json({
+          collection: items,
+          owner: {
+            id: target.id,
+            displayName: target.displayName,
+            username: target.username,
+            avatarUrl: target.avatarUrl,
+            isVerifiedCollector: target.isVerifiedCollector ?? false
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message || "Failed to fetch collection" });
       }
-      const rows = await db.execute(
-        sql4`SELECT * FROM pokescan_collections WHERE user_id = ${userId} ORDER BY added_at DESC`
-      );
-      const items = rows.rows.map((r) => ({
-        id: r.id,
-        cardId: r.card_id,
-        cardName: r.card_name,
-        cardImage: r.card_image,
-        setName: r.set_name,
-        setId: r.set_id,
-        rarity: r.rarity,
-        quantity: r.quantity,
-        condition: r.condition,
-        variant: r.variant || "Non-Holo",
-        priceGBP: r.price_gbp,
-        gradingCompany: r.grading_company || null,
-        grade: r.grade || null,
-        isVerified: r.is_verified ?? false,
-        verifiedAt: r.verified_at || null,
-        addedAt: r.added_at
-      }));
-      res.json({ collection: items, owner: { id: target.id, displayName: target.displayName, username: target.username, avatarUrl: target.avatarUrl, isVerifiedCollector: target.isVerifiedCollector ?? false } });
-    } catch (error) {
-      res.status(500).json({ error: error.message || "Failed to fetch collection" });
     }
-  });
+  );
   app2.get("/api/collections/public", async (req, res) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -6823,296 +7414,333 @@ matches must be true or false.`;
       res.status(500).json({ error: error.message || "Failed to fetch public collections" });
     }
   });
-  app2.get("/api/collections/public/:userId", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      const me = await storage.validateSession(token);
-      if (!me) {
-        res.status(401).json({ error: "Invalid session" });
-        return;
-      }
-      const { userId } = req.params;
-      const target = await storage.getUserById(userId);
-      if (!target) {
-        res.status(404).json({ error: "User not found" });
-        return;
-      }
-      if (!target.collectionVisible) {
-        res.status(403).json({ error: "This collection is private" });
-        return;
-      }
-      const rows = await db.execute(
-        sql4`SELECT * FROM pokescan_collections WHERE user_id = ${userId} ORDER BY added_at DESC`
-      );
-      const items = rows.rows.map((r) => ({
-        id: r.id,
-        cardId: r.card_id,
-        cardName: r.card_name,
-        cardImage: r.card_image,
-        setName: r.set_name,
-        setId: r.set_id,
-        rarity: r.rarity,
-        quantity: r.quantity,
-        condition: r.condition,
-        variant: r.variant || "Non-Holo",
-        priceGBP: r.price_gbp,
-        gradingCompany: r.grading_company || null,
-        grade: r.grade || null,
-        isVerified: r.is_verified ?? false,
-        verifiedAt: r.verified_at || null,
-        addedAt: r.added_at
-      }));
-      res.json({
-        collection: items,
-        owner: {
-          id: target.id,
-          displayName: target.displayName,
-          username: target.username,
-          avatarUrl: target.avatarUrl,
-          isVerifiedCollector: target.isVerifiedCollector ?? false
+  app2.get(
+    "/api/collections/public/:userId",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
         }
-      });
-    } catch (error) {
-      res.status(500).json({ error: error.message || "Failed to fetch collection" });
+        const me = await storage.validateSession(token);
+        if (!me) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        const { userId } = req.params;
+        const target = await storage.getUserById(userId);
+        if (!target) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+        if (!target.collectionVisible) {
+          res.status(403).json({ error: "This collection is private" });
+          return;
+        }
+        const rows = await db.execute(
+          sql4`SELECT * FROM pokescan_collections WHERE user_id = ${userId} ORDER BY added_at DESC`
+        );
+        const items = rows.rows.map((r) => ({
+          id: r.id,
+          cardId: r.card_id,
+          cardName: r.card_name,
+          cardImage: r.card_image,
+          setName: r.set_name,
+          setId: r.set_id,
+          rarity: r.rarity,
+          quantity: r.quantity,
+          condition: r.condition,
+          variant: r.variant || "Non-Holo",
+          priceGBP: r.price_gbp,
+          gradingCompany: r.grading_company || null,
+          grade: r.grade || null,
+          isVerified: r.is_verified ?? false,
+          verifiedAt: r.verified_at || null,
+          addedAt: r.added_at
+        }));
+        res.json({
+          collection: items,
+          owner: {
+            id: target.id,
+            displayName: target.displayName,
+            username: target.username,
+            avatarUrl: target.avatarUrl,
+            isVerifiedCollector: target.isVerifiedCollector ?? false
+          }
+        });
+      } catch (error) {
+        res.status(500).json({ error: error.message || "Failed to fetch collection" });
+      }
     }
-  });
-  app2.post("/api/collector-verification", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      const user = await storage.validateSession(token);
-      if (!user) {
-        res.status(401).json({ error: "Invalid session" });
-        return;
-      }
-      const { cardId, cardName, cardImage, frontPhoto, backPhoto } = req.body;
-      if (!cardId || !cardName || !frontPhoto || !backPhoto) {
-        res.status(400).json({ error: "cardId, cardName, frontPhoto and backPhoto are required" });
-        return;
-      }
-      const cardOwnership = await db.execute(
-        sql4`SELECT id, grading_company, grade FROM pokescan_collections
+  );
+  app2.post(
+    "/api/collector-verification",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        const { cardId, cardName, cardImage, frontPhoto, backPhoto } = req.body;
+        if (!cardId || !cardName || !frontPhoto || !backPhoto) {
+          res.status(400).json({
+            error: "cardId, cardName, frontPhoto and backPhoto are required"
+          });
+          return;
+        }
+        const cardOwnership = await db.execute(
+          sql4`SELECT id, grading_company, grade FROM pokescan_collections
             WHERE user_id = ${user.id} AND card_id = ${cardId}
               AND grading_company IS NOT NULL AND grade IS NOT NULL
             LIMIT 1`
-      );
-      if (cardOwnership.rows.length === 0) {
-        res.status(403).json({ error: "The selected card must be a professionally graded entry in your collection (add it with a grading company and grade first)" });
-        return;
-      }
-      const existing = await db.execute(
-        sql4`SELECT id FROM pokescan_collector_verifications WHERE user_id = ${user.id} AND status = 'pending'`
-      );
-      if (existing.rows.length > 0) {
-        res.status(409).json({ error: "You already have a pending verification application" });
-        return;
-      }
-      const userRow = await db.execute(sql4`SELECT is_verified_collector FROM pokescan_users WHERE id = ${user.id}`);
-      if (userRow.rows[0]?.is_verified_collector) {
-        res.status(409).json({ error: "You are already a Verified Collector" });
-        return;
-      }
-      await db.execute(
-        sql4`INSERT INTO pokescan_collector_verifications (user_id, card_id, card_name, card_image, front_photo, back_photo)
+        );
+        if (cardOwnership.rows.length === 0) {
+          res.status(403).json({
+            error: "The selected card must be a professionally graded entry in your collection (add it with a grading company and grade first)"
+          });
+          return;
+        }
+        const existing = await db.execute(
+          sql4`SELECT id FROM pokescan_collector_verifications WHERE user_id = ${user.id} AND status = 'pending'`
+        );
+        if (existing.rows.length > 0) {
+          res.status(409).json({
+            error: "You already have a pending verification application"
+          });
+          return;
+        }
+        const userRow = await db.execute(
+          sql4`SELECT is_verified_collector FROM pokescan_users WHERE id = ${user.id}`
+        );
+        if (userRow.rows[0]?.is_verified_collector) {
+          res.status(409).json({ error: "You are already a Verified Collector" });
+          return;
+        }
+        await db.execute(
+          sql4`INSERT INTO pokescan_collector_verifications (user_id, card_id, card_name, card_image, front_photo, back_photo)
             VALUES (${user.id}, ${cardId}, ${cardName}, ${cardImage || ""}, ${frontPhoto}, ${backPhoto})`
-      );
-      res.json({ success: true, message: "Application submitted" });
-    } catch (error) {
-      res.status(500).json({ error: error.message || "Failed to submit verification" });
+        );
+        res.json({ success: true, message: "Application submitted" });
+      } catch (error) {
+        res.status(500).json({ error: error.message || "Failed to submit verification" });
+      }
     }
-  });
-  app2.get("/api/collector-verification/status", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
+  );
+  app2.get(
+    "/api/collector-verification/status",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const user = await storage.validateSession(token);
+        if (!user) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        const row = await db.execute(
+          sql4`SELECT id, status, created_at FROM pokescan_collector_verifications WHERE user_id = ${user.id} ORDER BY created_at DESC LIMIT 1`
+        );
+        const app3 = row.rows[0];
+        res.json({
+          isVerifiedCollector: user.isVerifiedCollector ?? false,
+          application: app3 ? { id: app3.id, status: app3.status, createdAt: app3.created_at } : null
+        });
+      } catch (error) {
+        res.status(500).json({
+          error: error.message || "Failed to get verification status"
+        });
       }
-      const user = await storage.validateSession(token);
-      if (!user) {
-        res.status(401).json({ error: "Invalid session" });
-        return;
-      }
-      const row = await db.execute(
-        sql4`SELECT id, status, created_at FROM pokescan_collector_verifications WHERE user_id = ${user.id} ORDER BY created_at DESC LIMIT 1`
-      );
-      const app3 = row.rows[0];
-      res.json({
-        isVerifiedCollector: user.isVerifiedCollector ?? false,
-        application: app3 ? { id: app3.id, status: app3.status, createdAt: app3.created_at } : null
-      });
-    } catch (error) {
-      res.status(500).json({ error: error.message || "Failed to get verification status" });
     }
-  });
-  app2.get("/api/admin/collector-verifications", async (req, res) => {
-    try {
-      const adminToken = req.headers.authorization?.replace("Bearer ", "");
-      const admin = adminToken ? await storage.validateSession(adminToken) : null;
-      if (!admin || admin.role !== "admin" && admin.role !== "moderator") {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
-      const status = req.query.status || "pending";
-      const result = await db.execute(
-        sql4`SELECT v.*, u.username, u.display_name, u.avatar_url
+  );
+  app2.get(
+    "/api/admin/collector-verifications",
+    async (req, res) => {
+      try {
+        const adminToken = req.headers.authorization?.replace("Bearer ", "");
+        const admin = adminToken ? await storage.validateSession(adminToken) : null;
+        if (!admin || admin.role !== "admin" && admin.role !== "moderator") {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+        const status = req.query.status || "pending";
+        const result = await db.execute(
+          sql4`SELECT v.*, u.username, u.display_name, u.avatar_url
             FROM pokescan_collector_verifications v
             JOIN pokescan_users u ON u.id = v.user_id
             WHERE v.status = ${status}
             ORDER BY v.created_at DESC`
-      );
-      const verifications = result.rows.map((r) => ({
-        id: r.id,
-        userId: r.user_id,
-        username: r.username,
-        displayName: r.display_name,
-        avatarUrl: r.avatar_url || null,
-        cardId: r.card_id,
-        cardName: r.card_name,
-        cardImage: r.card_image,
-        frontPhoto: r.front_photo,
-        backPhoto: r.back_photo,
-        status: r.status,
-        reviewedBy: r.reviewed_by || null,
-        reviewedAt: r.reviewed_at || null,
-        createdAt: r.created_at
-      }));
-      res.json({ verifications });
-    } catch (error) {
-      res.status(500).json({ error: error.message || "Failed to fetch verifications" });
+        );
+        const verifications = result.rows.map((r) => ({
+          id: r.id,
+          userId: r.user_id,
+          username: r.username,
+          displayName: r.display_name,
+          avatarUrl: r.avatar_url || null,
+          cardId: r.card_id,
+          cardName: r.card_name,
+          cardImage: r.card_image,
+          frontPhoto: r.front_photo,
+          backPhoto: r.back_photo,
+          status: r.status,
+          reviewedBy: r.reviewed_by || null,
+          reviewedAt: r.reviewed_at || null,
+          createdAt: r.created_at
+        }));
+        res.json({ verifications });
+      } catch (error) {
+        res.status(500).json({ error: error.message || "Failed to fetch verifications" });
+      }
     }
-  });
-  app2.post("/api/admin/collector-verifications/:id/approve", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      const reviewer = token ? await storage.validateSession(token) : null;
-      if (!reviewer || reviewer.role !== "admin" && reviewer.role !== "moderator") {
-        res.status(403).json({ error: "Forbidden" });
-        return;
+  );
+  app2.post(
+    "/api/admin/collector-verifications/:id/approve",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        const reviewer = token ? await storage.validateSession(token) : null;
+        if (!reviewer || reviewer.role !== "admin" && reviewer.role !== "moderator") {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+        const { id } = req.params;
+        const ver = await db.execute(
+          sql4`SELECT * FROM pokescan_collector_verifications WHERE id = ${id}`
+        );
+        if (!ver.rows.length) {
+          res.status(404).json({ error: "Not found" });
+          return;
+        }
+        const v = ver.rows[0];
+        await db.execute(
+          sql4`UPDATE pokescan_collector_verifications SET status = 'approved', reviewed_by = ${reviewer?.id || null}, reviewed_at = NOW() WHERE id = ${id}`
+        );
+        await db.execute(
+          sql4`UPDATE pokescan_users SET is_verified_collector = true WHERE id = ${v.user_id}`
+        );
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: error.message || "Failed to approve" });
       }
-      const { id } = req.params;
-      const ver = await db.execute(sql4`SELECT * FROM pokescan_collector_verifications WHERE id = ${id}`);
-      if (!ver.rows.length) {
-        res.status(404).json({ error: "Not found" });
-        return;
-      }
-      const v = ver.rows[0];
-      await db.execute(
-        sql4`UPDATE pokescan_collector_verifications SET status = 'approved', reviewed_by = ${reviewer?.id || null}, reviewed_at = NOW() WHERE id = ${id}`
-      );
-      await db.execute(
-        sql4`UPDATE pokescan_users SET is_verified_collector = true WHERE id = ${v.user_id}`
-      );
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: error.message || "Failed to approve" });
     }
-  });
-  app2.post("/api/admin/collector-verifications/:id/reject", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      const reviewer = token ? await storage.validateSession(token) : null;
-      if (!reviewer || reviewer.role !== "admin" && reviewer.role !== "moderator") {
-        res.status(403).json({ error: "Forbidden" });
-        return;
+  );
+  app2.post(
+    "/api/admin/collector-verifications/:id/reject",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        const reviewer = token ? await storage.validateSession(token) : null;
+        if (!reviewer || reviewer.role !== "admin" && reviewer.role !== "moderator") {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+        const { id } = req.params;
+        await db.execute(
+          sql4`UPDATE pokescan_collector_verifications SET status = 'rejected', reviewed_by = ${reviewer?.id || null}, reviewed_at = NOW() WHERE id = ${id}`
+        );
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: error.message || "Failed to reject" });
       }
-      const { id } = req.params;
-      await db.execute(
-        sql4`UPDATE pokescan_collector_verifications SET status = 'rejected', reviewed_by = ${reviewer?.id || null}, reviewed_at = NOW() WHERE id = ${id}`
-      );
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: error.message || "Failed to reject" });
     }
-  });
-  app2.get("/api/admin/subscription-stats", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
-      }
-      const caller = await storage.validateSession(token);
-      if (!caller) {
-        res.status(401).json({ error: "Invalid session" });
-        return;
-      }
-      if (caller.role !== "admin") {
-        res.status(403).json({ error: "Admin required" });
-        return;
-      }
-      const MONTHLY_PRICE = 4.99;
-      const ANNUAL_PRICE = 49.99;
-      const MONTHLY_ID = "price_1TM7D8K7N6BNdayAPnuINUuU";
-      const ANNUAL_ID = "price_1TM7D8K7N6BNdayAB1PFakyH";
-      const result = await db.execute(
-        sql4`SELECT id, username, display_name, stripe_price_id, subscription_status, subscription_period_end, created_at
+  );
+  app2.get(
+    "/api/admin/subscription-stats",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const caller = await storage.validateSession(token);
+        if (!caller) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        if (caller.role !== "admin") {
+          res.status(403).json({ error: "Admin required" });
+          return;
+        }
+        const MONTHLY_PRICE = 4.99;
+        const ANNUAL_PRICE = 49.99;
+        const MONTHLY_ID = "price_1TM7D8K7N6BNdayAPnuINUuU";
+        const ANNUAL_ID = "price_1TM7D8K7N6BNdayAB1PFakyH";
+        const result = await db.execute(
+          sql4`SELECT id, username, display_name, stripe_price_id, subscription_status, subscription_period_end, created_at
             FROM pokescan_users
             WHERE is_premium = true AND subscription_status IS NOT NULL
             ORDER BY subscription_period_end DESC NULLS LAST`
-      );
-      const subscribers = result.rows.map((r) => {
-        const plan = r.stripe_price_id === MONTHLY_ID ? "monthly" : r.stripe_price_id === ANNUAL_ID ? "annual" : "unknown";
-        return {
-          id: r.id,
-          username: r.username,
-          displayName: r.display_name,
-          plan,
-          price: plan === "monthly" ? MONTHLY_PRICE : plan === "annual" ? ANNUAL_PRICE : 0,
-          status: r.subscription_status,
-          periodEnd: r.subscription_period_end,
-          createdAt: r.created_at
-        };
-      });
-      const now = /* @__PURE__ */ new Date();
-      const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const weekStart = new Date(dayStart);
-      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const yearStart = new Date(now.getFullYear(), 0, 1);
-      let dailyRevenue = 0, weeklyRevenue = 0, monthlyRevenue = 0, yearlyRevenue = 0;
-      let totalActive = 0, monthlyCount = 0, annualCount = 0;
-      for (const s of subscribers) {
-        if (s.status === "active" || s.status === "canceling") {
-          totalActive++;
-          if (s.plan === "monthly") monthlyCount++;
-          else annualCount++;
+        );
+        const subscribers = result.rows.map((r) => {
+          const plan = r.stripe_price_id === MONTHLY_ID ? "monthly" : r.stripe_price_id === ANNUAL_ID ? "annual" : "unknown";
+          return {
+            id: r.id,
+            username: r.username,
+            displayName: r.display_name,
+            plan,
+            price: plan === "monthly" ? MONTHLY_PRICE : plan === "annual" ? ANNUAL_PRICE : 0,
+            status: r.subscription_status,
+            periodEnd: r.subscription_period_end,
+            createdAt: r.created_at
+          };
+        });
+        const now = /* @__PURE__ */ new Date();
+        const dayStart = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        const weekStart = new Date(dayStart);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const yearStart = new Date(now.getFullYear(), 0, 1);
+        let dailyRevenue = 0, weeklyRevenue = 0, monthlyRevenue = 0, yearlyRevenue = 0;
+        let totalActive = 0, monthlyCount = 0, annualCount = 0;
+        for (const s of subscribers) {
+          if (s.status === "active" || s.status === "canceling") {
+            totalActive++;
+            if (s.plan === "monthly") monthlyCount++;
+            else annualCount++;
+          }
+          if (s.periodEnd) {
+            const pEnd = new Date(s.periodEnd);
+            const periodStart = s.plan === "monthly" ? new Date(pEnd.getTime() - 30 * 24 * 60 * 60 * 1e3) : new Date(pEnd.getTime() - 365 * 24 * 60 * 60 * 1e3);
+            if (periodStart >= dayStart) dailyRevenue += s.price;
+            if (periodStart >= weekStart) weeklyRevenue += s.price;
+            if (periodStart >= monthStart) monthlyRevenue += s.price;
+            if (periodStart >= yearStart) yearlyRevenue += s.price;
+          }
         }
-        if (s.periodEnd) {
-          const pEnd = new Date(s.periodEnd);
-          const periodStart = s.plan === "monthly" ? new Date(pEnd.getTime() - 30 * 24 * 60 * 60 * 1e3) : new Date(pEnd.getTime() - 365 * 24 * 60 * 60 * 1e3);
-          if (periodStart >= dayStart) dailyRevenue += s.price;
-          if (periodStart >= weekStart) weeklyRevenue += s.price;
-          if (periodStart >= monthStart) monthlyRevenue += s.price;
-          if (periodStart >= yearStart) yearlyRevenue += s.price;
-        }
+        const monthlyRecurring = monthlyCount * MONTHLY_PRICE + annualCount * (ANNUAL_PRICE / 12);
+        res.json({
+          subscribers,
+          stats: {
+            totalActive,
+            monthlyCount,
+            annualCount,
+            dailyRevenue,
+            weeklyRevenue,
+            monthlyRevenue,
+            yearlyRevenue,
+            monthlyRecurring: Math.round(monthlyRecurring * 100) / 100
+          }
+        });
+      } catch (error) {
+        console.error("Subscription stats error:", error);
+        res.status(500).json({ error: error.message || "Failed to fetch stats" });
       }
-      const monthlyRecurring = monthlyCount * MONTHLY_PRICE + annualCount * (ANNUAL_PRICE / 12);
-      res.json({
-        subscribers,
-        stats: {
-          totalActive,
-          monthlyCount,
-          annualCount,
-          dailyRevenue,
-          weeklyRevenue,
-          monthlyRevenue,
-          yearlyRevenue,
-          monthlyRecurring: Math.round(monthlyRecurring * 100) / 100
-        }
-      });
-    } catch (error) {
-      console.error("Subscription stats error:", error);
-      res.status(500).json({ error: error.message || "Failed to fetch stats" });
     }
-  });
+  );
   app2.get("/api/auth/users", async (req, res) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -7169,7 +7797,16 @@ matches must be true or false.`;
   });
   app2.patch("/api/admin/edit-user", async (req, res) => {
     try {
-      const { superadminPassword, userId, displayName, email, mobileNumber, password, isPremium, role } = req.body;
+      const {
+        superadminPassword,
+        userId,
+        displayName,
+        email,
+        mobileNumber,
+        password,
+        isPremium,
+        role
+      } = req.body;
       if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
@@ -7187,9 +7824,12 @@ matches must be true or false.`;
         return;
       }
       const profileUpdates = {};
-      if (displayName !== void 0 && displayName.trim()) profileUpdates.displayName = displayName.trim();
-      if (email !== void 0 && email.trim()) profileUpdates.email = email.trim().toLowerCase();
-      if (mobileNumber !== void 0) profileUpdates.mobileNumber = mobileNumber.trim();
+      if (displayName !== void 0 && displayName.trim())
+        profileUpdates.displayName = displayName.trim();
+      if (email !== void 0 && email.trim())
+        profileUpdates.email = email.trim().toLowerCase();
+      if (mobileNumber !== void 0)
+        profileUpdates.mobileNumber = mobileNumber.trim();
       if (isPremium !== void 0) profileUpdates.isPremium = isPremium;
       if (role !== void 0) profileUpdates.role = role;
       if (Object.keys(profileUpdates).length === 0 && !password) {
@@ -7209,9 +7849,12 @@ matches must be true or false.`;
         await storage.setPassword(userId, passwordHash);
       }
       const changes = [];
-      if (displayName !== void 0 && displayName !== before.displayName) changes.push(`name: "${before.displayName}" \u2192 "${displayName}"`);
-      if (email !== void 0 && email.toLowerCase() !== before.email) changes.push(`email: "${before.email}" \u2192 "${email.toLowerCase()}"`);
-      if (mobileNumber !== void 0 && mobileNumber !== before.mobileNumber) changes.push(`mobile changed`);
+      if (displayName !== void 0 && displayName !== before.displayName)
+        changes.push(`name: "${before.displayName}" \u2192 "${displayName}"`);
+      if (email !== void 0 && email.toLowerCase() !== before.email)
+        changes.push(`email: "${before.email}" \u2192 "${email.toLowerCase()}"`);
+      if (mobileNumber !== void 0 && mobileNumber !== before.mobileNumber)
+        changes.push(`mobile changed`);
       if (password) changes.push("password reset");
       if (isPremium !== void 0 && isPremium !== before.isPremium) {
         await logModAction({
@@ -7248,10 +7891,14 @@ matches must be true or false.`;
     }
   });
   app2.post("/api/admin/request-otp", (_req, res) => {
-    res.status(410).json({ error: "Admin code login has been removed. Please update the app and use the email + password login." });
+    res.status(410).json({
+      error: "Admin code login has been removed. Please update the app and use the email + password login."
+    });
   });
   app2.post("/api/admin/verify-otp", (_req, res) => {
-    res.status(410).json({ error: "Admin code login has been removed. Please update the app and use the email + password login." });
+    res.status(410).json({
+      error: "Admin code login has been removed. Please update the app and use the email + password login."
+    });
   });
   app2.get("/api/admin/validate-token", async (req, res) => {
     res.json({ valid: await isSuperadminAuthorized(req) });
@@ -7263,13 +7910,24 @@ matches must be true or false.`;
   });
   app2.post("/api/admin/create-user", async (req, res) => {
     try {
-      const { superadminPassword, username, displayName, email, mobileNumber, password, isPremium, role } = req.body;
+      const {
+        superadminPassword,
+        username,
+        displayName,
+        email,
+        mobileNumber,
+        password,
+        isPremium,
+        role
+      } = req.body;
       if (!await isSuperadminAuthorized(req)) {
         res.status(403).json({ error: "Forbidden" });
         return;
       }
       if (!username || !displayName || !email || !password) {
-        res.status(400).json({ error: "Username, display name, email and password are required" });
+        res.status(400).json({
+          error: "Username, display name, email and password are required"
+        });
         return;
       }
       if (password.length < 6) {
@@ -7281,7 +7939,9 @@ matches must be true or false.`;
         res.status(409).json({ error: "An account with this email already exists" });
         return;
       }
-      const existingUser = await storage.getUserByUsername(username.toLowerCase().trim());
+      const existingUser = await storage.getUserByUsername(
+        username.toLowerCase().trim()
+      );
       if (existingUser) {
         res.status(409).json({ error: "Username is already taken" });
         return;
@@ -7339,7 +7999,12 @@ matches must be true or false.`;
         return;
       }
       await cancelStripeForUser(userId, true);
-      await addBlockedCredential(before.email || null, before.mobileNumber || null, "deleted", callerId);
+      await addBlockedCredential(
+        before.email || null,
+        before.mobileNumber || null,
+        "deleted",
+        callerId
+      );
       await db.delete(pokescanSessions).where(eq3(pokescanSessions.userId, userId));
       const deleted = await db.delete(pokescanUsers).where(eq3(pokescanUsers.id, userId)).returning();
       if (!deleted.length) {
@@ -7402,50 +8067,58 @@ matches must be true or false.`;
         targetUsername: target.username,
         note: `${permanent ? "Permanent" : `${durationHours}h`} ban \u2014 Reason: ${banReason}${target.isPremium ? "; Stripe sub cancelled" : ""}`
       });
-      res.json({ success: true, bannedUntil: bannedUntil.toISOString(), permanent, banReason });
+      res.json({
+        success: true,
+        bannedUntil: bannedUntil.toISOString(),
+        permanent,
+        banReason
+      });
     } catch (error) {
       console.error("Ban error:", error);
       res.status(500).json({ error: error.message || "Ban failed" });
     }
   });
-  app2.post("/api/admin/users/:id/unban", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
+  app2.post(
+    "/api/admin/users/:id/unban",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const caller = await storage.validateSession(token);
+        if (!caller) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        if (caller.role !== "admin" && caller.role !== "moderator") {
+          res.status(403).json({ error: "Staff only" });
+          return;
+        }
+        const { id } = req.params;
+        const target = await storage.getUserById(id);
+        if (!target) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+        await pool3.query(
+          `UPDATE pokescan_users SET banned_until = NULL, ban_reason = NULL, banned_at = NULL, banned_by = NULL, chat_banned_until = NULL WHERE id = $1`,
+          [id]
+        );
+        await logModAction({
+          action: "user_unbanned",
+          performedBy: caller.id,
+          targetUserId: id,
+          targetUsername: target.username
+        });
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Unban error:", error);
+        res.status(500).json({ error: error.message || "Unban failed" });
       }
-      const caller = await storage.validateSession(token);
-      if (!caller) {
-        res.status(401).json({ error: "Invalid session" });
-        return;
-      }
-      if (caller.role !== "admin" && caller.role !== "moderator") {
-        res.status(403).json({ error: "Staff only" });
-        return;
-      }
-      const { id } = req.params;
-      const target = await storage.getUserById(id);
-      if (!target) {
-        res.status(404).json({ error: "User not found" });
-        return;
-      }
-      await pool3.query(
-        `UPDATE pokescan_users SET banned_until = NULL, ban_reason = NULL, banned_at = NULL, banned_by = NULL, chat_banned_until = NULL WHERE id = $1`,
-        [id]
-      );
-      await logModAction({
-        action: "user_unbanned",
-        performedBy: caller.id,
-        targetUserId: id,
-        targetUsername: target.username
-      });
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Unban error:", error);
-      res.status(500).json({ error: error.message || "Unban failed" });
     }
-  });
+  );
   app2.post("/api/admin/users/:id/mute", async (req, res) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -7479,7 +8152,10 @@ matches must be true or false.`;
         return;
       }
       const mutedUntil = new Date(Date.now() + mins * 60 * 1e3);
-      await pool3.query(`UPDATE pokescan_users SET chat_muted_until = $1 WHERE id = $2`, [mutedUntil, id]);
+      await pool3.query(
+        `UPDATE pokescan_users SET chat_muted_until = $1 WHERE id = $2`,
+        [mutedUntil, id]
+      );
       await logModAction({
         action: "user_muted",
         performedBy: caller.id,
@@ -7493,41 +8169,47 @@ matches must be true or false.`;
       res.status(500).json({ error: error.message || "Mute failed" });
     }
   });
-  app2.post("/api/admin/users/:id/unmute", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
+  app2.post(
+    "/api/admin/users/:id/unmute",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const caller = await storage.validateSession(token);
+        if (!caller) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        if (caller.role !== "admin" && caller.role !== "moderator") {
+          res.status(403).json({ error: "Staff only" });
+          return;
+        }
+        const { id } = req.params;
+        const target = await storage.getUserById(id);
+        if (!target) {
+          res.status(404).json({ error: "User not found" });
+          return;
+        }
+        await pool3.query(
+          `UPDATE pokescan_users SET chat_muted_until = NULL WHERE id = $1`,
+          [id]
+        );
+        await logModAction({
+          action: "user_unmuted",
+          performedBy: caller.id,
+          targetUserId: id,
+          targetUsername: target.username
+        });
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Unmute error:", error);
+        res.status(500).json({ error: error.message || "Unmute failed" });
       }
-      const caller = await storage.validateSession(token);
-      if (!caller) {
-        res.status(401).json({ error: "Invalid session" });
-        return;
-      }
-      if (caller.role !== "admin" && caller.role !== "moderator") {
-        res.status(403).json({ error: "Staff only" });
-        return;
-      }
-      const { id } = req.params;
-      const target = await storage.getUserById(id);
-      if (!target) {
-        res.status(404).json({ error: "User not found" });
-        return;
-      }
-      await pool3.query(`UPDATE pokescan_users SET chat_muted_until = NULL WHERE id = $1`, [id]);
-      await logModAction({
-        action: "user_unmuted",
-        performedBy: caller.id,
-        targetUserId: id,
-        targetUsername: target.username
-      });
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Unmute error:", error);
-      res.status(500).json({ error: error.message || "Unmute failed" });
     }
-  });
+  );
   app2.post("/api/admin/listings/bulk", async (req, res) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -7611,7 +8293,10 @@ matches must be true or false.`;
         res.status(403).json({ error: "Staff only" });
         return;
       }
-      const limit = Math.min(500, Math.max(1, parseInt(req.query.limit || "200", 10)));
+      const limit = Math.min(
+        500,
+        Math.max(1, parseInt(req.query.limit || "200", 10))
+      );
       const msgs = await db.select().from(pokescanChatroomMessages).orderBy(desc(pokescanChatroomMessages.createdAt)).limit(limit);
       res.json({ messages: msgs.reverse() });
     } catch (error) {
@@ -7683,34 +8368,43 @@ matches must be true or false.`;
       res.status(500).json({ error: error.message || "Failed to load messages" });
     }
   });
-  app2.get("/api/admin/blocked-credentials", async (req, res) => {
-    try {
-      if (!await isSuperadminAuthorized(req)) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
+  app2.get(
+    "/api/admin/blocked-credentials",
+    async (req, res) => {
+      try {
+        if (!await isSuperadminAuthorized(req)) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+        const r = await pool3.query(
+          `SELECT * FROM pokescan_blocked_credentials ORDER BY created_at DESC LIMIT 500`
+        );
+        res.json({ blocked: r.rows });
+      } catch (error) {
+        console.error("Blocked creds list error:", error);
+        res.status(500).json({ error: error.message || "Failed to load" });
       }
-      const r = await pool3.query(
-        `SELECT * FROM pokescan_blocked_credentials ORDER BY created_at DESC LIMIT 500`
-      );
-      res.json({ blocked: r.rows });
-    } catch (error) {
-      console.error("Blocked creds list error:", error);
-      res.status(500).json({ error: error.message || "Failed to load" });
     }
-  });
-  app2.delete("/api/admin/blocked-credentials/:id", async (req, res) => {
-    try {
-      if (!await isSuperadminAuthorized(req)) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
+  );
+  app2.delete(
+    "/api/admin/blocked-credentials/:id",
+    async (req, res) => {
+      try {
+        if (!await isSuperadminAuthorized(req)) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+        await pool3.query(
+          `DELETE FROM pokescan_blocked_credentials WHERE id = $1`,
+          [req.params.id]
+        );
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Blocked creds delete error:", error);
+        res.status(500).json({ error: error.message || "Failed to remove" });
       }
-      await pool3.query(`DELETE FROM pokescan_blocked_credentials WHERE id = $1`, [req.params.id]);
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Blocked creds delete error:", error);
-      res.status(500).json({ error: error.message || "Failed to remove" });
     }
-  });
+  );
   app2.post("/api/admin/scrydex-sync", async (req, res) => {
     try {
       const { superadminPassword } = req.body;
@@ -7746,43 +8440,60 @@ matches must be true or false.`;
       }
     }
   });
-  app2.post("/api/admin/sync-asian-sets", async (req, res) => {
-    try {
-      const { superadminPassword } = req.body;
-      if (!await isSuperadminAuthorized(req)) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
-      }
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.flushHeaders();
-      const send = (data) => res.write(`data: ${JSON.stringify(data)}
-
-`);
-      const { seedAsianSets: seedAsianSets2 } = await Promise.resolve().then(() => (init_asian_set_seed(), asian_set_seed_exports));
-      const result = await seedAsianSets2((msg) => {
-        send({ phase: "progress", message: msg });
-      });
-      send({ phase: "seeding-cards", message: "Seeding KO/ZH cards from JP sources\u2026" });
-      const { seedKoZhCards: seedKoZhCards2 } = await Promise.resolve().then(() => (init_ko_zh_seed(), ko_zh_seed_exports));
-      const koZhResult = await seedKoZhCards2((msg) => {
-        send({ phase: "progress", message: msg });
-      });
-      send({ phase: "progress", message: `KO/ZH cards: ${koZhResult.inserted} inserted, ${koZhResult.skipped} skipped` });
-      send({ phase: "done", ...result, koZhInserted: koZhResult.inserted, koZhSkipped: koZhResult.skipped, done: true });
-      res.end();
-    } catch (error) {
-      console.error("Asian set sync error:", error);
+  app2.post(
+    "/api/admin/sync-asian-sets",
+    async (req, res) => {
       try {
-        res.write(`data: ${JSON.stringify({ phase: "error", message: error.message || "Sync failed", done: true })}
+        const { superadminPassword } = req.body;
+        if (!await isSuperadminAuthorized(req)) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        res.flushHeaders();
+        const send = (data) => res.write(`data: ${JSON.stringify(data)}
 
 `);
+        const { seedAsianSets: seedAsianSets2 } = await Promise.resolve().then(() => (init_asian_set_seed(), asian_set_seed_exports));
+        const result = await seedAsianSets2((msg) => {
+          send({ phase: "progress", message: msg });
+        });
+        send({
+          phase: "seeding-cards",
+          message: "Seeding KO/ZH cards from JP sources\u2026"
+        });
+        const { seedKoZhCards: seedKoZhCards2 } = await Promise.resolve().then(() => (init_ko_zh_seed(), ko_zh_seed_exports));
+        const koZhResult = await seedKoZhCards2((msg) => {
+          send({ phase: "progress", message: msg });
+        });
+        send({
+          phase: "progress",
+          message: `KO/ZH cards: ${koZhResult.inserted} inserted, ${koZhResult.skipped} skipped`
+        });
+        send({
+          phase: "done",
+          ...result,
+          koZhInserted: koZhResult.inserted,
+          koZhSkipped: koZhResult.skipped,
+          done: true
+        });
         res.end();
-      } catch {
+      } catch (error) {
+        console.error("Asian set sync error:", error);
+        try {
+          res.write(
+            `data: ${JSON.stringify({ phase: "error", message: error.message || "Sync failed", done: true })}
+
+`
+          );
+          res.end();
+        } catch {
+        }
       }
     }
-  });
+  );
   app2.get("/api/admin/sets", async (req, res) => {
     try {
       const pw = req.query.superadminPassword;
@@ -7797,7 +8508,19 @@ matches must be true or false.`;
         hidden: pokemonSets.hidden,
         releaseDate: pokemonSets.releaseDate,
         cardCount: sql4`count(${pokemonCards.id})::int`
-      }).from(pokemonSets).leftJoin(pokemonCards, and3(eq3(pokemonCards.setId, pokemonSets.id), isNull2(pokemonCards.deletedAt))).where(isNull2(pokemonSets.deletedAt)).groupBy(pokemonSets.id, pokemonSets.name, pokemonSets.series, pokemonSets.hidden, pokemonSets.releaseDate).orderBy(desc(pokemonSets.releaseDate));
+      }).from(pokemonSets).leftJoin(
+        pokemonCards,
+        and3(
+          eq3(pokemonCards.setId, pokemonSets.id),
+          isNull2(pokemonCards.deletedAt)
+        )
+      ).where(isNull2(pokemonSets.deletedAt)).groupBy(
+        pokemonSets.id,
+        pokemonSets.name,
+        pokemonSets.series,
+        pokemonSets.hidden,
+        pokemonSets.releaseDate
+      ).orderBy(desc(pokemonSets.releaseDate));
       res.json({
         sets: allSets.map((s) => ({
           ...s,
@@ -7809,25 +8532,28 @@ matches must be true or false.`;
       res.status(500).json({ error: error.message || "Failed to list sets" });
     }
   });
-  app2.patch("/api/admin/sets/visibility", async (req, res) => {
-    try {
-      const { superadminPassword, setIds, hidden } = req.body;
-      if (!await isSuperadminAuthorized(req)) {
-        res.status(403).json({ error: "Forbidden" });
-        return;
+  app2.patch(
+    "/api/admin/sets/visibility",
+    async (req, res) => {
+      try {
+        const { superadminPassword, setIds, hidden } = req.body;
+        if (!await isSuperadminAuthorized(req)) {
+          res.status(403).json({ error: "Forbidden" });
+          return;
+        }
+        if (!Array.isArray(setIds) || setIds.length === 0) {
+          res.status(400).json({ error: "setIds is required" });
+          return;
+        }
+        for (const id of setIds) {
+          await db.update(pokemonSets).set({ hidden: !!hidden }).where(eq3(pokemonSets.id, id));
+        }
+        res.json({ updated: setIds.length, hidden: !!hidden });
+      } catch (error) {
+        res.status(500).json({ error: error.message || "Failed to update visibility" });
       }
-      if (!Array.isArray(setIds) || setIds.length === 0) {
-        res.status(400).json({ error: "setIds is required" });
-        return;
-      }
-      for (const id of setIds) {
-        await db.update(pokemonSets).set({ hidden: !!hidden }).where(eq3(pokemonSets.id, id));
-      }
-      res.json({ updated: setIds.length, hidden: !!hidden });
-    } catch (error) {
-      res.status(500).json({ error: error.message || "Failed to update visibility" });
     }
-  });
+  );
   app2.get("/api/admin/scrydex-preview", async (req, res) => {
     try {
       const pw = req.query.superadminPassword;
@@ -7835,7 +8561,11 @@ matches must be true or false.`;
         res.status(403).json({ error: "Forbidden" });
         return;
       }
-      const { scrapeScrydexSets: scrapeScrydexSets2, scrapeScrydexTcgPocketSets: scrapeScrydexTcgPocketSets2, scrapeScrydexJpSets: scrapeScrydexJpSets2 } = await Promise.resolve().then(() => (init_scrydex_scraper(), scrydex_scraper_exports));
+      const {
+        scrapeScrydexSets: scrapeScrydexSets2,
+        scrapeScrydexTcgPocketSets: scrapeScrydexTcgPocketSets2,
+        scrapeScrydexJpSets: scrapeScrydexJpSets2
+      } = await Promise.resolve().then(() => (init_scrydex_scraper(), scrydex_scraper_exports));
       const [enSets, pocketSets, jpSets] = await Promise.all([
         scrapeScrydexSets2(),
         scrapeScrydexTcgPocketSets2(),
@@ -7846,22 +8576,37 @@ matches must be true or false.`;
         if (!allSetsMap.has(s.id)) allSetsMap.set(s.id, s);
       }
       const allSets = [...allSetsMap.values()];
-      const existingRows = await db.select({ id: pokemonSets.id, card_count: sql4`COUNT(${pokemonCards.id})` }).from(pokemonSets).leftJoin(pokemonCards, eq3(pokemonCards.setId, pokemonSets.id)).groupBy(pokemonSets.id);
+      const existingRows = await db.select({
+        id: pokemonSets.id,
+        card_count: sql4`COUNT(${pokemonCards.id})`
+      }).from(pokemonSets).leftJoin(pokemonCards, eq3(pokemonCards.setId, pokemonSets.id)).groupBy(pokemonSets.id);
       const existingIds = new Set(existingRows.map((r) => r.id));
       const setsWithCards = new Set(
         existingRows.filter((r) => parseInt(r.card_count, 10) > 0).map((r) => r.id)
       );
       const missingSets = allSets.filter((s) => !existingIds.has(s.id));
-      const emptySets = allSets.filter((s) => existingIds.has(s.id) && !setsWithCards.has(s.id));
-      const setsToProcess = allSets.filter((s) => !existingIds.has(s.id) || !setsWithCards.has(s.id));
+      const emptySets = allSets.filter(
+        (s) => existingIds.has(s.id) && !setsWithCards.has(s.id)
+      );
+      const setsToProcess = allSets.filter(
+        (s) => !existingIds.has(s.id) || !setsWithCards.has(s.id)
+      );
       res.json({
         scrydexSetCount: allSets.length,
         dbSetCount: existingIds.size,
         newSetsFound: missingSets.length,
         emptySetsFound: emptySets.length,
         setsToProcess: setsToProcess.length,
-        newSets: missingSets.map((s) => ({ id: s.id, name: s.name, series: s.series })),
-        emptySets: emptySets.map((s) => ({ id: s.id, name: s.name, series: s.series }))
+        newSets: missingSets.map((s) => ({
+          id: s.id,
+          name: s.name,
+          series: s.series
+        })),
+        emptySets: emptySets.map((s) => ({
+          id: s.id,
+          name: s.name,
+          series: s.series
+        }))
       });
     } catch (error) {
       res.status(500).json({ error: error.message || "Preview failed" });
@@ -7895,7 +8640,11 @@ matches must be true or false.`;
           });
           results.push({ username: u.username, status: result.status });
         } catch (err) {
-          results.push({ username: u.username, status: "error", reason: err.message });
+          results.push({
+            username: u.username,
+            status: "error",
+            reason: err.message
+          });
         }
       }
       res.json({ results });
@@ -7909,7 +8658,11 @@ matches must be true or false.`;
     if (!token) return null;
     const user = await storage.validateSession(token);
     if (!user) return null;
-    return { id: user.id, username: user.username, displayName: user.displayName };
+    return {
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName
+    };
   }
   app2.get("/api/social/friends", async (req, res) => {
     const me = await getUserFromToken(req);
@@ -7918,7 +8671,10 @@ matches must be true or false.`;
       return;
     }
     const rows = await db.select().from(pokescanFriendships).where(
-      or2(eq3(pokescanFriendships.requesterId, me.id), eq3(pokescanFriendships.addresseeId, me.id))
+      or2(
+        eq3(pokescanFriendships.requesterId, me.id),
+        eq3(pokescanFriendships.addresseeId, me.id)
+      )
     );
     const friendIds = /* @__PURE__ */ new Set();
     for (const r of rows) {
@@ -7926,79 +8682,133 @@ matches must be true or false.`;
         friendIds.add(r.requesterId === me.id ? r.addresseeId : r.requesterId);
       }
     }
-    const friendFields = { id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl, isPremium: pokescanUsers.isPremium, collectionVisible: pokescanUsers.collectionVisible };
+    const friendFields = {
+      id: pokescanUsers.id,
+      username: pokescanUsers.username,
+      displayName: pokescanUsers.displayName,
+      avatarUrl: pokescanUsers.avatarUrl,
+      isPremium: pokescanUsers.isPremium,
+      collectionVisible: pokescanUsers.collectionVisible
+    };
     const friends = friendIds.size > 0 ? await db.select(friendFields).from(pokescanUsers).where(or2(...[...friendIds].map((id) => eq3(pokescanUsers.id, id)))) : [];
-    const pendingReceived = rows.filter((r) => r.addresseeId === me.id && r.status === "pending");
-    const pendingSent = rows.filter((r) => r.requesterId === me.id && r.status === "pending");
-    const pendingUsers = pendingReceived.length > 0 ? await db.select(friendFields).from(pokescanUsers).where(or2(...pendingReceived.map((r) => eq3(pokescanUsers.id, r.requesterId)))) : [];
-    const sentUsers = pendingSent.length > 0 ? await db.select(friendFields).from(pokescanUsers).where(or2(...pendingSent.map((r) => eq3(pokescanUsers.id, r.addresseeId)))) : [];
-    res.json({ friends, pendingReceived: pendingUsers, pendingSent: sentUsers });
-  });
-  app2.post("/api/social/friend-request", async (req, res) => {
-    const me = await getUserFromToken(req);
-    if (!me) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-    const { targetUserId } = req.body;
-    if (!targetUserId || targetUserId === me.id) {
-      res.status(400).json({ error: "Invalid target" });
-      return;
-    }
-    const existing = await db.select().from(pokescanFriendships).where(
+    const pendingReceived = rows.filter(
+      (r) => r.addresseeId === me.id && r.status === "pending"
+    );
+    const pendingSent = rows.filter(
+      (r) => r.requesterId === me.id && r.status === "pending"
+    );
+    const pendingUsers = pendingReceived.length > 0 ? await db.select(friendFields).from(pokescanUsers).where(
       or2(
-        and3(eq3(pokescanFriendships.requesterId, me.id), eq3(pokescanFriendships.addresseeId, targetUserId)),
-        and3(eq3(pokescanFriendships.requesterId, targetUserId), eq3(pokescanFriendships.addresseeId, me.id))
+        ...pendingReceived.map(
+          (r) => eq3(pokescanUsers.id, r.requesterId)
+        )
       )
-    );
-    if (existing.length > 0) {
-      res.status(400).json({ error: "Request already exists" });
-      return;
-    }
-    const [row] = await db.insert(pokescanFriendships).values({ requesterId: me.id, addresseeId: targetUserId, status: "pending" }).returning();
-    res.json({ friendship: row });
-  });
-  app2.post("/api/social/friend-respond", async (req, res) => {
-    const me = await getUserFromToken(req);
-    if (!me) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-    const { requesterId, action } = req.body;
-    if (!requesterId || !["accept", "decline"].includes(action)) {
-      res.status(400).json({ error: "Bad request" });
-      return;
-    }
-    const rows = await db.select().from(pokescanFriendships).where(
-      and3(eq3(pokescanFriendships.requesterId, requesterId), eq3(pokescanFriendships.addresseeId, me.id), eq3(pokescanFriendships.status, "pending"))
-    );
-    if (!rows.length) {
-      res.status(404).json({ error: "Request not found" });
-      return;
-    }
-    if (action === "accept") {
-      await db.update(pokescanFriendships).set({ status: "accepted" }).where(eq3(pokescanFriendships.id, rows[0].id));
-      res.json({ status: "accepted" });
-    } else {
-      await db.delete(pokescanFriendships).where(eq3(pokescanFriendships.id, rows[0].id));
-      res.json({ status: "declined" });
-    }
-  });
-  app2.delete("/api/social/friend-remove", async (req, res) => {
-    const me = await getUserFromToken(req);
-    if (!me) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-    const { friendId } = req.body;
-    await db.delete(pokescanFriendships).where(
+    ) : [];
+    const sentUsers = pendingSent.length > 0 ? await db.select(friendFields).from(pokescanUsers).where(
       or2(
-        and3(eq3(pokescanFriendships.requesterId, me.id), eq3(pokescanFriendships.addresseeId, friendId)),
-        and3(eq3(pokescanFriendships.requesterId, friendId), eq3(pokescanFriendships.addresseeId, me.id))
+        ...pendingSent.map((r) => eq3(pokescanUsers.id, r.addresseeId))
       )
-    );
-    res.json({ success: true });
+    ) : [];
+    res.json({
+      friends,
+      pendingReceived: pendingUsers,
+      pendingSent: sentUsers
+    });
   });
+  app2.post(
+    "/api/social/friend-request",
+    async (req, res) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const { targetUserId } = req.body;
+      if (!targetUserId || targetUserId === me.id) {
+        res.status(400).json({ error: "Invalid target" });
+        return;
+      }
+      const existing = await db.select().from(pokescanFriendships).where(
+        or2(
+          and3(
+            eq3(pokescanFriendships.requesterId, me.id),
+            eq3(pokescanFriendships.addresseeId, targetUserId)
+          ),
+          and3(
+            eq3(pokescanFriendships.requesterId, targetUserId),
+            eq3(pokescanFriendships.addresseeId, me.id)
+          )
+        )
+      );
+      if (existing.length > 0) {
+        res.status(400).json({ error: "Request already exists" });
+        return;
+      }
+      const [row] = await db.insert(pokescanFriendships).values({
+        requesterId: me.id,
+        addresseeId: targetUserId,
+        status: "pending"
+      }).returning();
+      res.json({ friendship: row });
+    }
+  );
+  app2.post(
+    "/api/social/friend-respond",
+    async (req, res) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const { requesterId, action } = req.body;
+      if (!requesterId || !["accept", "decline"].includes(action)) {
+        res.status(400).json({ error: "Bad request" });
+        return;
+      }
+      const rows = await db.select().from(pokescanFriendships).where(
+        and3(
+          eq3(pokescanFriendships.requesterId, requesterId),
+          eq3(pokescanFriendships.addresseeId, me.id),
+          eq3(pokescanFriendships.status, "pending")
+        )
+      );
+      if (!rows.length) {
+        res.status(404).json({ error: "Request not found" });
+        return;
+      }
+      if (action === "accept") {
+        await db.update(pokescanFriendships).set({ status: "accepted" }).where(eq3(pokescanFriendships.id, rows[0].id));
+        res.json({ status: "accepted" });
+      } else {
+        await db.delete(pokescanFriendships).where(eq3(pokescanFriendships.id, rows[0].id));
+        res.json({ status: "declined" });
+      }
+    }
+  );
+  app2.delete(
+    "/api/social/friend-remove",
+    async (req, res) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const { friendId } = req.body;
+      await db.delete(pokescanFriendships).where(
+        or2(
+          and3(
+            eq3(pokescanFriendships.requesterId, me.id),
+            eq3(pokescanFriendships.addresseeId, friendId)
+          ),
+          and3(
+            eq3(pokescanFriendships.requesterId, friendId),
+            eq3(pokescanFriendships.addresseeId, me.id)
+          )
+        )
+      );
+      res.json({ success: true });
+    }
+  );
   app2.get("/api/social/user-search", async (req, res) => {
     const me = await getUserFromToken(req);
     if (!me) {
@@ -8010,12 +8820,29 @@ matches must be true or false.`;
       res.json({ users: [] });
       return;
     }
-    const users2 = await db.select({ id: pokescanUsers.id, username: pokescanUsers.username, displayName: pokescanUsers.displayName, avatarUrl: pokescanUsers.avatarUrl }).from(pokescanUsers).where(and3(ne(pokescanUsers.id, me.id), or2(ilike(pokescanUsers.username, `%${q}%`), ilike(pokescanUsers.displayName, `%${q}%`)))).limit(20);
+    const users2 = await db.select({
+      id: pokescanUsers.id,
+      username: pokescanUsers.username,
+      displayName: pokescanUsers.displayName,
+      avatarUrl: pokescanUsers.avatarUrl
+    }).from(pokescanUsers).where(
+      and3(
+        ne(pokescanUsers.id, me.id),
+        or2(
+          ilike(pokescanUsers.username, `%${q}%`),
+          ilike(pokescanUsers.displayName, `%${q}%`)
+        )
+      )
+    ).limit(20);
     res.json({ users: users2 });
   });
   app2.get("/api/support/admin", async (_req, res) => {
     try {
-      const admins = await db.select({ id: pokescanUsers.id, displayName: pokescanUsers.displayName, username: pokescanUsers.username }).from(pokescanUsers).where(eq3(pokescanUsers.role, "admin")).limit(1);
+      const admins = await db.select({
+        id: pokescanUsers.id,
+        displayName: pokescanUsers.displayName,
+        username: pokescanUsers.username
+      }).from(pokescanUsers).where(eq3(pokescanUsers.role, "admin")).limit(1);
       if (admins.length === 0) {
         res.json({ admin: null });
         return;
@@ -8041,7 +8868,12 @@ matches must be true or false.`;
       senderUsername: pokescanUsers.username,
       senderDisplayName: pokescanUsers.displayName,
       senderAvatarUrl: pokescanUsers.avatarUrl
-    }).from(pokescanMessages).innerJoin(pokescanUsers, eq3(pokescanMessages.senderId, pokescanUsers.id)).where(and3(eq3(pokescanMessages.recipientId, me.id), eq3(pokescanMessages.deletedByRecipient, false))).orderBy(desc(pokescanMessages.createdAt));
+    }).from(pokescanMessages).innerJoin(pokescanUsers, eq3(pokescanMessages.senderId, pokescanUsers.id)).where(
+      and3(
+        eq3(pokescanMessages.recipientId, me.id),
+        eq3(pokescanMessages.deletedByRecipient, false)
+      )
+    ).orderBy(desc(pokescanMessages.createdAt));
     res.json({ messages: rows });
   });
   app2.get("/api/social/messages/sent", async (req, res) => {
@@ -8060,18 +8892,35 @@ matches must be true or false.`;
       recipientUsername: pokescanUsers.username,
       recipientDisplayName: pokescanUsers.displayName,
       recipientAvatarUrl: pokescanUsers.avatarUrl
-    }).from(pokescanMessages).innerJoin(pokescanUsers, eq3(pokescanMessages.recipientId, pokescanUsers.id)).where(and3(eq3(pokescanMessages.senderId, me.id), eq3(pokescanMessages.deletedBySender, false))).orderBy(desc(pokescanMessages.createdAt));
+    }).from(pokescanMessages).innerJoin(
+      pokescanUsers,
+      eq3(pokescanMessages.recipientId, pokescanUsers.id)
+    ).where(
+      and3(
+        eq3(pokescanMessages.senderId, me.id),
+        eq3(pokescanMessages.deletedBySender, false)
+      )
+    ).orderBy(desc(pokescanMessages.createdAt));
     res.json({ messages: rows });
   });
-  app2.get("/api/social/messages/unread-count", async (req, res) => {
-    const me = await getUserFromToken(req);
-    if (!me) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
+  app2.get(
+    "/api/social/messages/unread-count",
+    async (req, res) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const result = await db.select({ count: sql4`count(*)::int` }).from(pokescanMessages).where(
+        and3(
+          eq3(pokescanMessages.recipientId, me.id),
+          eq3(pokescanMessages.isRead, false),
+          eq3(pokescanMessages.deletedByRecipient, false)
+        )
+      );
+      res.json({ count: result[0]?.count ?? 0 });
     }
-    const result = await db.select({ count: sql4`count(*)::int` }).from(pokescanMessages).where(and3(eq3(pokescanMessages.recipientId, me.id), eq3(pokescanMessages.isRead, false), eq3(pokescanMessages.deletedByRecipient, false)));
-    res.json({ count: result[0]?.count ?? 0 });
-  });
+  );
   app2.post("/api/social/messages/send", async (req, res) => {
     const me = await getUserFromToken(req);
     if (!me) {
@@ -8096,35 +8945,44 @@ matches must be true or false.`;
     }).returning();
     res.json({ message: msg });
   });
-  app2.patch("/api/social/messages/:id/read", async (req, res) => {
-    const me = await getUserFromToken(req);
-    if (!me) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
+  app2.patch(
+    "/api/social/messages/:id/read",
+    async (req, res) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      await db.update(pokescanMessages).set({ isRead: true }).where(
+        and3(
+          eq3(pokescanMessages.id, req.params.id),
+          eq3(pokescanMessages.recipientId, me.id)
+        )
+      );
+      res.json({ success: true });
     }
-    await db.update(pokescanMessages).set({ isRead: true }).where(
-      and3(eq3(pokescanMessages.id, req.params.id), eq3(pokescanMessages.recipientId, me.id))
-    );
-    res.json({ success: true });
-  });
-  app2.delete("/api/social/messages/:id", async (req, res) => {
-    const me = await getUserFromToken(req);
-    if (!me) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
+  );
+  app2.delete(
+    "/api/social/messages/:id",
+    async (req, res) => {
+      const me = await getUserFromToken(req);
+      if (!me) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      const [msg] = await db.select().from(pokescanMessages).where(eq3(pokescanMessages.id, req.params.id));
+      if (!msg) {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      if (msg.senderId === me.id) {
+        await db.update(pokescanMessages).set({ deletedBySender: true }).where(eq3(pokescanMessages.id, msg.id));
+      } else if (msg.recipientId === me.id) {
+        await db.update(pokescanMessages).set({ deletedByRecipient: true }).where(eq3(pokescanMessages.id, msg.id));
+      }
+      res.json({ success: true });
     }
-    const [msg] = await db.select().from(pokescanMessages).where(eq3(pokescanMessages.id, req.params.id));
-    if (!msg) {
-      res.status(404).json({ error: "Not found" });
-      return;
-    }
-    if (msg.senderId === me.id) {
-      await db.update(pokescanMessages).set({ deletedBySender: true }).where(eq3(pokescanMessages.id, msg.id));
-    } else if (msg.recipientId === me.id) {
-      await db.update(pokescanMessages).set({ deletedByRecipient: true }).where(eq3(pokescanMessages.id, msg.id));
-    }
-    res.json({ success: true });
-  });
+  );
   app2.post("/api/social/report", async (req, res) => {
     const me = await getUserFromToken(req);
     if (!me) {
@@ -8137,7 +8995,11 @@ matches must be true or false.`;
       return;
     }
     const existing = await db.select().from(pokescanReports).where(
-      and3(eq3(pokescanReports.reporterId, me.id), eq3(pokescanReports.contentId, contentId), eq3(pokescanReports.status, "pending"))
+      and3(
+        eq3(pokescanReports.reporterId, me.id),
+        eq3(pokescanReports.contentId, contentId),
+        eq3(pokescanReports.status, "pending")
+      )
     );
     if (existing.length > 0) {
       res.status(400).json({ error: "You already reported this content" });
@@ -8159,7 +9021,8 @@ matches must be true or false.`;
     let isAuthorized = await isSuperadminAuthorized(req);
     if (!isAuthorized && token) {
       const user = await storage.validateSession(token);
-      if (user && (user.role === "admin" || user.role === "moderator")) isAuthorized = true;
+      if (user && (user.role === "admin" || user.role === "moderator"))
+        isAuthorized = true;
     }
     if (!isAuthorized) {
       res.status(401).json({ error: "Unauthorized" });
@@ -8180,7 +9043,16 @@ matches must be true or false.`;
       reportedUserUsername: sql4`ru_user.username`,
       reportedUserDisplayName: sql4`ru_user.display_name`,
       reviewedByUsername: sql4`rev_user.username`
-    }).from(pokescanReports).leftJoin(sql4`pokescan_users AS r_user`, sql4`r_user.id = pokescan_reports.reporter_id`).leftJoin(sql4`pokescan_users AS ru_user`, sql4`ru_user.id = pokescan_reports.reported_user_id`).leftJoin(sql4`pokescan_users AS rev_user`, sql4`rev_user.id = pokescan_reports.reviewed_by`).orderBy(desc(pokescanReports.createdAt));
+    }).from(pokescanReports).leftJoin(
+      sql4`pokescan_users AS r_user`,
+      sql4`r_user.id = pokescan_reports.reporter_id`
+    ).leftJoin(
+      sql4`pokescan_users AS ru_user`,
+      sql4`ru_user.id = pokescan_reports.reported_user_id`
+    ).leftJoin(
+      sql4`pokescan_users AS rev_user`,
+      sql4`rev_user.id = pokescan_reports.reviewed_by`
+    ).orderBy(desc(pokescanReports.createdAt));
     res.json({ reports });
   });
   app2.patch("/api/admin/reports/:id", async (req, res) => {
@@ -8227,15 +9099,31 @@ matches must be true or false.`;
       res.status(409).json({ error: "Sync already running", status });
       return;
     }
-    runFullSync(false).catch((err) => console.error("[CardReseed] Error:", err));
-    res.json({ message: "Card reseed started in background \u2014 monitor server logs for progress.", running: true });
+    runFullSync(false).catch(
+      (err) => console.error("[CardReseed] Error:", err)
+    );
+    res.json({
+      message: "Card reseed started in background \u2014 monitor server logs for progress.",
+      running: true
+    });
   });
-  app2.post("/api/grade", express.json({ limit: "25mb" }), async (req, res) => {
-    try {
-      const { centering, cornerDamage, edgeDamage, surfaceDamage, frontImageBase64, backImageBase64, imageBase64 } = req.body;
-      const frontImg = frontImageBase64 || imageBase64;
-      if (frontImg) {
-        const prompt = `You are an expert Pok\xE9mon TCG card grader with experience equivalent to PSA/BGS professional grading. You have been given ${backImageBase64 ? "TWO images: the FRONT of the card followed by the BACK of the card" : "ONE image: the FRONT of the card"}. Analyse both surfaces thoroughly.
+  app2.post(
+    "/api/grade",
+    express.json({ limit: "25mb" }),
+    async (req, res) => {
+      try {
+        const {
+          centering,
+          cornerDamage,
+          edgeDamage,
+          surfaceDamage,
+          frontImageBase64,
+          backImageBase64,
+          imageBase64
+        } = req.body;
+        const frontImg = frontImageBase64 || imageBase64;
+        if (frontImg) {
+          const prompt = `You are an expert Pok\xE9mon TCG card grader with experience equivalent to PSA/BGS professional grading. You have been given ${backImageBase64 ? "TWO images: the FRONT of the card followed by the BACK of the card" : "ONE image: the FRONT of the card"}. Analyse both surfaces thoroughly.
 
 Score each criterion 0\u20135 (0 = perfect, 5 = severe damage):
 - centering: how off-centre the print is on the card stock
@@ -8266,51 +9154,66 @@ Return ONLY valid JSON in exactly this format with no markdown:
   "gradingComments": "professional 2-3 sentence overall assessment with likely grade range",
   "overallNotes": "one sentence summary"
 }`;
-        const imageContent = [
-          { type: "text", text: prompt },
-          { type: "image_url", image_url: { url: frontImg, detail: "high" } }
-        ];
-        if (backImageBase64) {
-          imageContent.push({ type: "image_url", image_url: { url: backImageBase64, detail: "high" } });
+          const imageContent = [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: frontImg, detail: "high" } }
+          ];
+          if (backImageBase64) {
+            imageContent.push({
+              type: "image_url",
+              image_url: { url: backImageBase64, detail: "high" }
+            });
+          }
+          const aiRes = await openai.chat.completions.create({
+            model: "gpt-4o",
+            max_tokens: 800,
+            messages: [{ role: "user", content: imageContent }]
+          });
+          const raw = aiRes.choices[0]?.message?.content?.trim() || "";
+          const jsonMatch = raw.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) throw new Error("AI returned invalid response");
+          const parsed = JSON.parse(jsonMatch[0]);
+          const result2 = calculateGrade({
+            centering: Math.max(0, Math.min(5, parsed.centering ?? 0)),
+            cornerDamage: Math.max(0, Math.min(5, parsed.cornerDamage ?? 0)),
+            edgeDamage: Math.max(0, Math.min(5, parsed.edgeDamage ?? 0)),
+            surfaceDamage: Math.max(0, Math.min(5, parsed.surfaceDamage ?? 0))
+          });
+          const cr = parsed.centeringRatios;
+          const centeringRatios = cr ? {
+            topPct: Math.round(Math.max(1, Math.min(99, cr.topPct ?? 50))),
+            bottomPct: Math.round(
+              Math.max(1, Math.min(99, cr.bottomPct ?? 50))
+            ),
+            leftPct: Math.round(
+              Math.max(1, Math.min(99, cr.leftPct ?? 50))
+            ),
+            rightPct: Math.round(
+              Math.max(1, Math.min(99, cr.rightPct ?? 50))
+            )
+          } : null;
+          return res.json({
+            ...result2,
+            aiAssessed: true,
+            aiNotes: parsed.overallNotes ?? null,
+            centeringRatios,
+            findings: parsed.findings ?? null,
+            gradingComments: parsed.gradingComments ?? null
+          });
         }
-        const aiRes = await openai.chat.completions.create({
-          model: "gpt-4o",
-          max_tokens: 800,
-          messages: [{ role: "user", content: imageContent }]
+        const result = calculateGrade({
+          centering,
+          cornerDamage,
+          edgeDamage,
+          surfaceDamage
         });
-        const raw = aiRes.choices[0]?.message?.content?.trim() || "";
-        const jsonMatch = raw.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) throw new Error("AI returned invalid response");
-        const parsed = JSON.parse(jsonMatch[0]);
-        const result2 = calculateGrade({
-          centering: Math.max(0, Math.min(5, parsed.centering ?? 0)),
-          cornerDamage: Math.max(0, Math.min(5, parsed.cornerDamage ?? 0)),
-          edgeDamage: Math.max(0, Math.min(5, parsed.edgeDamage ?? 0)),
-          surfaceDamage: Math.max(0, Math.min(5, parsed.surfaceDamage ?? 0))
-        });
-        const cr = parsed.centeringRatios;
-        const centeringRatios = cr ? {
-          topPct: Math.round(Math.max(1, Math.min(99, cr.topPct ?? 50))),
-          bottomPct: Math.round(Math.max(1, Math.min(99, cr.bottomPct ?? 50))),
-          leftPct: Math.round(Math.max(1, Math.min(99, cr.leftPct ?? 50))),
-          rightPct: Math.round(Math.max(1, Math.min(99, cr.rightPct ?? 50)))
-        } : null;
-        return res.json({
-          ...result2,
-          aiAssessed: true,
-          aiNotes: parsed.overallNotes ?? null,
-          centeringRatios,
-          findings: parsed.findings ?? null,
-          gradingComments: parsed.gradingComments ?? null
-        });
+        res.json(result);
+      } catch (err) {
+        console.error("Grading error:", err);
+        res.status(500).json({ error: "Grading failed" });
       }
-      const result = calculateGrade({ centering, cornerDamage, edgeDamage, surfaceDamage });
-      res.json(result);
-    } catch (err) {
-      console.error("Grading error:", err);
-      res.status(500).json({ error: "Grading failed" });
     }
-  });
+  );
   cleanupOldChatroomMessages();
   setInterval(cleanupOldChatroomMessages, 60 * 60 * 1e3);
   const isStaffRole = (role) => role === "admin" || role === "moderator";
@@ -8331,7 +9234,10 @@ Return ONLY valid JSON in exactly this format with no markdown:
         return;
       }
       if (caller.chatBannedUntil && new Date(caller.chatBannedUntil) > /* @__PURE__ */ new Date()) {
-        res.status(403).json({ error: "You are banned from the chat", bannedUntil: caller.chatBannedUntil });
+        res.status(403).json({
+          error: "You are banned from the chat",
+          bannedUntil: caller.chatBannedUntil
+        });
         return;
       }
       const msgs = await db.select().from(pokescanChatroomMessages).orderBy(desc(pokescanChatroomMessages.createdAt)).limit(200);
@@ -8358,7 +9264,10 @@ Return ONLY valid JSON in exactly this format with no markdown:
         return;
       }
       if (caller.chatBannedUntil && new Date(caller.chatBannedUntil) > /* @__PURE__ */ new Date()) {
-        res.status(403).json({ error: "You are banned from the chat", bannedUntil: caller.chatBannedUntil });
+        res.status(403).json({
+          error: "You are banned from the chat",
+          bannedUntil: caller.chatBannedUntil
+        });
         return;
       }
       if (caller.chatMutedUntil && new Date(caller.chatMutedUntil) > /* @__PURE__ */ new Date()) {
@@ -8384,43 +9293,49 @@ Return ONLY valid JSON in exactly this format with no markdown:
       res.status(500).json({ error: error.message || "Failed to send message" });
     }
   });
-  app2.delete("/api/chatroom/messages/:id", async (req, res) => {
-    try {
-      const token = req.headers.authorization?.replace("Bearer ", "");
-      if (!token) {
-        res.status(401).json({ error: "Unauthorized" });
-        return;
+  app2.delete(
+    "/api/chatroom/messages/:id",
+    async (req, res) => {
+      try {
+        const token = req.headers.authorization?.replace("Bearer ", "");
+        if (!token) {
+          res.status(401).json({ error: "Unauthorized" });
+          return;
+        }
+        const caller = await storage.validateSession(token);
+        if (!caller) {
+          res.status(401).json({ error: "Invalid session" });
+          return;
+        }
+        if (!caller.isPremium && !isStaffRole(caller.role)) {
+          res.status(403).json({ error: "Premium membership required" });
+          return;
+        }
+        if (caller.chatBannedUntil && new Date(caller.chatBannedUntil) > /* @__PURE__ */ new Date() && !isStaffRole(caller.role)) {
+          res.status(403).json({
+            error: "You are banned from the chat",
+            bannedUntil: caller.chatBannedUntil
+          });
+          return;
+        }
+        const msgId = req.params.id;
+        const [existing] = await db.select().from(pokescanChatroomMessages).where(eq3(pokescanChatroomMessages.id, msgId));
+        if (!existing) {
+          res.status(404).json({ error: "Message not found" });
+          return;
+        }
+        if (existing.senderId !== caller.id && !isStaffRole(caller.role)) {
+          res.status(403).json({ error: "Not allowed" });
+          return;
+        }
+        await db.delete(pokescanChatroomMessages).where(eq3(pokescanChatroomMessages.id, msgId));
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Chatroom delete error:", error);
+        res.status(500).json({ error: error.message || "Failed to delete message" });
       }
-      const caller = await storage.validateSession(token);
-      if (!caller) {
-        res.status(401).json({ error: "Invalid session" });
-        return;
-      }
-      if (!caller.isPremium && !isStaffRole(caller.role)) {
-        res.status(403).json({ error: "Premium membership required" });
-        return;
-      }
-      if (caller.chatBannedUntil && new Date(caller.chatBannedUntil) > /* @__PURE__ */ new Date() && !isStaffRole(caller.role)) {
-        res.status(403).json({ error: "You are banned from the chat", bannedUntil: caller.chatBannedUntil });
-        return;
-      }
-      const msgId = req.params.id;
-      const [existing] = await db.select().from(pokescanChatroomMessages).where(eq3(pokescanChatroomMessages.id, msgId));
-      if (!existing) {
-        res.status(404).json({ error: "Message not found" });
-        return;
-      }
-      if (existing.senderId !== caller.id && !isStaffRole(caller.role)) {
-        res.status(403).json({ error: "Not allowed" });
-        return;
-      }
-      await db.delete(pokescanChatroomMessages).where(eq3(pokescanChatroomMessages.id, msgId));
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Chatroom delete error:", error);
-      res.status(500).json({ error: error.message || "Failed to delete message" });
     }
-  });
+  );
   app2.post("/api/chatroom/mute", async (req, res) => {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
@@ -8452,7 +9367,10 @@ Return ONLY valid JSON in exactly this format with no markdown:
         return;
       }
       const mutedUntil = new Date(Date.now() + minutes * 60 * 1e3);
-      await pool3.query("UPDATE pokescan_users SET chat_muted_until = $1 WHERE id = $2", [mutedUntil, userId]);
+      await pool3.query(
+        "UPDATE pokescan_users SET chat_muted_until = $1 WHERE id = $2",
+        [mutedUntil, userId]
+      );
       res.json({ success: true, mutedUntil: mutedUntil.toISOString() });
     } catch (error) {
       console.error("Mute error:", error);
@@ -8480,7 +9398,10 @@ Return ONLY valid JSON in exactly this format with no markdown:
         res.status(400).json({ error: "userId required" });
         return;
       }
-      await pool3.query("UPDATE pokescan_users SET chat_muted_until = NULL WHERE id = $1", [userId]);
+      await pool3.query(
+        "UPDATE pokescan_users SET chat_muted_until = NULL WHERE id = $1",
+        [userId]
+      );
       res.json({ success: true });
     } catch (error) {
       console.error("Unmute error:", error);
@@ -8518,7 +9439,10 @@ Return ONLY valid JSON in exactly this format with no markdown:
         return;
       }
       const bannedUntil = new Date(Date.now() + minutes * 60 * 1e3);
-      await pool3.query("UPDATE pokescan_users SET chat_banned_until = $1 WHERE id = $2", [bannedUntil, userId]);
+      await pool3.query(
+        "UPDATE pokescan_users SET chat_banned_until = $1 WHERE id = $2",
+        [bannedUntil, userId]
+      );
       res.json({ success: true, bannedUntil: bannedUntil.toISOString() });
     } catch (error) {
       console.error("Ban error:", error);
@@ -8546,7 +9470,10 @@ Return ONLY valid JSON in exactly this format with no markdown:
         res.status(400).json({ error: "userId required" });
         return;
       }
-      await pool3.query("UPDATE pokescan_users SET chat_banned_until = NULL WHERE id = $1", [userId]);
+      await pool3.query(
+        "UPDATE pokescan_users SET chat_banned_until = NULL WHERE id = $1",
+        [userId]
+      );
       res.json({ success: true });
     } catch (error) {
       console.error("Unban error:", error);
@@ -8559,7 +9486,10 @@ Return ONLY valid JSON in exactly this format with no markdown:
       return;
     }
     const page = Math.max(1, parseInt(req.query.page || "1", 10));
-    const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || "50", 10)));
+    const pageSize = Math.min(
+      100,
+      Math.max(1, parseInt(req.query.pageSize || "50", 10))
+    );
     const search = (req.query.search || "").trim();
     const setIdFilter = (req.query.setId || "").trim();
     const trash = req.query.trash === "1";
@@ -8569,11 +9499,20 @@ Return ONLY valid JSON in exactly this format with no markdown:
     if (search && setIdFilter) {
       condition = and3(
         deletedFilter,
-        or2(ilike(pokemonCards.name, `%${search}%`), ilike(pokemonCards.id, `%${search}%`)),
+        or2(
+          ilike(pokemonCards.name, `%${search}%`),
+          ilike(pokemonCards.id, `%${search}%`)
+        ),
         eq3(pokemonCards.setId, setIdFilter)
       );
     } else if (search) {
-      condition = and3(deletedFilter, or2(ilike(pokemonCards.name, `%${search}%`), ilike(pokemonCards.id, `%${search}%`)));
+      condition = and3(
+        deletedFilter,
+        or2(
+          ilike(pokemonCards.name, `%${search}%`),
+          ilike(pokemonCards.id, `%${search}%`)
+        )
+      );
     } else if (setIdFilter) {
       condition = and3(deletedFilter, eq3(pokemonCards.setId, setIdFilter));
     } else {
@@ -8599,7 +9538,12 @@ Return ONLY valid JSON in exactly this format with no markdown:
         deletedAt: pokemonCards.deletedAt
       }).from(pokemonCards).leftJoin(pokemonSets, eq3(pokemonCards.setId, pokemonSets.id)).where(condition).orderBy(pokemonCards.number).limit(pageSize).offset(offset)
     ]);
-    res.json({ cards: rows, total: countResult[0]?.count ?? 0, page, pageSize });
+    res.json({
+      cards: rows,
+      total: countResult[0]?.count ?? 0,
+      page,
+      pageSize
+    });
   });
   app2.patch("/api/admin/db/cards/:id", async (req, res) => {
     if (!await isSuperadminSessionOnly(req)) {
@@ -8607,7 +9551,18 @@ Return ONLY valid JSON in exactly this format with no markdown:
       return;
     }
     const { id } = req.params;
-    const { name, number, rarity, imageSmall, imageLarge, artist, hp, supertype, subtypes, description } = req.body;
+    const {
+      name,
+      number,
+      rarity,
+      imageSmall,
+      imageLarge,
+      artist,
+      hp,
+      supertype,
+      subtypes,
+      description
+    } = req.body;
     const updates = {};
     if (typeof name === "string") {
       if (!name.trim()) {
@@ -8617,14 +9572,22 @@ Return ONLY valid JSON in exactly this format with no markdown:
       updates.name = name.trim();
     }
     if (typeof number === "string") updates.number = number.trim() || void 0;
-    if (Object.prototype.hasOwnProperty.call(req.body, "rarity")) updates.rarity = typeof rarity === "string" ? rarity.trim() || null : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "imageSmall")) updates.image_small = typeof imageSmall === "string" ? imageSmall.trim() || null : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "imageLarge")) updates.image_large = typeof imageLarge === "string" ? imageLarge.trim() || null : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "artist")) updates.artist = typeof artist === "string" ? artist.trim() || null : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "hp")) updates.hp = typeof hp === "string" ? hp.trim() || null : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "supertype")) updates.supertype = typeof supertype === "string" ? supertype.trim() || null : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "subtypes")) updates.subtypes = typeof subtypes === "string" ? subtypes.trim() || null : null;
-    if (Object.prototype.hasOwnProperty.call(req.body, "description")) updates.description = typeof description === "string" ? description.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "rarity"))
+      updates.rarity = typeof rarity === "string" ? rarity.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "imageSmall"))
+      updates.image_small = typeof imageSmall === "string" ? imageSmall.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "imageLarge"))
+      updates.image_large = typeof imageLarge === "string" ? imageLarge.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "artist"))
+      updates.artist = typeof artist === "string" ? artist.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "hp"))
+      updates.hp = typeof hp === "string" ? hp.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "supertype"))
+      updates.supertype = typeof supertype === "string" ? supertype.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "subtypes"))
+      updates.subtypes = typeof subtypes === "string" ? subtypes.trim() || null : null;
+    if (Object.prototype.hasOwnProperty.call(req.body, "description"))
+      updates.description = typeof description === "string" ? description.trim() || null : null;
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ error: "No valid fields to update" });
       return;
@@ -8632,14 +9595,22 @@ Return ONLY valid JSON in exactly this format with no markdown:
     const drizzleUpdates = {};
     if (updates.name !== void 0) drizzleUpdates.name = updates.name;
     if (updates.number !== void 0) drizzleUpdates.number = updates.number;
-    if (Object.prototype.hasOwnProperty.call(updates, "rarity")) drizzleUpdates.rarity = updates.rarity;
-    if (Object.prototype.hasOwnProperty.call(updates, "image_small")) drizzleUpdates.imageSmall = updates.image_small;
-    if (Object.prototype.hasOwnProperty.call(updates, "image_large")) drizzleUpdates.imageLarge = updates.image_large;
-    if (Object.prototype.hasOwnProperty.call(updates, "artist")) drizzleUpdates.artist = updates.artist;
-    if (Object.prototype.hasOwnProperty.call(updates, "hp")) drizzleUpdates.hp = updates.hp;
-    if (Object.prototype.hasOwnProperty.call(updates, "supertype")) drizzleUpdates.supertype = updates.supertype;
-    if (Object.prototype.hasOwnProperty.call(updates, "subtypes")) drizzleUpdates.subtypes = updates.subtypes;
-    if (Object.prototype.hasOwnProperty.call(updates, "description")) drizzleUpdates.description = updates.description;
+    if (Object.prototype.hasOwnProperty.call(updates, "rarity"))
+      drizzleUpdates.rarity = updates.rarity;
+    if (Object.prototype.hasOwnProperty.call(updates, "image_small"))
+      drizzleUpdates.imageSmall = updates.image_small;
+    if (Object.prototype.hasOwnProperty.call(updates, "image_large"))
+      drizzleUpdates.imageLarge = updates.image_large;
+    if (Object.prototype.hasOwnProperty.call(updates, "artist"))
+      drizzleUpdates.artist = updates.artist;
+    if (Object.prototype.hasOwnProperty.call(updates, "hp"))
+      drizzleUpdates.hp = updates.hp;
+    if (Object.prototype.hasOwnProperty.call(updates, "supertype"))
+      drizzleUpdates.supertype = updates.supertype;
+    if (Object.prototype.hasOwnProperty.call(updates, "subtypes"))
+      drizzleUpdates.subtypes = updates.subtypes;
+    if (Object.prototype.hasOwnProperty.call(updates, "description"))
+      drizzleUpdates.description = updates.description;
     const [updated] = await db.update(pokemonCards).set(drizzleUpdates).where(and3(eq3(pokemonCards.id, id), isNull2(pokemonCards.deletedAt))).returning();
     if (!updated) {
       res.status(404).json({ error: "Card not found" });
@@ -8653,12 +9624,21 @@ Return ONLY valid JSON in exactly this format with no markdown:
       return;
     }
     const page = Math.max(1, parseInt(req.query.page || "1", 10));
-    const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize || "50", 10)));
+    const pageSize = Math.min(
+      50,
+      Math.max(1, parseInt(req.query.pageSize || "50", 10))
+    );
     const search = (req.query.search || "").trim();
     const trash = req.query.trash === "1";
     const offset = (page - 1) * pageSize;
     const deletedFilter = trash ? isNotNull(pokemonSets.deletedAt) : isNull2(pokemonSets.deletedAt);
-    const condition = search ? and3(deletedFilter, or2(ilike(pokemonSets.name, `%${search}%`), ilike(pokemonSets.id, `%${search}%`))) : deletedFilter;
+    const condition = search ? and3(
+      deletedFilter,
+      or2(
+        ilike(pokemonSets.name, `%${search}%`),
+        ilike(pokemonSets.id, `%${search}%`)
+      )
+    ) : deletedFilter;
     const [countResult, sets] = await Promise.all([
       db.select({ count: sql4`count(*)::int` }).from(pokemonSets).where(condition),
       db.select({
@@ -8670,7 +9650,13 @@ Return ONLY valid JSON in exactly this format with no markdown:
         total: pokemonSets.total,
         deletedAt: pokemonSets.deletedAt,
         cardCount: sql4`count(${pokemonCards.id})::int`
-      }).from(pokemonSets).leftJoin(pokemonCards, and3(eq3(pokemonCards.setId, pokemonSets.id), isNull2(pokemonCards.deletedAt))).where(condition).groupBy(pokemonSets.id).orderBy(desc(pokemonSets.releaseDate)).limit(pageSize).offset(offset)
+      }).from(pokemonSets).leftJoin(
+        pokemonCards,
+        and3(
+          eq3(pokemonCards.setId, pokemonSets.id),
+          isNull2(pokemonCards.deletedAt)
+        )
+      ).where(condition).groupBy(pokemonSets.id).orderBy(desc(pokemonSets.releaseDate)).limit(pageSize).offset(offset)
     ]);
     res.json({ sets, total: countResult[0]?.count ?? 0, page, pageSize });
   });
@@ -8689,7 +9675,8 @@ Return ONLY valid JSON in exactly this format with no markdown:
       }
       updates.name = name.trim();
     }
-    if (typeof releaseDate === "string") updates.releaseDate = releaseDate.trim() || null;
+    if (typeof releaseDate === "string")
+      updates.releaseDate = releaseDate.trim() || null;
     if (typeof hidden === "boolean") updates.hidden = hidden;
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ error: "No valid fields to update" });
@@ -8716,20 +9703,23 @@ Return ONLY valid JSON in exactly this format with no markdown:
     await db.update(pokemonCards).set({ deletedAt: /* @__PURE__ */ new Date() }).where(eq3(pokemonCards.id, id));
     res.json({ success: true });
   });
-  app2.post("/api/admin/db/cards/:id/restore", async (req, res) => {
-    if (!await isSuperadminSessionOnly(req)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
+  app2.post(
+    "/api/admin/db/cards/:id/restore",
+    async (req, res) => {
+      if (!await isSuperadminSessionOnly(req)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const { id } = req.params;
+      const existing = await db.select({ id: pokemonCards.id }).from(pokemonCards).where(and3(eq3(pokemonCards.id, id), isNotNull(pokemonCards.deletedAt))).limit(1);
+      if (existing.length === 0) {
+        res.status(404).json({ error: "Card not found in trash" });
+        return;
+      }
+      await db.update(pokemonCards).set({ deletedAt: null }).where(eq3(pokemonCards.id, id));
+      res.json({ success: true });
     }
-    const { id } = req.params;
-    const existing = await db.select({ id: pokemonCards.id }).from(pokemonCards).where(and3(eq3(pokemonCards.id, id), isNotNull(pokemonCards.deletedAt))).limit(1);
-    if (existing.length === 0) {
-      res.status(404).json({ error: "Card not found in trash" });
-      return;
-    }
-    await db.update(pokemonCards).set({ deletedAt: null }).where(eq3(pokemonCards.id, id));
-    res.json({ success: true });
-  });
+  );
   app2.delete("/api/admin/db/sets/:id", async (req, res) => {
     if (!await isSuperadminSessionOnly(req)) {
       res.status(403).json({ error: "Forbidden" });
@@ -8748,102 +9738,149 @@ Return ONLY valid JSON in exactly this format with no markdown:
     });
     res.json({ success: true });
   });
-  app2.post("/api/admin/db/sets/:id/restore", async (req, res) => {
-    if (!await isSuperadminSessionOnly(req)) {
-      res.status(403).json({ error: "Forbidden" });
-      return;
+  app2.post(
+    "/api/admin/db/sets/:id/restore",
+    async (req, res) => {
+      if (!await isSuperadminSessionOnly(req)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
+      const { id } = req.params;
+      const existing = await db.select({ id: pokemonSets.id }).from(pokemonSets).where(and3(eq3(pokemonSets.id, id), isNotNull(pokemonSets.deletedAt))).limit(1);
+      if (existing.length === 0) {
+        res.status(404).json({ error: "Set not found in trash" });
+        return;
+      }
+      await db.transaction(async (tx) => {
+        await tx.update(pokemonCards).set({ deletedAt: null }).where(
+          and3(eq3(pokemonCards.setId, id), isNotNull(pokemonCards.deletedAt))
+        );
+        await tx.update(pokemonSets).set({ deletedAt: null }).where(eq3(pokemonSets.id, id));
+      });
+      res.json({ success: true });
     }
-    const { id } = req.params;
-    const existing = await db.select({ id: pokemonSets.id }).from(pokemonSets).where(and3(eq3(pokemonSets.id, id), isNotNull(pokemonSets.deletedAt))).limit(1);
-    if (existing.length === 0) {
-      res.status(404).json({ error: "Set not found in trash" });
-      return;
-    }
-    await db.transaction(async (tx) => {
-      await tx.update(pokemonCards).set({ deletedAt: null }).where(and3(eq3(pokemonCards.setId, id), isNotNull(pokemonCards.deletedAt)));
-      await tx.update(pokemonSets).set({ deletedAt: null }).where(eq3(pokemonSets.id, id));
-    });
-    res.json({ success: true });
-  });
+  );
   const ADMIN_DB_TABLES = {
-    pokescan_users: { pk: "id", searchCols: ["username", "email", "display_name"] },
-    pokescan_blocked_credentials: { pk: "id", searchCols: ["email", "mobile_number", "reason"] },
+    pokescan_users: {
+      pk: "id",
+      searchCols: ["username", "email", "display_name"]
+    },
+    pokescan_blocked_credentials: {
+      pk: "id",
+      searchCols: ["email", "mobile_number", "reason"]
+    },
     pokescan_sessions: { pk: "token", searchCols: ["user_id"] },
     pokemon_sets: { pk: "id", searchCols: ["name", "series"] },
     pokemon_cards: { pk: "id", searchCols: ["name", "set_id"] },
     card_pricing: { pk: "id", searchCols: ["card_id"] },
     ebay_prices: { pk: "id", searchCols: ["card_id", "title"] },
-    pokescan_friendships: { pk: "id", searchCols: ["requester_id", "addressee_id", "status"] },
-    pokescan_messages: { pk: "id", searchCols: ["sender_id", "recipient_id", "subject", "body"] },
-    pokescan_reports: { pk: "id", searchCols: ["reason", "content_type", "status"] },
-    pokescan_market_listings: { pk: "id", searchCols: ["card_name", "user_name", "status"] },
-    pokescan_collections: { pk: "id", searchCols: ["card_name", "user_id", "set_name"] },
-    pokescan_chatroom_messages: { pk: "id", searchCols: ["sender_username", "body"] },
-    pokescan_admin_activity_log: { pk: "id", searchCols: ["action", "target_username", "listing_name"] },
-    pokescan_collector_verifications: { pk: "id", searchCols: ["user_id", "card_name", "status"] },
-    pokescan_scan_history: { pk: "id", searchCols: ["card_name", "set_name"] },
+    pokescan_friendships: {
+      pk: "id",
+      searchCols: ["requester_id", "addressee_id", "status"]
+    },
+    pokescan_messages: {
+      pk: "id",
+      searchCols: ["sender_id", "recipient_id", "subject", "body"]
+    },
+    pokescan_reports: {
+      pk: "id",
+      searchCols: ["reason", "content_type", "status"]
+    },
+    pokescan_market_listings: {
+      pk: "id",
+      searchCols: ["card_name", "user_name", "status"]
+    },
+    pokescan_collections: {
+      pk: "id",
+      searchCols: ["card_name", "user_id", "set_name"]
+    },
+    pokescan_chatroom_messages: {
+      pk: "id",
+      searchCols: ["sender_username", "body"]
+    },
+    pokescan_admin_activity_log: {
+      pk: "id",
+      searchCols: ["action", "target_username", "listing_name"]
+    },
+    pokescan_collector_verifications: {
+      pk: "id",
+      searchCols: ["user_id", "card_name", "status"]
+    },
+    pokescan_scan_history: {
+      pk: "id",
+      searchCols: ["card_name", "set_name"]
+    },
     sync_status: { pk: "id", searchCols: [] },
     users: { pk: "id", searchCols: ["username"] }
   };
-  app2.get("/api/admin/db/table/:tableName/schema", async (req, res) => {
-    try {
-      if (!await isSuperadminSessionOnly(req)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-      const { tableName } = req.params;
-      if (!ADMIN_DB_TABLES[tableName]) {
-        return res.status(400).json({ error: "Unknown table" });
-      }
-      const result = await pool3.query(
-        `
+  app2.get(
+    "/api/admin/db/table/:tableName/schema",
+    async (req, res) => {
+      try {
+        if (!await isSuperadminSessionOnly(req)) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+        const { tableName } = req.params;
+        if (!ADMIN_DB_TABLES[tableName]) {
+          return res.status(400).json({ error: "Unknown table" });
+        }
+        const result = await pool3.query(
+          `
                      SELECT column_name, data_type, is_nullable, column_default
                      FROM information_schema.columns
                      WHERE table_name = $1
                      AND table_schema = 'public'
                      ORDER BY ordinal_position
                      `,
-        [tableName]
-      );
-      return res.json({
-        columns: result.rows,
-        pk: ADMIN_DB_TABLES[tableName].pk
-      });
-    } catch (err) {
-      console.error("[ADMIN_DB_SCHEMA]", err);
-      return res.status(500).json({ error: "Internal server error" });
+          [tableName]
+        );
+        return res.json({
+          columns: result.rows,
+          pk: ADMIN_DB_TABLES[tableName].pk
+        });
+      } catch (err) {
+        console.error("[ADMIN_DB_SCHEMA]", err);
+        return res.status(500).json({ error: "Internal server error" });
+      }
     }
-  });
-  app2.get("/api/admin/db/table/:tableName", async (req, res) => {
-    try {
-      if (!await isSuperadminSessionOnly(req)) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-      const { tableName } = req.params;
-      const tbl = ADMIN_DB_TABLES[tableName];
-      if (!tbl) {
-        return res.status(400).json({ error: "Unknown table" });
-      }
-      const page = Math.max(1, parseInt(req.query.page || "1", 10));
-      const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || "50", 10)));
-      const search = (req.query.search || "").trim();
-      const offset = (page - 1) * pageSize;
-      const values = [];
-      let whereClause = "";
-      if (search && tbl.searchCols.length > 0) {
-        const conditions = tbl.searchCols.map(
-          (col, i) => `"${col}"::text ILIKE $${i + 1}`
+  );
+  app2.get(
+    "/api/admin/db/table/:tableName",
+    async (req, res) => {
+      try {
+        if (!await isSuperadminSessionOnly(req)) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+        const { tableName } = req.params;
+        const tbl = ADMIN_DB_TABLES[tableName];
+        if (!tbl) {
+          return res.status(400).json({ error: "Unknown table" });
+        }
+        const page = Math.max(
+          1,
+          parseInt(req.query.page || "1", 10)
         );
-        whereClause = `WHERE (${conditions.join(" OR ")})`;
-        values.push(
-          ...tbl.searchCols.map(() => `%${search}%`)
+        const pageSize = Math.min(
+          100,
+          Math.max(1, parseInt(req.query.pageSize || "50", 10))
         );
-      }
-      const countResult = await pool3.query(
-        `SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`,
-        values
-      );
-      const dataResult = await pool3.query(
-        `
+        const search = (req.query.search || "").trim();
+        const offset = (page - 1) * pageSize;
+        const values = [];
+        let whereClause = "";
+        if (search && tbl.searchCols.length > 0) {
+          const conditions = tbl.searchCols.map(
+            (col, i) => `"${col}"::text ILIKE $${i + 1}`
+          );
+          whereClause = `WHERE (${conditions.join(" OR ")})`;
+          values.push(...tbl.searchCols.map(() => `%${search}%`));
+        }
+        const countResult = await pool3.query(
+          `SELECT COUNT(*) as count FROM "${tableName}" ${whereClause}`,
+          values
+        );
+        const dataResult = await pool3.query(
+          `
                      SELECT *
                      FROM "${tableName}"
                      ${whereClause}
@@ -8851,19 +9888,20 @@ Return ONLY valid JSON in exactly this format with no markdown:
                      LIMIT $${values.length + 1}
                      OFFSET $${values.length + 2}
                      `,
-        [...values, pageSize, offset]
-      );
-      return res.json({
-        rows: dataResult.rows,
-        total: parseInt(countResult.rows[0].count, 10),
-        page,
-        pageSize
-      });
-    } catch (err) {
-      console.error("[ADMIN_DB_TABLE]", err);
-      return res.status(500).json({ error: "Internal server error" });
+          [...values, pageSize, offset]
+        );
+        return res.json({
+          rows: dataResult.rows,
+          total: parseInt(countResult.rows[0].count, 10),
+          page,
+          pageSize
+        });
+      } catch (err) {
+        console.error("[ADMIN_DB_TABLE]", err);
+        return res.status(500).json({ error: "Internal server error" });
+      }
     }
-  });
+  );
   app2.get("/api/admin/db/tables", async (req, res) => {
     try {
       if (!await isSuperadminSessionOnly(req)) {
@@ -8871,9 +9909,7 @@ Return ONLY valid JSON in exactly this format with no markdown:
       }
       const tables = await Promise.all(
         Object.keys(ADMIN_DB_TABLES).map(async (t) => {
-          const r = await pool3.query(
-            `SELECT COUNT(*) as count FROM "${t}"`
-          );
+          const r = await pool3.query(`SELECT COUNT(*) as count FROM "${t}"`);
           return {
             name: t,
             rowCount: parseInt(r.rows[0].count, 10)
@@ -8928,6 +9964,7 @@ init_db();
 import * as fs from "fs";
 import * as path from "path";
 var app = express2();
+app.disable("etag");
 app.get("/api/users", (req, res) => {
   res.json([{ id: 1, email: "test@example.com" }]);
 });
@@ -9091,7 +10128,10 @@ process.on("uncaughtException", (err) => {
   console.error("[Server] Uncaught exception \u2014 keeping process alive:", err);
 });
 process.on("unhandledRejection", (reason) => {
-  console.error("[Server] Unhandled promise rejection \u2014 keeping process alive:", reason);
+  console.error(
+    "[Server] Unhandled promise rejection \u2014 keeping process alive:",
+    reason
+  );
 });
 (async () => {
   setupCors(app);
