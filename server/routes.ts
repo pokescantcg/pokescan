@@ -846,7 +846,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // For non-English sets: serve whatever cards we have (any amount).
           // For English sets: only serve if ≥90% seeded (ensures complete sets).
           const hasCards = totalCount > 0;
-          
 
           // LEFT JOIN so cards without any variant row are still included (older sets).
           // Without this, only cards that have a pokemonCardVariants row would appear.
@@ -7775,11 +7774,29 @@ Return ONLY valid JSON in exactly this format with no markdown:
     }
   });
 
+
+  app.get("/api/admin/resync-status", (_req: Request, res: Response) => {
+    const progress = resyncState.progress || {};
+    const startTime = resyncState.startedAt
+      ? resyncState.startedAt.getTime()
+      : 0;
+
+    return res.json({
+      isRunning: resyncState.running,
+      connectedMonitors: 1,
+      startTime: startTime,
+      setsAdded: progress.setsAdded || 0,
+      variantsAdded: progress.variantsAdded || 0,
+      cardsAdded: progress.cardsAdded || 0,
+      pricesAdded: progress.pricesAdded || 0,
+      timestamp: Date.now(),
+    });
+  });
+
   // ─────────────────────────────────────────────────────────────────────────────
   // HTTP SERVER
   // MARKER: HTTP_SERVER
   // ─────────────────────────────────────────────────────────────────────────────
-
   const httpServer = createServer(app);
 
   // ─────────────────────────────────────────────────────────────────────────────

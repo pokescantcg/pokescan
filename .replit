@@ -3,7 +3,7 @@ modules = ["node", "nodejs-20", "nodejs-22", "postgresql-16", "python-3.11"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["lsof"]
+packages = ["lsof", "try"]
 
 [deployment]
 deploymentTarget = "autoscale"
