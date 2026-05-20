@@ -13,8 +13,7 @@ import {
   Linking,
 } from "react-native";
 
-// ── Replace with your actual API base URL env/config ─────────
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? "";
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? "https://pokemon-card-scan.replit.app";
 
 type TrialStatus =
   | { status: "active"; daysLeft: number; hoursLeft: number }
