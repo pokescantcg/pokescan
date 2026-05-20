@@ -43,29 +43,11 @@ function sortCardsByNumber(cards: PokemonCard[]): PokemonCard[] {
 }
 
 const RARITY_ORDER = [
-  "Common",
-  "Uncommon",
-  "Rare",
-  "Rare Holo",
-  "Double Rare",
-  "Amazing Rare",
-  "Rare Holo V",
-  "Rare Holo VMAX",
-  "Rare Holo VSTAR",
-  "Rare Holo EX",
-  "Rare Holo GX",
-  "Trainer Gallery Rare Holo",
-  "ACE SPEC Rare",
-  "Rare Ultra",
-  "Illustration Rare",
-  "Rare Rainbow",
-  "Special Illustration Rare",
-  "Hyper Rare",
-  "Rare Secret",
-  "Rare Shiny",
-  "Rare Shiny GX",
-  "Rare Shining",
-  "Promo",
+  "Common","Uncommon","Rare","Rare Holo","Double Rare","Amazing Rare",
+  "Rare Holo V","Rare Holo VMAX","Rare Holo VSTAR","Rare Holo EX","Rare Holo GX",
+  "Trainer Gallery Rare Holo","ACE SPEC Rare","Rare Ultra","Illustration Rare",
+  "Rare Rainbow","Special Illustration Rare","Hyper Rare","Rare Secret",
+  "Rare Shiny","Rare Shiny GX","Rare Shining","Promo",
 ];
 
 function rarityRank(r: string): number {
@@ -75,24 +57,11 @@ function rarityRank(r: string): number {
 
 function cachedToPokemonCard(c: CachedCard): PokemonCard {
   return {
-    id: c.id,
-    name: c.name,
-    number: c.number,
-    supertype: c.supertype || "Pokémon",
-    rarity: c.rarity,
-    types: c.types,
-    hp: c.hp,
-    artist: c.artist,
-    set: {
-      id: c.setId,
-      name: c.setName,
-      series: "",
-      printedTotal: 0,
-      total: 0,
-      releaseDate: "",
-      updatedAt: "",
-      images: { symbol: "", logo: "" },
-    },
+    id: c.id, name: c.name, number: c.number,
+    supertype: c.supertype || "Pokémon", rarity: c.rarity,
+    types: c.types, hp: c.hp, artist: c.artist,
+    set: { id: c.setId, name: c.setName, series: "", printedTotal: 0,
+      total: 0, releaseDate: "", updatedAt: "", images: { symbol: "", logo: "" } },
     images: { small: c.imageSmall, large: c.imageLarge },
   };
 }
@@ -105,17 +74,70 @@ const CARD_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - GAP * (NUM_COLS - 1)) / NUM_COLS;
 const CARD_IMG_HEIGHT = CARD_WIDTH * 1.4;
 const POKEBALL_GOLD = "#FFD700";
 
+// Maps internal finish_type to human label
+const FINISH_LABELS: Record<string, string> = {
+  normal: "Non-Holo",
+  non_holo: "Non-Holo",
+  holo: "Holo",
+  reverse_holo: "Reverse Holo",
+  cosmos_holo: "Cosmos Holo",
+  cracked_ice: "Cracked Ice",
+  master_ball: "Master Ball",
+  poke_ball: "Poké Ball",
+  staff_stamp: "Staff Stamp",
+  prerelease_stamp: "Prerelease",
+  winner_stamp: "Winner",
+  league_stamp: "League",
+  champion_stamp: "Champion",
+  set_stamp: "Set Stamp",
+};
+
+// Per-variant visual config
+const VARIANT_STYLE: Record<string, {
+  border: string; badge: string; badgeText: string;
+  gradientColors: string[]; showGradient: boolean;
+}> = {
+  holo: {
+    border: "#FFD700",
+    badge: "rgba(255,215,0,0.18)",
+    badgeText: "#FFD700",
+    gradientColors: ["rgba(255,0,200,0.10)","rgba(0,255,255,0.18)","rgba(255,255,0,0.10)"],
+    showGradient: true,
+  },
+  reverse_holo: {
+    border: "#00BFFF",
+    badge: "rgba(0,191,255,0.18)",
+    badgeText: "#00BFFF",
+    gradientColors: ["rgba(0,191,255,0.04)","rgba(120,0,255,0.14)","rgba(0,191,255,0.04)"],
+    showGradient: true,
+  },
+  cosmos_holo: {
+    border: "#B44FFF",
+    badge: "rgba(180,79,255,0.18)",
+    badgeText: "#B44FFF",
+    gradientColors: ["rgba(180,79,255,0.12)","rgba(0,80,255,0.16)","rgba(180,79,255,0.08)"],
+    showGradient: true,
+  },
+  normal: {
+    border: "transparent",
+    badge: "rgba(255,255,255,0.10)",
+    badgeText: "#AAAAAA",
+    gradientColors: [],
+    showGradient: false,
+  },
+};
+
+function getVariantStyle(finishType: string) {
+  return VARIANT_STYLE[finishType] ?? VARIANT_STYLE.normal;
+}
+
 type CardCollectionData = { total: number; variants: Record<string, number> };
 
 const VARIANT_COLORS: Record<string, string> = {
-  Holo: "#FFD700",
-  "Reverse Holo": "#00BFFF",
-  "Non-Holo": "#C0C0C0",
+  Holo: "#FFD700", "Reverse Holo": "#00BFFF", "Non-Holo": "#C0C0C0",
 };
 const VARIANT_LABELS: Record<string, string> = {
-  Holo: "H",
-  "Reverse Holo": "R",
-  "Non-Holo": "N",
+  Holo: "H", "Reverse Holo": "R", "Non-Holo": "N",
 };
 
 function CollectionBadge({ data }: { data: CardCollectionData }) {
@@ -127,25 +149,10 @@ function CollectionBadge({ data }: { data: CardCollectionData }) {
           const label = VARIANT_LABELS[variant] ?? variant[0];
           const color = VARIANT_COLORS[variant] ?? POKEBALL_GOLD;
           return (
-            <View
-              key={variant}
-              style={{ flexDirection: "row", alignItems: "center", gap: 1 }}
-            >
-              <Text
-                style={{ fontSize: 9, fontFamily: "Outfit_700Bold", color }}
-              >
-                {label}
-              </Text>
+            <View key={variant} style={{ flexDirection: "row", alignItems: "center", gap: 1 }}>
+              <Text style={{ fontSize: 9, fontFamily: "Outfit_700Bold", color }}>{label}</Text>
               {qty > 1 && (
-                <Text
-                  style={{
-                    fontSize: 8,
-                    fontFamily: "Outfit_600SemiBold",
-                    color,
-                  }}
-                >
-                  ×{qty}
-                </Text>
+                <Text style={{ fontSize: 8, fontFamily: "Outfit_600SemiBold", color }}>×{qty}</Text>
               )}
             </View>
           );
@@ -156,15 +163,17 @@ function CollectionBadge({ data }: { data: CardCollectionData }) {
 }
 
 function CardGridItem({
-  card,
-  colors,
-  collectionData,
+  card, colors, collectionData,
 }: {
   card: any;
   colors: ReturnType<typeof useThemeColors>;
   collectionData: CardCollectionData | null;
 }) {
   const priceData = getUKPrice(card);
+  const finishType = card.finishType || "normal";
+  const vs = getVariantStyle(finishType);
+  const inCollection = (collectionData?.total ?? 0) > 0;
+  const label = FINISH_LABELS[finishType] || card.variantLabel || finishType;
 
   return (
     <Pressable
@@ -172,144 +181,83 @@ function CardGridItem({
         styles.gridItem,
         {
           backgroundColor: colors.card,
-          borderColor:
-            (collectionData?.total ?? 0) > 0
-              ? POKEBALL_GOLD + "80"
-              : colors.borderLight,
-          borderWidth: (collectionData?.total ?? 0) > 0 ? 1.5 : 1,
+          borderColor: inCollection
+            ? POKEBALL_GOLD + "80"
+            : vs.border !== "transparent"
+            ? vs.border + "60"
+            : colors.borderLight,
+          borderWidth: inCollection || vs.border !== "transparent" ? 1.5 : 1,
           width: CARD_WIDTH,
-          opacity: pressed ? 0.8 : 1,
+          opacity: pressed ? 0.82 : 1,
         },
       ]}
       onPress={() =>
         router.push({
           pathname: "/card/[id]",
-          params: {
-            id: card.id,
-            variant: card.finishType || "Non-Holo",
-          },
+          params: { id: card.id, variant: finishType },
         })
       }
     >
       <View style={{ width: CARD_WIDTH, height: CARD_IMG_HEIGHT }}>
         <Image
           source={{ uri: card.images?.small || "" }}
-          style={[
-            styles.gridImage,
-            { height: CARD_IMG_HEIGHT, width: CARD_WIDTH },
-          ]}
+          style={[styles.gridImage, { height: CARD_IMG_HEIGHT, width: CARD_WIDTH }]}
           contentFit="contain"
           placeholder={{ color: colors.surface }}
           transition={200}
         />
 
-        {card.finishType === "Reverse Holo" && (
+        {/* Variant visual overlay */}
+        {vs.showGradient && (
           <LinearGradient
-            colors={[
-              "rgba(255,255,255,0.03)",
-              "rgba(0,191,255,0.16)",
-              "rgba(255,255,255,0.03)",
-            ]}
+            colors={vs.gradientColors as any}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: 10,
-              opacity: 0.9,
-            }}
+            style={styles.variantOverlay}
             pointerEvents="none"
           />
         )}
 
-        {card.finishType === "Holo" && (
+        {/* Reverse holo diagonal shine stripe */}
+        {finishType === "reverse_holo" && (
           <LinearGradient
-            colors={[
-              "rgba(255,0,255,0.08)",
-              "rgba(0,255,255,0.15)",
-              "rgba(255,255,0,0.08)",
-            ]}
+            colors={["transparent","rgba(180,220,255,0.22)","transparent"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: 10,
-              opacity: 0.85,
-            }}
+            style={[styles.variantOverlay, { opacity: 0.7 }]}
             pointerEvents="none"
           />
         )}
 
-        {card.variantLabel && (
-          <View
-            style={{
-              position: "absolute",
-              bottom: 6,
-              left: 6,
-              backgroundColor: "rgba(0,0,0,0.72)",
-              borderRadius: 8,
-              paddingHorizontal: 6,
-              paddingVertical: 2,
-            }}
-          >
-            <Text
-              style={{
-                color:
-                  card.finishType === "Holo"
-                    ? "#FFD700"
-                    : card.finishType === "Reverse Holo"
-                      ? "#00BFFF"
-                      : "#FFFFFF",
-                fontSize: 9,
-                fontFamily: "Outfit_700Bold",
-              }}
-            >
-              {card.variantLabel}
-            </Text>
-          </View>
+        {/* Holo sparkle edge glow */}
+        {finishType === "holo" && (
+          <LinearGradient
+            colors={["rgba(255,215,0,0.18)","transparent","rgba(255,100,255,0.14)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.variantOverlay, { opacity: 0.8 }]}
+            pointerEvents="none"
+          />
         )}
+
+        {/* Variant badge — always shown */}
+        <View style={[styles.variantBadge, { backgroundColor: vs.badge }]}>
+          <Text style={[styles.variantBadgeText, { color: vs.badgeText }]}>
+            {label}
+          </Text>
+        </View>
 
         {card.isStamped && (
-          <View
-            style={{
-              position: "absolute",
-              top: 6,
-              right: 6,
-              backgroundColor: "rgba(255,215,0,0.22)",
-              borderRadius: 8,
-              paddingHorizontal: 6,
-              paddingVertical: 2,
-            }}
-          >
-            <Text
-              style={{
-                color: "#FFD700",
-                fontSize: 9,
-                fontFamily: "Outfit_700Bold",
-              }}
-            >
-              STAMP
-            </Text>
+          <View style={styles.stampBadge}>
+            <Text style={styles.stampBadgeText}>STAMP</Text>
           </View>
         )}
 
-        {(collectionData?.total ?? 0) > 0 && (
-          <CollectionBadge data={collectionData!} />
-        )}
+        {inCollection && <CollectionBadge data={collectionData!} />}
       </View>
 
       <View style={styles.gridInfo}>
-        <Text
-          style={[styles.gridName, { color: colors.text }]}
-          numberOfLines={2}
-        >
+        <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={2}>
           {card.name}
         </Text>
         <Text style={[styles.gridNumber, { color: colors.textMuted }]}>
@@ -325,26 +273,11 @@ function CardGridItem({
   );
 }
 
-const NON_ENGLISH_PATTERNS = [
-  "_ja",
-  "_ko",
-  "_zh",
-  "_cn",
-  "topsun",
-  "babanuki",
-  "mengka",
-  "oldmaid",
-  "hanafuda",
-];
+const NON_ENGLISH_PATTERNS = ["_ja","_ko","_zh","_cn","topsun","babanuki","mengka","oldmaid","hanafuda"];
 
 function getSetLanguageLabel(setId: string): string {
   const id = (setId || "").toLowerCase();
-  if (
-    ["babanuki", "mengka", "topsun", "oldmaid", "hanafuda"].some((p) =>
-      id.includes(p),
-    )
-  )
-    return "Non-TCG";
+  if (["babanuki","mengka","topsun","oldmaid","hanafuda"].some((p) => id.includes(p))) return "Non-TCG";
   if (id.includes("_ja")) return "Japanese";
   if (id.includes("_ko")) return "Korean";
   if (id.includes("_zh") || id.includes("_cn")) return "Chinese";
@@ -435,9 +368,7 @@ export default function SetDetailScreen() {
               setTotalCount(next.totalCount);
               if (next.cards.length === 0) break;
               pg++;
-            } catch {
-              break;
-            }
+            } catch { break; }
           }
           if (!cancelled) setIsLoadingMore(false);
         }
@@ -451,95 +382,50 @@ export default function SetDetailScreen() {
     };
 
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [id, loadKey]);
 
   const availableRarities = useMemo(() => {
     const seen = new Set<string>();
-    allCards.forEach((c) => {
-      if (c.rarity) seen.add(c.rarity);
-    });
+    allCards.forEach((c) => { if (c.rarity) seen.add(c.rarity); });
     return Array.from(seen).sort((a, b) => rarityRank(a) - rarityRank(b));
   }, [allCards]);
 
+  // Expand each card into one entry per variant — this is what drives the grid
   const expandedCards = useMemo(() => {
-    if (!Array.isArray(allCards)) {
-      return [];
-    }
-
-    return allCards.flatMap((card: any) => {
-      // Safety fallback
-      if (!card || typeof card !== "object") {
-        return [];
-      }
-
+    if (!Array.isArray(allCards)) return [];
+    const expanded = allCards.flatMap((card: any) => {
+      if (!card || typeof card !== "object") return [];
       const variants = Array.isArray(card.variants) ? card.variants : [];
-
-      // No variants fallback
       if (variants.length === 0) {
-        return [
-          {
-            ...card,
-            renderId: `${card.id}-default`,
-            finishType: "normal",
-            variantLabel: "Non-Holo",
-            images: card.images || null,
-          },
-        ];
+        return [{
+          ...card,
+          renderId: `${card.id}-default`,
+          finishType: "normal",
+          variantLabel: "Non-Holo",
+          images: card.images || null,
+        }];
       }
-
-      // Render one entry per variant
       return variants.map((variant: any, index: number) => {
-        const finishType =
-          variant?.finishType || variant?.finish_type || "normal";
-
+        const finishType = variant?.finishType || variant?.finish_type || "normal";
         return {
           ...card,
-
           renderId: variant?.variantId || `${card.id}-${finishType}-${index}`,
-
           variantId: variant?.variantId || null,
-
           finishType,
-
-          variantLabel:
-            FINISH_LABELS?.[finishType] ||
-            variant?.variantLabel ||
-            variant?.variant_label ||
-            finishType,
-
+          variantLabel: FINISH_LABELS[finishType] || variant?.variantLabel || finishType,
           images: variant?.images || card.images || null,
         };
       });
     });
-  }, [allCards]);
 
-  /* =========================================================
-     SAFE CARD LIST
-     ========================================================= */
-
-  const filteredCards = useMemo(() => {
-    const safeCards = allCards.map((card: any) => ({
-      ...card,
-      renderId: `${card.id}-${card.variant || card.variantType || card.finishType || "Non-Holo"}`,
-      finishType:
-        card.finishType || card.variant || card.variantType || "Non-Holo",
-      variantLabel:
-        card.variantLabel ||
-        card.variant ||
-        card.variantType ||
-        card.finishType ||
-        "Non-Holo",
-    }));
-    if (!activeFilter) return safeCards;
-    return safeCards.filter((c: any) => c.rarity === activeFilter);
+    if (!activeFilter) return expanded;
+    return expanded.filter((c: any) => c.rarity === activeFilter);
   }, [allCards, activeFilter]);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
   const loaded = allCards.length;
-  const filteredCount = filteredCards.length;
+  const filteredCount = expandedCards.length;
 
   const renderItem = useCallback(
     ({ item }: { item: any }) => (
@@ -555,11 +441,7 @@ export default function SetDetailScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient
-        colors={
-          colorScheme === "dark"
-            ? ["#2A0A0A", "#1A1A2E"]
-            : ["#FFF0F0", "#F5F5F5"]
-        }
+        colors={colorScheme === "dark" ? ["#2A0A0A","#1A1A2E"] : ["#FFF0F0","#F5F5F5"]}
         style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}
       >
         <View style={styles.headerRow}>
@@ -567,22 +449,13 @@ export default function SetDetailScreen() {
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
           <View style={styles.headerInfo}>
-            <Text
-              style={[styles.headerTitle, { color: colors.text }]}
-              numberOfLines={1}
-            >
+            <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
               {name || "Set"}
             </Text>
             <View style={styles.headerMeta}>
               <View style={styles.headerMetaItem}>
-                <MaterialCommunityIcons
-                  name="cards-outline"
-                  size={13}
-                  color={colors.pokemonRed}
-                />
-                <Text
-                  style={[styles.headerCount, { color: colors.textSecondary }]}
-                >
+                <MaterialCommunityIcons name="cards-outline" size={13} color={colors.pokemonRed} />
+                <Text style={[styles.headerCount, { color: colors.textSecondary }]}>
                   {activeFilter
                     ? `${filteredCount} of ${loaded}${totalCount > loaded ? `/${totalCount}` : ""} cards`
                     : `${loaded}${totalCount > 0 ? `/${totalCount}` : ""} cards`}
@@ -590,74 +463,39 @@ export default function SetDetailScreen() {
               </View>
             </View>
           </View>
-          <Pressable
-            onPress={handleRefresh}
-            style={styles.refreshBtn}
-            disabled={isLoading || isRefreshing}
-          >
-            <Ionicons
-              name="refresh"
-              size={20}
-              color={isLoading || isRefreshing ? colors.textMuted : colors.text}
-            />
+          <Pressable onPress={handleRefresh} style={styles.refreshBtn} disabled={isLoading || isRefreshing}>
+            <Ionicons name="refresh" size={20} color={isLoading || isRefreshing ? colors.textMuted : colors.text} />
           </Pressable>
         </View>
 
         {!isLoading && availableRarities.length > 1 && (
           <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.filterScroll}
-            contentContainerStyle={styles.filterContent}
+            horizontal showsHorizontalScrollIndicator={false}
+            style={styles.filterScroll} contentContainerStyle={styles.filterContent}
           >
             <Pressable
-              style={[
-                styles.filterChip,
-                {
-                  backgroundColor: !activeFilter
-                    ? colors.pokemonRed
-                    : colors.surface,
-                  borderColor: !activeFilter
-                    ? colors.pokemonRed
-                    : colors.borderLight,
-                },
-              ]}
+              style={[styles.filterChip, {
+                backgroundColor: !activeFilter ? colors.pokemonRed : colors.surface,
+                borderColor: !activeFilter ? colors.pokemonRed : colors.borderLight,
+              }]}
               onPress={() => setActiveFilter(null)}
             >
-              <Text
-                style={[
-                  styles.filterChipText,
-                  { color: !activeFilter ? "#FFF" : colors.textSecondary },
-                ]}
-              >
+              <Text style={[styles.filterChipText, { color: !activeFilter ? "#FFF" : colors.textSecondary }]}>
                 All
               </Text>
             </Pressable>
-
             {availableRarities.map((rarity) => {
               const active = activeFilter === rarity;
               return (
                 <Pressable
                   key={rarity}
-                  style={[
-                    styles.filterChip,
-                    {
-                      backgroundColor: active
-                        ? colors.pokemonRed
-                        : colors.surface,
-                      borderColor: active
-                        ? colors.pokemonRed
-                        : colors.borderLight,
-                    },
-                  ]}
+                  style={[styles.filterChip, {
+                    backgroundColor: active ? colors.pokemonRed : colors.surface,
+                    borderColor: active ? colors.pokemonRed : colors.borderLight,
+                  }]}
                   onPress={() => setActiveFilter(active ? null : rarity)}
                 >
-                  <Text
-                    style={[
-                      styles.filterChipText,
-                      { color: active ? "#FFF" : colors.textSecondary },
-                    ]}
-                  >
+                  <Text style={[styles.filterChipText, { color: active ? "#FFF" : colors.textSecondary }]}>
                     {rarity}
                   </Text>
                 </Pressable>
@@ -669,18 +507,12 @@ export default function SetDetailScreen() {
 
       {isLoading ? (
         <View style={styles.loadingContainer}>
-          <MaterialCommunityIcons
-            name="pokeball"
-            size={40}
-            color={colors.pokemonRed}
-          />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-            Loading cards...
-          </Text>
+          <MaterialCommunityIcons name="pokeball" size={40} color={colors.pokemonRed} />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading cards...</Text>
         </View>
       ) : (
         <FlatList
-          data={filteredCards}
+          data={expandedCards}
           renderItem={renderItem}
           keyExtractor={(item: any) => item.renderId || item.id}
           numColumns={NUM_COLS}
@@ -689,19 +521,15 @@ export default function SetDetailScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.pokemonRed}
-              colors={[colors.pokemonRed]}
+              refreshing={isRefreshing} onRefresh={handleRefresh}
+              tintColor={colors.pokemonRed} colors={[colors.pokemonRed]}
             />
           }
           ListFooterComponent={
             isLoadingMore ? (
               <View style={styles.footerLoader}>
                 <ActivityIndicator color={colors.pokemonRed} />
-                <Text
-                  style={[styles.footerText, { color: colors.textSecondary }]}
-                >
+                <Text style={[styles.footerText, { color: colors.textSecondary }]}>
                   Loading {totalCount - loaded} more cards...
                 </Text>
               </View>
@@ -710,89 +538,44 @@ export default function SetDetailScreen() {
           ListEmptyComponent={
             hasError ? (
               <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons
-                  name="wifi-off"
-                  size={48}
-                  color={colors.textMuted}
-                />
-                <Text style={[styles.emptyText, { color: colors.text }]}>
-                  Couldn't load cards
+                <MaterialCommunityIcons name="wifi-off" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyText, { color: colors.text }]}>Couldn't load cards</Text>
+                <Text style={[styles.emptySubText, { color: colors.textSecondary }]}>
+                  This set may be unavailable. Pull down or tap refresh to try again.
                 </Text>
-                <Text
-                  style={[styles.emptySubText, { color: colors.textSecondary }]}
-                >
-                  This set may be unavailable. Pull down or tap refresh to try
-                  again.
-                </Text>
-                <Pressable
-                  onPress={handleRefresh}
-                  style={[
-                    styles.retryBtn,
-                    { backgroundColor: colors.pokemonRed },
-                  ]}
-                >
+                <Pressable onPress={handleRefresh} style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}>
                   <Ionicons name="refresh" size={16} color="#FFF" />
                   <Text style={styles.retryBtnText}>Retry</Text>
                 </Pressable>
               </View>
             ) : activeFilter ? (
               <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons
-                  name="filter-outline"
-                  size={48}
-                  color={colors.textMuted}
-                />
-                <Text
-                  style={[styles.emptyText, { color: colors.textSecondary }]}
-                >
+                <MaterialCommunityIcons name="filter-outline" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
                   No {activeFilter} cards in this set
                 </Text>
               </View>
             ) : isNonEnglishSet(id as string) ? (
               <View style={styles.emptyContainer}>
                 <Text style={{ fontSize: 48, textAlign: "center" }}>
-                  {getSetLanguageLabel(id as string) === "Japanese"
-                    ? "🇯🇵"
-                    : getSetLanguageLabel(id as string) === "Korean"
-                      ? "🇰🇷"
-                      : getSetLanguageLabel(id as string) === "Chinese"
-                        ? "🇨🇳"
-                        : "🎴"}
+                  {getSetLanguageLabel(id as string) === "Japanese" ? "🇯🇵"
+                    : getSetLanguageLabel(id as string) === "Korean" ? "🇰🇷"
+                    : getSetLanguageLabel(id as string) === "Chinese" ? "🇨🇳" : "🎴"}
                 </Text>
-                <Text style={[styles.emptyText, { color: colors.text }]}>
-                  {getSetLanguageLabel(id as string)} Set
+                <Text style={[styles.emptyText, { color: colors.text }]}>{getSetLanguageLabel(id as string)} Set</Text>
+                <Text style={[styles.emptySubText, { color: colors.textSecondary }]}>
+                  Individual card data for this set isn't available yet.{"\n\n"}
+                  Use the Scanner tab to identify any card.
                 </Text>
-                <Text
-                  style={[styles.emptySubText, { color: colors.textSecondary }]}
-                >
-                  Individual card data for this set isn't available yet in the
-                  database.{"\n\n"}
-                  Use the Scanner tab to identify any card — the AI will
-                  recognise it and show you its details and UK pricing.
-                </Text>
-                <Pressable
-                  onPress={() => router.push("/(tabs)/scanner")}
-                  style={[
-                    styles.retryBtn,
-                    { backgroundColor: colors.pokemonRed },
-                  ]}
-                >
+                <Pressable onPress={() => router.push("/(tabs)/scanner")} style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}>
                   <Ionicons name="scan-outline" size={16} color="#FFF" />
                   <Text style={styles.retryBtnText}>Open Scanner</Text>
                 </Pressable>
               </View>
             ) : (
               <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons
-                  name="cards-outline"
-                  size={48}
-                  color={colors.textMuted}
-                />
-                <Text
-                  style={[styles.emptyText, { color: colors.textSecondary }]}
-                >
-                  No cards found for this set
-                </Text>
+                <MaterialCommunityIcons name="cards-outline" size={48} color={colors.textMuted} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No cards found for this set</Text>
               </View>
             )
           }
@@ -805,41 +588,16 @@ export default function SetDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 16, paddingBottom: 8 },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 0,
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  headerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 0 },
+  backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   headerInfo: { flex: 1 },
   headerTitle: { fontSize: 20, fontFamily: "Outfit_700Bold" },
-  headerMeta: {
-    flexDirection: "row",
-    gap: 16,
-    alignItems: "center",
-    marginTop: 3,
-  },
+  headerMeta: { flexDirection: "row", gap: 16, alignItems: "center", marginTop: 3 },
   headerMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   headerCount: { fontSize: 13, fontFamily: "Outfit_500Medium" },
   filterScroll: { marginTop: 10, marginHorizontal: -16 },
-  filterContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 6,
-    gap: 8,
-    flexDirection: "row",
-  },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
+  filterContent: { paddingHorizontal: 16, paddingBottom: 6, gap: 8, flexDirection: "row" },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
   filterChipText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
   listContent: { paddingHorizontal: H_PAD, paddingTop: 10 },
   gridRow: { gap: GAP, marginBottom: GAP },
@@ -849,60 +607,28 @@ const styles = StyleSheet.create({
   gridName: { fontSize: 11, fontFamily: "Outfit_600SemiBold", lineHeight: 14 },
   gridNumber: { fontSize: 10, fontFamily: "Outfit_400Regular" },
   gridPrice: { fontSize: 11, fontFamily: "Outfit_700Bold", marginTop: 2 },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 12,
+  variantOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 10 },
+  variantBadge: {
+    position: "absolute", bottom: 6, left: 6,
+    borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
   },
+  variantBadgeText: { fontSize: 9, fontFamily: "Outfit_700Bold" },
+  stampBadge: {
+    position: "absolute", top: 6, right: 6,
+    backgroundColor: "rgba(255,215,0,0.22)",
+    borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
+  },
+  stampBadgeText: { color: "#FFD700", fontSize: 9, fontFamily: "Outfit_700Bold" },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
   loadingText: { fontSize: 14, fontFamily: "Outfit_500Medium" },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingTop: 80,
-    gap: 12,
-  },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 80, gap: 12 },
   emptyText: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
-  emptySubText: {
-    fontSize: 13,
-    fontFamily: "Outfit_400Regular",
-    textAlign: "center",
-    paddingHorizontal: 32,
-  },
-  refreshBtn: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  retryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-    marginTop: 8,
-  },
-  retryBtnText: {
-    color: "#FFF",
-    fontSize: 14,
-    fontFamily: "Outfit_600SemiBold",
-  },
-  footerLoader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 16,
-  },
+  emptySubText: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 32 },
+  refreshBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
+  retryBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginTop: 8 },
+  retryBtnText: { color: "#FFF", fontSize: 14, fontFamily: "Outfit_600SemiBold" },
+  footerLoader: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16 },
   footerText: { fontSize: 13, fontFamily: "Outfit_400Regular" },
   collectionBadge: { position: "absolute", bottom: 4, right: 4 },
-  collectionBadgeInner: {
-    flexDirection: "row",
-    gap: 3,
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-  },
+  collectionBadgeInner: { flexDirection: "row", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" },
 });

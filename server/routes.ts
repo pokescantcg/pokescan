@@ -846,7 +846,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // For non-English sets: serve whatever cards we have (any amount).
           // For English sets: only serve if ≥90% seeded (ensures complete sets).
           const hasCards = totalCount > 0;
-          const fullySeeded = dbCards.length > 0;
+          
 
           // LEFT JOIN so cards without any variant row are still included (older sets).
           // Without this, only cards that have a pokemonCardVariants row would appear.
@@ -868,7 +868,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             )
             .orderBy(pokemonCards.number);
 
-          if (fullySeeded && dbCards.length > 0) {
+          if (hasCards && dbCards.length > 0) {
             const cardMap = new Map();
 
             for (const { card, variant } of dbCards) {
