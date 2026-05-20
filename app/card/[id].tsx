@@ -225,6 +225,38 @@ function SoldPriceBreakdown({
   );
 }
 
+// Get available variants based on TCGPlayer prices in card data
+function getAvailableVariants(card: PokemonCard | null): string[] {
+  if (!card?.tcgplayer?.prices) {
+    return ["Non-Holo", "Holo", "Reverse Holo"];
+  }
+
+  const variants: string[] = [];
+  const prices = card.tcgplayer.prices;
+
+  if (prices.normal) variants.push("Non-Holo");
+  if (prices.holofoil) variants.push("Holo");
+  if (prices.reverseHolofoil) variants.push("Reverse Holo");
+  if (prices["1stEditionNormal"]) variants.push("1st Ed");
+  if (prices["1stEditionHolofoil"]) variants.push("1st Ed Holo");
+
+  return variants.length > 0 ? variants : ["Non-Holo", "Holo", "Reverse Holo"];
+}
+
+// Get the variant icon based on name
+function getVariantIcon(variantName: string): string {
+  const name = variantName.toLowerCase();
+  if (name === "non-holo") return "square-outline";
+  if (name === "holo") return "sparkles";
+  if (name === "reverse holo") return "refresh-circle";
+  if (name.includes("1st")) return "medal-outline";
+  if (name.includes("alt") || name.includes("art")) return "image-outline";
+  if (name.includes("full")) return "expand-outline";
+  if (name.includes("secret")) return "star";
+  if (name.includes("promo")) return "ribbon-outline";
+  return "card-outline";
+}
+
 export default function CardDetailScreen() {
   const { id, variant: routeVariant } = useLocalSearchParams<{
     id: string;
@@ -284,9 +316,7 @@ export default function CardDetailScreen() {
 
   const inCollection = collection.some((c) => c.cardId === id);
 
-  // Sync the selected variant once card data arrives (the URL param is used as
-  // the initial value, but this ensures the card's own finishType takes precedence
-  // when no param was passed or when the card is loaded directly by ID).
+  // Sync the selected variant once card data arrives
   React.useEffect(() => {
     if (!card) return;
     const v =
@@ -601,6 +631,11 @@ export default function CardDetailScreen() {
       ? builtInPrice
       : (ebayFetchedPrice ?? { price: null, source: "" });
 
+  const availableVariants = useMemo(
+    () => getAvailableVariants(card),
+    [card?.tcgplayer],
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View
@@ -627,6 +662,7 @@ export default function CardDetailScreen() {
             source={{ uri: card.images?.large ?? undefined }}
             style={styles.cardImage}
             contentFit="contain"
+            placeholder={{ color: colors.surface }}
           />
         </View>
 
@@ -871,11 +907,8 @@ export default function CardDetailScreen() {
               </Pressable>
             </View>
           </View>
-          {(() => {
-            console.warn("VARIANTS DEBUG:", JSON.stringify(card.variants));
-            return null;
-          })()}
-          {console.log("card.variants:", JSON.stringify(card.variants))}
+
+          {/* FIXED: Card Variant Section */}
           <Text style={[styles.conditionTitle, { color: colors.text }]}>
             Card Variant
           </Text>
@@ -884,34 +917,9 @@ export default function CardDetailScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.variantRow}
           >
-            {(card.variants && card.variants.length > 0
-              ? [
-                  ...new Set(
-                    card.variants.map(
-                      (v: any) => v.variantLabel || v.finishType || "Non-Holo",
-                    ),
-                  ),
-                ]
-              : ["Non-Holo", "Holo", "Reverse Holo"]
-            ).map((v: string) => {
+            {availableVariants.map((v: string) => {
               const active = selectedVariant === v;
-              const iconName =
-                v === "Non-Holo"
-                  ? "square-outline"
-                  : v === "Holo"
-                    ? "sparkles"
-                    : v === "Reverse Holo"
-                      ? "refresh-circle"
-                      : v.toLowerCase().includes("alt") ||
-                          v.toLowerCase().includes("art")
-                        ? "image-outline"
-                        : v.toLowerCase().includes("full")
-                          ? "expand-outline"
-                          : v.toLowerCase().includes("secret")
-                            ? "star"
-                            : v.toLowerCase().includes("promo")
-                              ? "ribbon-outline"
-                              : "card-outline";
+              const iconName = getVariantIcon(v);
               return (
                 <Pressable
                   key={v}
@@ -1003,19 +1011,22 @@ export default function CardDetailScreen() {
                   style={[
                     styles.conditionChip,
                     {
-                      backgroundColor: selected ? "#3498DB" : colors.card,
-                      borderColor: selected ? "#3498DB" : colors.borderLight,
+                      backgroundColor: selected
+                        ? colors.pokemonYellow
+                        : colors.card,
+                      borderColor: selected
+                        ? colors.pokemonYellow
+                        : colors.borderLight,
                     },
                   ]}
-                  onPress={() => {
-                    setGradingCompany(co === "None" ? "" : co);
-                    if (co === "None") setGrade("");
-                  }}
+                  onPress={() => setGradingCompany(co === "None" ? "" : co)}
                 >
                   <Text
                     style={[
                       styles.conditionChipText,
-                      { color: selected ? "#FFF" : colors.textSecondary },
+                      {
+                        color: selected ? "#000" : colors.textSecondary,
+                      },
                     ]}
                   >
                     {co}
@@ -1025,462 +1036,291 @@ export default function CardDetailScreen() {
             })}
           </ScrollView>
 
-          {gradingCompany !== "" && (
-            <View style={{ marginBottom: 10 }}>
-              <TextInput
-                style={{
-                  backgroundColor: colors.card,
-                  borderWidth: 1,
-                  borderColor: grade ? "#3498DB80" : colors.borderLight,
-                  borderRadius: 10,
-                  paddingHorizontal: 12,
-                  paddingVertical: 10,
-                  color: colors.text,
-                  fontFamily: "Outfit_400Regular",
-                  fontSize: 14,
-                }}
-                placeholder={
-                  gradingCompany === "Beckett"
-                    ? "Grade (1–10, e.g. 9.5)"
-                    : "Grade (1–10, e.g. 9)"
-                }
-                placeholderTextColor={colors.textMuted}
-                value={grade}
-                onChangeText={(t) => {
-                  // Allow digits, dot, and single decimal for BGS half-points
-                  const cleaned = t.replace(/[^0-9.]/g, "");
-                  setGrade(cleaned);
-                }}
-                keyboardType="decimal-pad"
-                autoCorrect={false}
-                maxLength={4}
-              />
-              {grade !== "" &&
-                (() => {
-                  const n = parseFloat(grade);
-                  const valid =
-                    !isNaN(n) &&
-                    n >= 1 &&
-                    n <= 10 &&
-                    (gradingCompany === "Beckett"
-                      ? (n * 2) % 1 === 0
-                      : Number.isInteger(n));
+          {gradingCompany && (
+            <>
+              <Text style={[styles.conditionTitle, { color: colors.text }]}>
+                Grade
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.conditionRow}
+              >
+                {["10", "9.5", "9", "8.5", "8", "7.5", "7"].map((g) => {
+                  const selected = g === grade;
                   return (
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        fontFamily: "Outfit_400Regular",
-                        color: valid ? "#27AE60" : colors.pokemonRed,
-                        marginTop: 3,
-                        marginLeft: 4,
-                      }}
+                    <Pressable
+                      key={g}
+                      style={[
+                        styles.conditionChip,
+                        {
+                          backgroundColor: selected
+                            ? colors.pokemonRed
+                            : colors.card,
+                          borderColor: selected
+                            ? colors.pokemonRed
+                            : colors.borderLight,
+                        },
+                      ]}
+                      onPress={() => setGrade(g)}
                     >
-                      {valid
-                        ? `${gradingCompany} ${grade} — valid grade`
-                        : gradingCompany === "Beckett"
-                          ? "Beckett grades: 1–10 in 0.5 steps (e.g. 9, 9.5)"
-                          : "Grade must be a whole number 1–10"}
-                    </Text>
+                      <Text
+                        style={[
+                          styles.conditionChipText,
+                          {
+                            color: selected ? "#FFF" : colors.textSecondary,
+                          },
+                        ]}
+                      >
+                        {g}
+                      </Text>
+                    </Pressable>
                   );
-                })()}
-            </View>
+                })}
+              </ScrollView>
+            </>
           )}
 
-          {gradingCompany !== "" &&
-            grade !== "" &&
-            (() => {
-              const n = parseFloat(grade);
-              const valid = !isNaN(n) && n >= 1 && n <= 10;
-              return valid ? (
-                <View style={{ flexDirection: "row", marginBottom: 8 }}>
-                  <View
-                    style={{
-                      backgroundColor: "#3498DB20",
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderRadius: 8,
-                      flexDirection: "row",
-                      gap: 4,
-                      alignItems: "center",
-                    }}
-                  >
-                    <Ionicons
-                      name="checkmark-circle"
-                      size={12}
-                      color="#3498DB"
-                    />
-                    <Text
-                      style={{
-                        fontSize: 12,
-                        fontFamily: "Outfit_600SemiBold",
-                        color: "#3498DB",
-                      }}
-                    >
-                      Graded {gradingCompany} {grade} will be saved as a
-                      separate entry
-                    </Text>
-                  </View>
-                </View>
-              ) : null;
-            })()}
-
           <View style={styles.actionButtons}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.actionBtn,
-                { opacity: pressed ? 0.85 : 1 },
-              ]}
-              onPress={handleAddToCollection}
+            <LinearGradient
+              colors={
+                colorScheme === "dark"
+                  ? [colors.pokemonRed, colors.pokemonDarkRed]
+                  : [colors.pokemonRed, colors.pokemonDarkRed]
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.actionBtn}
             >
-              <LinearGradient
-                colors={["#CC0000", "#8B0000"]}
+              <Pressable
                 style={styles.actionBtnGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
+                onPress={handleAddToCollection}
               >
-                <Ionicons
-                  name={inCollection ? "checkmark-circle" : "add-circle"}
-                  size={20}
-                  color="#FFF"
-                />
-                <Text style={styles.actionBtnText}>
-                  {inCollection ? "Add Another" : "Add to Collection"}
-                </Text>
-              </LinearGradient>
-            </Pressable>
+                <Ionicons name="add-circle-outline" size={20} color="#FFF" />
+                <Text style={styles.actionBtnText}>Add to Collection</Text>
+              </Pressable>
+            </LinearGradient>
 
             <View style={styles.actionRow}>
               <Pressable
-                style={({ pressed }) => [
+                style={[
                   styles.actionBtnSmall,
-                  {
-                    backgroundColor: colors.success,
-                    opacity: pressed ? 0.85 : 1,
-                  },
+                  { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.pokemonRed },
                 ]}
                 onPress={() => openListingModal("sale")}
               >
-                <Ionicons name="cash-outline" size={18} color="#FFF" />
-                <Text style={styles.actionBtnSmallText}>List for Sale</Text>
+                <Ionicons name="pricetag-outline" size={16} color={colors.pokemonRed} />
+                <Text style={[styles.actionBtnSmallText, { color: colors.pokemonRed }]}>
+                  Sell
+                </Text>
               </Pressable>
               <Pressable
-                style={({ pressed }) => [
+                style={[
                   styles.actionBtnSmall,
-                  {
-                    backgroundColor: colors.pokemonBlue,
-                    opacity: pressed ? 0.85 : 1,
-                  },
+                  { backgroundColor: colors.card, borderWidth: 1.5, borderColor: colors.pokemonBlue },
                 ]}
                 onPress={() => openListingModal("trade")}
               >
-                <Ionicons name="swap-horizontal" size={18} color="#FFF" />
-                <Text style={styles.actionBtnSmallText}>List for Trade</Text>
+                <Ionicons name="swap-horizontal" size={16} color={colors.pokemonBlue} />
+                <Text style={[styles.actionBtnSmallText, { color: colors.pokemonBlue }]}>
+                  Trade
+                </Text>
               </Pressable>
             </View>
           </View>
         </View>
       </ScrollView>
 
-      {/* ── Listing Modal ──────────────────────────────────── */}
+      {/* Listing Modal */}
       <Modal
         visible={listingModalVisible}
         animationType="slide"
-        presentationStyle="pageSheet"
         onRequestClose={() => setListingModalVisible(false)}
       >
         <KeyboardAvoidingView
-          style={{ flex: 1, backgroundColor: colors.background }}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={[styles.container, { backgroundColor: colors.background }]}
         >
           <View
             style={[
-              listingStyles.header,
-              {
-                paddingTop: insets.top + 12,
-                backgroundColor:
-                  listingType === "sale" ? colors.success : colors.pokemonBlue,
-              },
+              styles.header,
+              { paddingTop: (insets.top || webTopInset) + 4 },
             ]}
           >
-            <View style={{ flex: 1 }}>
-              <Text style={listingStyles.modalTitle}>
-                {listingType === "sale" ? "List for Sale" : "List for Trade"}
-              </Text>
-              <Text style={listingStyles.modalSubtitle} numberOfLines={1}>
-                {card?.name}
-              </Text>
-            </View>
             <Pressable
               onPress={() => setListingModalVisible(false)}
-              style={listingStyles.closeBtn}
+              style={styles.backBtn}
             >
-              <Ionicons name="close" size={22} color="#FFF" />
+              <Ionicons name="chevron-back" size={24} color={colors.text} />
             </Pressable>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>
+              Create Listing
+            </Text>
+            <View style={{ width: 36 }} />
           </View>
-
           <ScrollView
-            contentContainerStyle={{ padding: 20, gap: 20, paddingBottom: 40 }}
-            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 16, paddingBottom: 40 }}
           >
-            {/* Price (sale only) */}
-            {listingType === "sale" && (
-              <View>
-                <Text
-                  style={[listingStyles.label, { color: colors.textSecondary }]}
+            <Text style={[listingModalStyles.label, { color: colors.text }]}>
+              Listing Type
+            </Text>
+            <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
+              {(["sale", "trade"] as const).map((type) => (
+                <Pressable
+                  key={type}
+                  style={[
+                    styles.conditionChip,
+                    {
+                      flex: 1,
+                      backgroundColor:
+                        listingType === type ? colors.pokemonRed : colors.card,
+                      borderColor:
+                        listingType === type ? colors.pokemonRed : colors.borderLight,
+                    },
+                  ]}
+                  onPress={() => setListingType(type)}
                 >
-                  Asking Price (£)
+                  <Text
+                    style={[
+                      styles.conditionChipText,
+                      {
+                        color:
+                          listingType === type ? "#FFF" : colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {type === "sale" ? "For Sale" : "For Trade"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {listingType === "sale" && (
+              <>
+                <Text style={[listingModalStyles.label, { color: colors.text }]}>
+                  Price (GBP)
                 </Text>
                 <TextInput
                   style={[
-                    listingStyles.input,
+                    listingModalStyles.input,
                     {
                       backgroundColor: colors.card,
-                      color: colors.text,
                       borderColor: colors.borderLight,
+                      color: colors.text,
                     },
                   ]}
+                  placeholder="0.00"
+                  placeholderTextColor={colors.textMuted}
+                  keyboardType="decimal-pad"
                   value={listingPrice}
                   onChangeText={setListingPrice}
-                  keyboardType="decimal-pad"
-                  placeholder="e.g. 9.99"
-                  placeholderTextColor={colors.textMuted}
                 />
-              </View>
+              </>
             )}
 
-            {/* Description */}
-            <View>
-              <Text
-                style={[listingStyles.label, { color: colors.textSecondary }]}
-              >
-                Description (optional)
-              </Text>
-              <TextInput
-                style={[
-                  listingStyles.input,
-                  listingStyles.textArea,
-                  {
-                    backgroundColor: colors.card,
-                    color: colors.text,
-                    borderColor: colors.borderLight,
-                  },
-                ]}
-                value={listingDescription}
-                onChangeText={setListingDescription}
-                placeholder="Describe the card's condition, any extras included, etc."
-                placeholderTextColor={colors.textMuted}
-                multiline
-                numberOfLines={3}
-              />
-            </View>
-
-            {/* External listing URL */}
-            <View>
-              <Text
-                style={[listingStyles.label, { color: colors.textSecondary }]}
-              >
-                External Listing URL (optional)
-              </Text>
-              <Text
-                style={{
-                  fontSize: 11,
-                  color: colors.textMuted,
-                  fontFamily: "Outfit_400Regular",
-                  marginBottom: 6,
-                }}
-              >
-                Link buyers to your eBay, Vinted, or other listing
-              </Text>
-              <TextInput
-                style={[
-                  listingStyles.input,
-                  {
-                    backgroundColor: colors.card,
-                    color: colors.text,
-                    borderColor: colors.borderLight,
-                  },
-                ]}
-                value={listingExternalUrl}
-                onChangeText={setListingExternalUrl}
-                placeholder="https://www.ebay.co.uk/itm/..."
-                placeholderTextColor={colors.textMuted}
-                autoCapitalize="none"
-                keyboardType="url"
-              />
-            </View>
-
-            {/* Photos */}
-            <View>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 10,
-                }}
-              >
-                <Text
-                  style={[listingStyles.label, { color: colors.textSecondary }]}
-                >
-                  Your Photos ({listingPhotos.length}/6)
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 11,
-                    color: colors.textMuted,
-                    fontFamily: "Outfit_400Regular",
-                  }}
-                >
-                  So buyers can see the actual card
-                </Text>
-              </View>
-
-              {/* Photo grid */}
-              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-                {listingPhotos.map((uri, idx) => (
-                  <View key={idx} style={listingStyles.photoThumb}>
-                    <Image
-                      source={{ uri }}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        borderRadius: 10,
-                      }}
-                      contentFit="cover"
-                    />
-                    <Pressable
-                      style={listingStyles.photoRemoveBtn}
-                      onPress={() => removePhoto(idx)}
-                    >
-                      <Ionicons name="close-circle" size={20} color="#FFF" />
-                    </Pressable>
-                  </View>
-                ))}
-                {listingPhotos.length < 6 && (
-                  <View style={{ gap: 8 }}>
-                    <Pressable
-                      style={[
-                        listingStyles.photoAddBtn,
-                        {
-                          borderColor: colors.borderLight,
-                          backgroundColor: colors.card,
-                        },
-                      ]}
-                      onPress={pickPhoto}
-                    >
-                      <Ionicons
-                        name="images-outline"
-                        size={22}
-                        color={colors.textSecondary}
-                      />
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: colors.textMuted,
-                          fontFamily: "Outfit_500Medium",
-                        }}
-                      >
-                        Library
-                      </Text>
-                    </Pressable>
-                    <Pressable
-                      style={[
-                        listingStyles.photoAddBtn,
-                        {
-                          borderColor: colors.borderLight,
-                          backgroundColor: colors.card,
-                        },
-                      ]}
-                      onPress={takePhoto}
-                    >
-                      <Ionicons
-                        name="camera-outline"
-                        size={22}
-                        color={colors.textSecondary}
-                      />
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: colors.textMuted,
-                          fontFamily: "Outfit_500Medium",
-                        }}
-                      >
-                        Camera
-                      </Text>
-                    </Pressable>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            {/* Condition reminder */}
-            <View
+            <Text style={[listingModalStyles.label, { color: colors.text }]}>
+              Description
+            </Text>
+            <TextInput
               style={[
-                listingStyles.conditionReminder,
+                listingModalStyles.input,
+                listingModalStyles.textArea,
                 {
                   backgroundColor: colors.card,
                   borderColor: colors.borderLight,
+                  color: colors.text,
                 },
               ]}
-            >
-              <Ionicons
-                name="information-circle-outline"
-                size={16}
-                color={colors.textMuted}
-              />
-              <Text
-                style={{
-                  flex: 1,
-                  fontSize: 12,
-                  color: colors.textMuted,
-                  fontFamily: "Outfit_400Regular",
-                }}
-              >
-                Listing condition:{" "}
-                <Text
-                  style={{
-                    fontFamily: "Outfit_600SemiBold",
-                    color: colors.text,
-                  }}
-                >
-                  {selectedCondition}
-                </Text>
-                . Change this on the card detail page before listing.
-              </Text>
+              placeholder="Describe the card's condition and any details..."
+              placeholderTextColor={colors.textMuted}
+              multiline
+              value={listingDescription}
+              onChangeText={setListingDescription}
+            />
+
+            <Text style={[listingModalStyles.label, { color: colors.text }]}>
+              External URL (Optional)
+            </Text>
+            <TextInput
+              style={[
+                listingModalStyles.input,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.borderLight,
+                  color: colors.text,
+                },
+              ]}
+              placeholder="https://..."
+              placeholderTextColor={colors.textMuted}
+              keyboardType="url"
+              value={listingExternalUrl}
+              onChangeText={setListingExternalUrl}
+            />
+
+            <Text style={[listingModalStyles.label, { color: colors.text }]}>
+              Photos
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+              {listingPhotos.map((photo, i) => (
+                <View key={i} style={listingModalStyles.photoThumb}>
+                  <Image
+                    source={{ uri: photo }}
+                    style={{ width: "100%", height: "100%" }}
+                    contentFit="cover"
+                  />
+                  <Pressable
+                    style={listingModalStyles.photoRemoveBtn}
+                    onPress={() => removePhoto(i)}
+                  >
+                    <Ionicons name="close" size={16} color="#FFF" />
+                  </Pressable>
+                </View>
+              ))}
+              {listingPhotos.length < 6 && (
+                <>
+                  <Pressable
+                    style={[
+                      listingModalStyles.photoAddBtn,
+                      {
+                        borderColor: colors.borderLight,
+                        backgroundColor: colors.card,
+                      },
+                    ]}
+                    onPress={pickPhoto}
+                  >
+                    <Ionicons name="image" size={20} color={colors.textMuted} />
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      listingModalStyles.photoAddBtn,
+                      {
+                        borderColor: colors.borderLight,
+                        backgroundColor: colors.card,
+                      },
+                    ]}
+                    onPress={takePhoto}
+                  >
+                    <Ionicons name="camera" size={20} color={colors.textMuted} />
+                  </Pressable>
+                </>
+              )}
             </View>
 
-            {/* Submit */}
             <Pressable
-              style={({ pressed }) => [
-                listingStyles.submitBtn,
-                {
-                  backgroundColor:
-                    listingType === "sale"
-                      ? colors.success
-                      : colors.pokemonBlue,
-                  opacity: pressed || listingLoading ? 0.8 : 1,
-                },
+              style={[
+                listingModalStyles.submitBtn,
+                { backgroundColor: colors.pokemonRed },
               ]}
               onPress={submitListing}
               disabled={listingLoading}
             >
               {listingLoading ? (
-                <ActivityIndicator color="#FFF" />
+                <ActivityIndicator size="small" color="#FFF" />
               ) : (
                 <>
-                  <Ionicons
-                    name={
-                      listingType === "sale"
-                        ? "cash-outline"
-                        : "swap-horizontal"
-                    }
-                    size={20}
-                    color="#FFF"
-                  />
-                  <Text style={listingStyles.submitBtnText}>
-                    {listingType === "sale"
-                      ? "Publish Listing"
-                      : "List for Trade"}
+                  <Ionicons name="checkmark" size={18} color="#FFF" />
+                  <Text style={listingModalStyles.submitBtnText}>
+                    Create Listing
                   </Text>
                 </>
               )}
@@ -1492,27 +1332,7 @@ export default function CardDetailScreen() {
   );
 }
 
-const listingStyles = StyleSheet.create({
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    gap: 12,
-  },
-  modalTitle: { fontSize: 20, fontFamily: "Outfit_700Bold", color: "#FFF" },
-  modalSubtitle: {
-    fontSize: 13,
-    fontFamily: "Outfit_400Regular",
-    color: "rgba(255,255,255,0.8)",
-    marginTop: 2,
-  },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+const listingModalStyles = StyleSheet.create({
   label: { fontSize: 13, fontFamily: "Outfit_600SemiBold", marginBottom: 6 },
   input: {
     borderRadius: 10,
@@ -1521,6 +1341,7 @@ const listingStyles = StyleSheet.create({
     paddingVertical: 11,
     fontSize: 15,
     fontFamily: "Outfit_400Regular",
+    marginBottom: 16,
   },
   textArea: { minHeight: 80, textAlignVertical: "top", paddingTop: 11 },
   photoThumb: {
@@ -1539,7 +1360,7 @@ const listingStyles = StyleSheet.create({
   },
   photoAddBtn: {
     width: 90,
-    height: 40,
+    height: 90,
     borderRadius: 10,
     borderWidth: 1.5,
     borderStyle: "dashed",
@@ -1548,14 +1369,6 @@ const listingStyles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
   },
-  conditionReminder: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 8,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
   submitBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -1563,6 +1376,7 @@ const listingStyles = StyleSheet.create({
     gap: 10,
     paddingVertical: 16,
     borderRadius: 14,
+    marginTop: 10,
   },
   submitBtnText: { fontSize: 16, fontFamily: "Outfit_700Bold", color: "#FFF" },
 });
@@ -1666,7 +1480,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   variantChipText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
-  conditionRow: { gap: 8 },
+  conditionRow: { gap: 8, marginBottom: 16 },
   conditionChip: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -1674,14 +1488,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   conditionChipText: { fontSize: 13, fontFamily: "Outfit_500Medium" },
-  actionButtons: { gap: 10 },
-  actionBtn: {},
+  actionButtons: { gap: 10, marginTop: 8 },
+  actionBtn: { borderRadius: 14, overflow: "hidden" },
   actionBtnGradient: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 16,
-    borderRadius: 14,
     gap: 8,
   },
   actionBtnText: {
@@ -1702,7 +1515,6 @@ const styles = StyleSheet.create({
   actionBtnSmallText: {
     fontSize: 13,
     fontFamily: "Outfit_600SemiBold",
-    color: "#FFF",
   },
   loadingContainer: {
     flex: 1,

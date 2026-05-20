@@ -269,7 +269,6 @@ function CardGridItem({
           opacity: pressed ? 0.82 : 1,
         },
       ]}
-      // KEEP ORIGINAL: Navigate to card detail page
       onPress={() =>
         router.push({
           pathname: "/card/[id]",
@@ -277,7 +276,7 @@ function CardGridItem({
         })
       }
     >
-      <View style={{ width: CARD_WIDTH, height: CARD_IMG_HEIGHT }}>
+      <View style={[styles.cardImageContainer, { backgroundColor: colors.surface }]}>
         <Image
           source={{ uri: card.images?.small || "" }}
           style={[styles.gridImage, { height: CARD_IMG_HEIGHT, width: CARD_WIDTH }]}
@@ -354,7 +353,7 @@ function CardGridItem({
         <Text style={[styles.gridNumber, { color: colors.textMuted }]}>
           #{card.number}
         </Text>
-        {priceData.price ? (
+        {priceData && priceData.price ? (
           <Text style={[styles.gridPrice, { color: colors.success }]}>
             {formatGBP(priceData.price)}
           </Text>
@@ -671,6 +670,7 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: H_PAD, paddingTop: 10 },
   gridRow: { gap: GAP, marginBottom: GAP },
   gridItem: { borderRadius: 10, borderWidth: 1, overflow: "hidden" },
+  cardImageContainer: { height: CARD_IMG_HEIGHT, width: CARD_WIDTH, borderRadius: 10, overflow: "hidden" },
   gridImage: { borderTopLeftRadius: 9, borderTopRightRadius: 9 },
   gridInfo: { padding: 6, gap: 1 },
   gridName: { fontSize: 11, fontFamily: "Outfit_600SemiBold", lineHeight: 14 },
