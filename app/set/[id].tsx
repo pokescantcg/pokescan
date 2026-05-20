@@ -11,7 +11,6 @@ import {
   Dimensions,
   RefreshControl,
   ScrollView,
-  Modal,
   Animated,
 } from "react-native";
 import { Image } from "expo-image";
@@ -76,6 +75,7 @@ const CARD_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - GAP * (NUM_COLS - 1)) / NUM_COLS;
 const CARD_IMG_HEIGHT = CARD_WIDTH * 1.4;
 const POKEBALL_GOLD = "#FFD700";
 
+// Maps internal finish_type to human label
 const FINISH_LABELS: Record<string, string> = {
   normal: "Non-Holo",
   non_holo: "Non-Holo",
@@ -241,12 +241,11 @@ function AnimatedVariantBadge({
 }
 
 function CardGridItem({
-  card, colors, collectionData, onVariantPress,
+  card, colors, collectionData,
 }: {
   card: any;
   colors: ReturnType<typeof useThemeColors>;
   collectionData: CardCollectionData | null;
-  onVariantPress?: (card: any) => void;
 }) {
   const priceData = getUKPrice(card);
   const finishType = card.finishType || "normal";
@@ -267,43 +266,60 @@ function CardGridItem({
             : colors.borderLight,
           borderWidth: inCollection || vs.border !== "transparent" ? 2 : 1,
           width: CARD_WIDTH,
-          opacity: pressed ? 0.7 : 1,
+          opacity: pressed ? 0.82 : 1,
         },
       ]}
-      onPress={() => onVariantPress?.(card)}
+      // KEEP ORIGINAL: Navigate to card detail page
+      onPress={() =>
+        router.push({
+          pathname: "/card/[id]",
+          params: { id: card.id, variant: finishType },
+        })
+      }
     >
-      <View style={{ position: "relative" }}>
+      <View style={{ width: CARD_WIDTH, height: CARD_IMG_HEIGHT }}>
         <Image
-          source={card.images?.small || ""}
-          style={[styles.gridImage, { width: CARD_WIDTH, height: CARD_IMG_HEIGHT }]}
-          contentFit="cover"
-          placeholder="L4ZR-Z~q^+of00oJodR%00~q^+of"
+          source={{ uri: card.images?.small || "" }}
+          style={[styles.gridImage, { height: CARD_IMG_HEIGHT, width: CARD_WIDTH }]}
+          contentFit="contain"
+          placeholder={{ color: colors.surface }}
+          transition={200}
         />
+
+        {/* Variant visual overlay */}
         {vs.showGradient && (
           <LinearGradient
-            colors={vs.gradientColors}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-            style={[styles.variantOverlay, { borderRadius: 10 }]}
+            colors={vs.gradientColors as any}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.variantOverlay}
             pointerEvents="none"
           />
         )}
-        {vs.animationType === "shimmer" && (
-          <View style={[styles.shimmerEffect, { borderRadius: 10 }]} />
-        )}
-        {vs.animationType === "glow" && (
-          <View style={[styles.glowEffect, { borderRadius: 10, borderColor: vs.accentColor }]} />
-        )}
-        {vs.animationType === "cosmic" && (
-          <View style={[styles.cosmicEffect, { borderRadius: 10 }]} />
-        )}
-        {vs.animationType === "sparkle" && (
-          <>
-            <View style={[styles.sparkle, { top: "20%", left: "20%", backgroundColor: vs.accentColor }]} />
-            <View style={[styles.sparkle, { top: "60%", right: "15%", backgroundColor: vs.accentColor }]} />
-            <View style={[styles.sparkle, { bottom: "20%", left: "10%", backgroundColor: vs.accentColor }]} />
-          </>
+
+        {/* Reverse holo diagonal shine stripe */}
+        {finishType === "reverse_holo" && (
+          <LinearGradient
+            colors={["transparent","rgba(180,220,255,0.22)","transparent"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.variantOverlay, { opacity: 0.7 }]}
+            pointerEvents="none"
+          />
         )}
 
+        {/* Holo sparkle edge glow */}
+        {finishType === "holo" && (
+          <LinearGradient
+            colors={["rgba(255,215,0,0.18)","transparent","rgba(255,100,255,0.14)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.variantOverlay, { opacity: 0.8 }]}
+            pointerEvents="none"
+          />
+        )}
+
+        {/* ENHANCED: Animated Variant badge */}
         {finishType !== "normal" && (
           <AnimatedVariantBadge
             label={label}
@@ -313,215 +329,189 @@ function CardGridItem({
           />
         )}
 
-        {["staff_stamp", "prerelease_stamp", "winner_stamp", "league_stamp", "champion_stamp", "set_stamp"].includes(finishType) && (
-          <View style={[styles.stampBadge, { backgroundColor: "rgba(255,215,0,0.28)" }]}>
-            <MaterialCommunityIcons name="stamp" size={10} color="#FFD700" />
-            <Text style={styles.stampBadgeText}>{label}</Text>
+        {/* Static badge for normal finish */}
+        {finishType === "normal" && (
+          <View style={[styles.variantBadge, { backgroundColor: vs.badge }]}>
+            <Text style={[styles.variantBadgeText, { color: vs.badgeText }]}>
+              {label}
+            </Text>
           </View>
         )}
+
+        {card.isStamped && (
+          <View style={styles.stampBadge}>
+            <Text style={styles.stampBadgeText}>STAMP</Text>
+          </View>
+        )}
+
+        {inCollection && <CollectionBadge data={collectionData!} />}
       </View>
 
       <View style={styles.gridInfo}>
-        <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={1}>
+        <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={2}>
           {card.name}
         </Text>
-        <Text style={[styles.gridNumber, { color: colors.textSecondary }]}>
+        <Text style={[styles.gridNumber, { color: colors.textMuted }]}>
           #{card.number}
         </Text>
-        {priceData && (
-          <Text style={[styles.gridPrice, { color: colors.pokemonRed }]}>
-            {formatGBP(priceData.mid)}
+        {priceData.price ? (
+          <Text style={[styles.gridPrice, { color: colors.success }]}>
+            {formatGBP(priceData.price)}
           </Text>
-        )}
+        ) : null}
       </View>
-
-      {collectionData && <CollectionBadge data={collectionData} />}
     </Pressable>
   );
 }
 
-// Variant Gallery Modal
-function VariantGalleryModal({
-  visible, card, colors, onClose,
-}: {
-  visible: boolean;
-  card: any;
-  colors: ReturnType<typeof useThemeColors>;
-  onClose: () => void;
-}) {
-  const insets = useSafeAreaInsets();
+const NON_ENGLISH_PATTERNS = ["_ja","_ko","_zh","_cn","topsun","babanuki","mengka","oldmaid","hanafuda"];
 
-  // Group variants by finish type
-  const variants = useMemo(() => {
-    if (!card?.variants) return [];
-    return Object.entries(FINISH_LABELS).reduce((acc: any[], [key, label]) => {
-      const variant = card.variants?.[key];
-      if (variant) {
-        acc.push({ key, label, ...variant });
-      }
-      return acc;
-    }, []);
-  }, [card]);
+function getSetLanguageLabel(setId: string): string {
+  const id = (setId || "").toLowerCase();
+  if (["babanuki","mengka","topsun","oldmaid","hanafuda"].some((p) => id.includes(p))) return "Non-TCG";
+  if (id.includes("_ja")) return "Japanese";
+  if (id.includes("_ko")) return "Korean";
+  if (id.includes("_zh") || id.includes("_cn")) return "Chinese";
+  return "";
+}
 
-  return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-        <View style={[styles.modalHeader, { paddingTop: insets.top, borderBottomColor: colors.borderLight }]}>
-          <Text style={[styles.modalTitle, { color: colors.text }]}>
-            {card?.name} Variants
-          </Text>
-          <Pressable onPress={onClose} style={styles.modalCloseBtn}>
-            <Ionicons name="close" size={24} color={colors.text} />
-          </Pressable>
-        </View>
-
-        <ScrollView style={styles.variantGalleryScroll} contentContainerStyle={styles.variantGalleryContent}>
-          {variants.length > 0 ? (
-            variants.map((variant, idx) => {
-              const vs = getVariantStyle(variant.key);
-              return (
-                <View key={idx} style={[styles.variantGalleryItem, { borderColor: colors.borderLight }]}>
-                  <View style={styles.variantGalleryImageContainer}>
-                    <Image
-                      source={variant.images?.large || ""}
-                      style={styles.variantGalleryImage}
-                      contentFit="contain"
-                    />
-                    {vs.showGradient && (
-                      <LinearGradient
-                        colors={vs.gradientColors}
-                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                        style={styles.variantGalleryOverlay}
-                        pointerEvents="none"
-                      />
-                    )}
-                  </View>
-
-                  <View style={styles.variantGalleryInfo}>
-                    <View style={[styles.variantGalleryBadge, { backgroundColor: vs.badge }]}>
-                      <Text style={[styles.variantGalleryBadgeText, { color: vs.badgeText }]}>
-                        {variant.label}
-                      </Text>
-                    </View>
-
-                    {variant.prices && (
-                      <View style={styles.variantPrices}>
-                        {variant.prices.mid && (
-                          <View style={styles.priceRow}>
-                            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Mid Price:</Text>
-                            <Text style={[{ color: colors.pokemonRed, fontSize: 13, fontFamily: "Outfit_700Bold" }]}>
-                              {formatGBP(variant.prices.mid)}
-                            </Text>
-                          </View>
-                        )}
-                        {variant.prices.high && (
-                          <View style={styles.priceRow}>
-                            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>High:</Text>
-                            <Text style={{ color: colors.pokemonRed, fontSize: 13, fontFamily: "Outfit_700Bold" }}>
-                              {formatGBP(variant.prices.high)}
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                </View>
-              );
-            })
-          ) : (
-            <View style={styles.noVariantsContainer}>
-              <Text style={{ color: colors.textSecondary }}>No variants available for this card</Text>
-            </View>
-          )}
-        </ScrollView>
-      </View>
-    </Modal>
-  );
+function isNonEnglishSet(setId: string): boolean {
+  const id = (setId || "").toLowerCase();
+  return NON_ENGLISH_PATTERNS.some((p) => id.includes(p));
 }
 
 export default function SetDetailScreen() {
-  const { id, name } = useLocalSearchParams();
-  const colors = useThemeColors();
+  const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
+  const colorScheme = useColorScheme();
+  const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { user } = useUser();
-  const [cards, setCards] = useState<any[]>([]);
-  const [loaded, setLoaded] = useState(0);
+  const { collection } = useUser();
+
+  const collectionMap = useMemo(() => {
+    const map = new Map<string, CardCollectionData>();
+    for (const item of collection) {
+      const existing = map.get(item.cardId) ?? { total: 0, variants: {} };
+      const v = item.variant || "Non-Holo";
+      existing.total += item.quantity;
+      existing.variants[v] = (existing.variants[v] ?? 0) + item.quantity;
+      map.set(item.cardId, existing);
+    }
+    return map;
+  }, [collection]);
+
+  const [allCards, setAllCards] = useState<PokemonCard[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [loadKey, setLoadKey] = useState(0);
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
-  const [selectedCard, setSelectedCard] = useState<any>(null);
-  const [showVariantModal, setShowVariantModal] = useState(false);
-
-  // ... (keep existing fetchCards, load, refresh logic)
-  const fetchCards = useCallback(async (setId: string) => {
-    try {
-      setIsLoading(true);
-      setHasError(false);
-      const data = await fetchSetCards(setId);
-      if (data) {
-        const sorted = sortCardsByNumber(data.cards);
-        setCards(sorted);
-        setLoaded(sorted.length);
-        setTotalCount(data.total);
-      }
-    } catch (error) {
-      console.error("Error fetching cards:", error);
-      setHasError(true);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (id) fetchCards(id as string);
-  }, [id, fetchCards]);
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
-    fetchCards(id as string).finally(() => setIsRefreshing(false));
-  }, [id, fetchCards]);
-
-  const availableRarities = useMemo(() => {
-    const rarities = [...new Set(cards.map(c => c.rarity))].filter(Boolean);
-    return rarities.sort((a, b) => rarityRank(a) - rarityRank(b));
-  }, [cards]);
-
-  const filteredCount = useMemo(() => {
-    return activeFilter ? cards.filter(c => c.rarity === activeFilter).length : cards.length;
-  }, [cards, activeFilter]);
-
-  const expandedCards = useMemo(() => {
-    let result = cards;
-    if (activeFilter) result = result.filter(c => c.rarity === activeFilter);
-    return result;
-  }, [cards, activeFilter]);
-
-  const handleVariantPress = useCallback((card: any) => {
-    setSelectedCard(card);
-    setShowVariantModal(true);
+    setHasError(false);
+    setAllCards([]);
+    setTotalCount(0);
+    setActiveFilter(null);
+    setLoadKey((k) => k + 1);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!isRefreshing) setIsLoading(true);
+    setHasError(false);
+
+    const load = async () => {
+      if (Platform.OS !== "web" && !isRefreshing) {
+        try {
+          const { getSetCardsFromCache } = await import("@/lib/card-cache");
+          const cached = await getSetCardsFromCache(id as string);
+          if (!cancelled && cached.length > 0) {
+            const cards = sortCardsByNumber(cached.map(cachedToPokemonCard));
+            setAllCards(cards);
+            setTotalCount(cards.length);
+            setIsLoading(false);
+            setIsRefreshing(false);
+            return;
+          }
+        } catch {}
+      }
+
+      try {
+        const result = await fetchSetCards(id as string, 1);
+        if (cancelled) return;
+        setAllCards(sortCardsByNumber(result.cards));
+        setTotalCount(result.totalCount);
+        setIsLoading(false);
+        setIsRefreshing(false);
+
+        if (result.cards.length < result.totalCount) {
+          setIsLoadingMore(true);
+          let pg = 2;
+          let accumulated = [...result.cards];
+          while (!cancelled && accumulated.length < result.totalCount) {
+            try {
+              const next = await fetchSetCards(id as string, pg);
+              if (cancelled) break;
+              accumulated = [...accumulated, ...next.cards];
+              setAllCards(sortCardsByNumber(accumulated));
+              setTotalCount(next.totalCount);
+              if (next.cards.length === 0) break;
+              pg++;
+            } catch { break; }
+          }
+          if (!cancelled) setIsLoadingMore(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setHasError(true);
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
+      }
+    };
+
+    load();
+    return () => { cancelled = true; };
+  }, [id, loadKey]);
+
+  const availableRarities = useMemo(() => {
+    const seen = new Set<string>();
+    allCards.forEach((c) => { if (c.rarity) seen.add(c.rarity); });
+    return Array.from(seen).sort((a, b) => rarityRank(a) - rarityRank(b));
+  }, [allCards]);
+
+  const expandedCards = useMemo(() => {
+    if (!Array.isArray(allCards)) return [];
+    const withRenderIds = allCards.map((card: any) => ({
+      ...card,
+      renderId: card.variantId || card.id,
+    }));
+    if (!activeFilter) return withRenderIds;
+    return withRenderIds.filter((c: any) => c.rarity === activeFilter);
+  }, [allCards, activeFilter]);
+
+  const webTopInset = Platform.OS === "web" ? 67 : 0;
+  const loaded = allCards.length;
+  const filteredCount = expandedCards.length;
+
   const renderItem = useCallback(
-    ({ item: card }: { item: any }) => (
+    ({ item }: { item: any }) => (
       <CardGridItem
-        card={card}
+        card={item}
         colors={colors}
-        collectionData={null}
-        onVariantPress={handleVariantPress}
+        collectionData={collectionMap.get(item.cardId ?? item.id) ?? null}
       />
     ),
-    [colors, handleVariantPress]
+    [colors, collectionMap],
   );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient
-        colors={[colors.surface, colors.background]}
-        start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
-        style={[styles.header, { paddingTop: insets.top }]}
+        colors={colorScheme === "dark" ? ["#2A0A0A","#1A1A2E"] : ["#FFF0F0","#F5F5F5"]}
+        style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}
       >
         <View style={styles.headerRow}>
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
@@ -604,11 +594,24 @@ export default function SetDetailScreen() {
               tintColor={colors.pokemonRed} colors={[colors.pokemonRed]}
             />
           }
+          ListFooterComponent={
+            isLoadingMore ? (
+              <View style={styles.footerLoader}>
+                <ActivityIndicator color={colors.pokemonRed} />
+                <Text style={[styles.footerText, { color: colors.textSecondary }]}>
+                  Loading {totalCount - loaded} more cards...
+                </Text>
+              </View>
+            ) : null
+          }
           ListEmptyComponent={
             hasError ? (
               <View style={styles.emptyContainer}>
                 <MaterialCommunityIcons name="wifi-off" size={48} color={colors.textMuted} />
                 <Text style={[styles.emptyText, { color: colors.text }]}>Couldn't load cards</Text>
+                <Text style={[styles.emptySubText, { color: colors.textSecondary }]}>
+                  This set may be unavailable. Pull down or tap refresh to try again.
+                </Text>
                 <Pressable onPress={handleRefresh} style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}>
                   <Ionicons name="refresh" size={16} color="#FFF" />
                   <Text style={styles.retryBtnText}>Retry</Text>
@@ -621,22 +624,32 @@ export default function SetDetailScreen() {
                   No {activeFilter} cards in this set
                 </Text>
               </View>
+            ) : isNonEnglishSet(id as string) ? (
+              <View style={styles.emptyContainer}>
+                <Text style={{ fontSize: 48, textAlign: "center" }}>
+                  {getSetLanguageLabel(id as string) === "Japanese" ? "🇯🇵"
+                    : getSetLanguageLabel(id as string) === "Korean" ? "🇰🇷"
+                    : getSetLanguageLabel(id as string) === "Chinese" ? "🇨🇳" : "🎴"}
+                </Text>
+                <Text style={[styles.emptyText, { color: colors.text }]}>{getSetLanguageLabel(id as string)} Set</Text>
+                <Text style={[styles.emptySubText, { color: colors.textSecondary }]}>
+                  Individual card data for this set isn't available yet.{"\n\n"}
+                  Use the Scanner tab to identify any card.
+                </Text>
+                <Pressable onPress={() => router.push("/(tabs)/scanner")} style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}>
+                  <Ionicons name="scan-outline" size={16} color="#FFF" />
+                  <Text style={styles.retryBtnText}>Open Scanner</Text>
+                </Pressable>
+              </View>
             ) : (
               <View style={styles.emptyContainer}>
                 <MaterialCommunityIcons name="cards-outline" size={48} color={colors.textMuted} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No cards found</Text>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No cards found for this set</Text>
               </View>
             )
           }
         />
       )}
-
-      <VariantGalleryModal
-        visible={showVariantModal}
-        card={selectedCard}
-        colors={colors}
-        onClose={() => setShowVariantModal(false)}
-      />
     </View>
   );
 }
@@ -653,18 +666,17 @@ const styles = StyleSheet.create({
   headerCount: { fontSize: 13, fontFamily: "Outfit_500Medium" },
   filterScroll: { marginTop: 10, marginHorizontal: -16 },
   filterContent: { paddingHorizontal: 16, paddingBottom: 6, gap: 8, flexDirection: "row" },
-  filterChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5 },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
   filterChipText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
   listContent: { paddingHorizontal: H_PAD, paddingTop: 10 },
   gridRow: { gap: GAP, marginBottom: GAP },
-  gridItem: { borderRadius: 10, borderWidth: 2, overflow: "hidden" },
+  gridItem: { borderRadius: 10, borderWidth: 1, overflow: "hidden" },
   gridImage: { borderTopLeftRadius: 9, borderTopRightRadius: 9 },
-  gridInfo: { padding: 8, gap: 2 },
+  gridInfo: { padding: 6, gap: 1 },
   gridName: { fontSize: 11, fontFamily: "Outfit_600SemiBold", lineHeight: 14 },
-  gridNumber: { fontSize: 9, fontFamily: "Outfit_500Medium" },
-  gridPrice: { fontSize: 11, fontFamily: "Outfit_700Bold", marginTop: 3 },
-  
-  // Enhanced variant badge
+  gridNumber: { fontSize: 10, fontFamily: "Outfit_400Regular" },
+  gridPrice: { fontSize: 11, fontFamily: "Outfit_700Bold", marginTop: 2 },
+  variantOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 10 },
   variantBadge: {
     position: "absolute", bottom: 6, left: 6,
     borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
@@ -672,72 +684,22 @@ const styles = StyleSheet.create({
   },
   variantBadgeText: { fontSize: 9, fontFamily: "Outfit_700Bold" },
   variantDot: { width: 5, height: 5, borderRadius: 2.5 },
-
-  // Animation effects
-  variantOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
-  shimmerEffect: {
-    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-    background: "linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 50%, rgba(255,255,255,0.1) 100%)",
-  },
-  glowEffect: {
-    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-    borderWidth: 2, shadowOpacity: 0.5, shadowRadius: 8, elevation: 8,
-  },
-  cosmicEffect: {
-    position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-    background: "radial-gradient(circle at 30% 30%, rgba(180,79,255,0.2), transparent 70%)",
-  },
-  sparkle: {
-    position: "absolute", width: 4, height: 4, borderRadius: 2,
-    opacity: 0.8,
-  },
-
   stampBadge: {
     position: "absolute", top: 6, right: 6,
+    backgroundColor: "rgba(255,215,0,0.22)",
     borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
-    flexDirection: "row", alignItems: "center", gap: 2,
   },
-  stampBadgeText: { color: "#FFD700", fontSize: 8, fontFamily: "Outfit_700Bold" },
-
-  // Modal styles
-  modalContainer: { flex: 1 },
-  modalHeader: { 
-    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1,
-  },
-  modalTitle: { fontSize: 18, fontFamily: "Outfit_700Bold" },
-  modalCloseBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-
-  variantGalleryScroll: { flex: 1 },
-  variantGalleryContent: { padding: 16, gap: 12 },
-  variantGalleryItem: {
-    borderRadius: 12, borderWidth: 1, overflow: "hidden",
-    flexDirection: "row", minHeight: 180,
-  },
-  variantGalleryImageContainer: {
-    flex: 1, justifyContent: "center", alignItems: "center",
-  },
-  variantGalleryImage: { width: "100%", height: "100%" },
-  variantGalleryOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
-
-  variantGalleryInfo: { flex: 1, padding: 12, justifyContent: "space-between" },
-  variantGalleryBadge: {
-    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
-    alignSelf: "flex-start", marginBottom: 8,
-  },
-  variantGalleryBadgeText: { fontSize: 11, fontFamily: "Outfit_700Bold" },
-
-  variantPrices: { gap: 4 },
-  priceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-
-  noVariantsContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingVertical: 40 },
-
+  stampBadgeText: { color: "#FFD700", fontSize: 9, fontFamily: "Outfit_700Bold" },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
   loadingText: { fontSize: 14, fontFamily: "Outfit_500Medium" },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 80, gap: 12 },
   emptyText: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
+  emptySubText: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 32 },
+  refreshBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   retryBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginTop: 8 },
   retryBtnText: { color: "#FFF", fontSize: 14, fontFamily: "Outfit_600SemiBold" },
+  footerLoader: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16 },
+  footerText: { fontSize: 13, fontFamily: "Outfit_400Regular" },
   collectionBadge: { position: "absolute", bottom: 4, right: 4 },
-  collectionBadgeInner: { flexDirection: "row", gap: 4, flexWrap: "wrap", justifyContent: "flex-end" },
+  collectionBadgeInner: { flexDirection: "row", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" },
 });
