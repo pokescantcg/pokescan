@@ -7773,7 +7773,51 @@ Return ONLY valid JSON in exactly this format with no markdown:
       return res.status(500).json({ error: "Internal server error" });
     }
   });
+  // ADD THIS SECTION to your routes.ts file
+  // Insert it right before the "HTTP SERVER" marker (around line 7779)
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // RESYNC STATUS - For Shell Monitor
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/admin/resync-status", (_req: Request, res: Response) => {
+    // Extract data from existing resyncState
+    const isRunning = resyncState.running;
+    const startTime = resyncState.startedAt
+      ? resyncState.startedAt.getTime()
+      : 0;
+    const elapsed = startTime ? Date.now() - startTime : 0;
+
+    // Get progress data - contains the counts we need
+    const progress = resyncState.progress || {};
+
+    // Extract counts from progress object
+    const setsAdded = progress.setsAdded || progress.setsProcessed || 0;
+    const cardsAdded = progress.cardsAdded || progress.cardsProcessed || 0;
+    const variantsAdded = progress.variantsAdded || 0;
+    const pricesAdded = progress.pricesAdded || 0;
+    const totalAdded = setsAdded + cardsAdded + variantsAdded + pricesAdded;
+
+    const phase = progress.phase || "idle";
+
+    return res.json({
+      isRunning: isRunning,
+      connectedMonitors: 1,
+      startTime: startTime,
+      elapsed: elapsed,
+      setsAdded: setsAdded,
+      variantsAdded: variantsAdded,
+      cardsAdded: cardsAdded,
+      pricesAdded: pricesAdded,
+      totalAdded: totalAdded,
+      phase: phase,
+      setsProcessed: progress.setsProcessed || 0,
+      setsTotal: progress.setsTotal || 0,
+      cardsProcessed: progress.cardsProcessed || 0,
+      error: resyncState.error,
+      timestamp: Date.now(),
+    });
+  });
   // UPDATED ENDPOINT for routes.ts
   // Replace the old /api/admin/resync-status endpoint with this one
   // This properly extracts stats from the progress callback
