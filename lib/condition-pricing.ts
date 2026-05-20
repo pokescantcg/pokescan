@@ -2,30 +2,30 @@
 // Source: TCGPlayer, CardMarket, PSA grading standards
 
 export const CONDITION_MULTIPLIERS: Record<string, number> = {
-  Mint: 1.05, // 105% - Pack fresh, perfect centering
-  "Near Mint": 1.0, // 100% - Baseline (TCGPlayer default)
-  Excellent: 0.9, // 90% - Minor visible wear
-  Good: 0.75, // 75% - Moderate wear
+  "Mint": 1.05,           // 105% - Pack fresh, perfect centering
+  "Near Mint": 1.00,      // 100% - Baseline (TCGPlayer default)
+  "Excellent": 0.90,      // 90% - Minor visible wear
+  "Good": 0.75,           // 75% - Moderate wear
   "Lightly Played": 0.75, // 75% - Noticeable play wear
-  Played: 0.5, // 50% - Heavy play wear
-  Poor: 0.25, // 25% - Damaged, major issues
+  "Played": 0.50,         // 50% - Heavy play wear
+  "Poor": 0.25,           // 25% - Damaged, major issues
 };
 
 // Alternative naming conventions
 export const CONDITION_ALIASES: Record<string, string> = {
-  LP: "Lightly Played",
-  MP: "Moderately Played",
-  HP: "Heavily Played",
-  DMG: "Damaged",
-  NM: "Near Mint",
-  M: "Mint",
-  EX: "Excellent",
-  GD: "Good",
-  PL: "Played",
-  PR: "Poor",
+  "LP": "Lightly Played",
+  "MP": "Moderately Played",
+  "HP": "Heavily Played",
+  "DMG": "Damaged",
+  "NM": "Near Mint",
+  "M": "Mint",
+  "EX": "Excellent",
+  "GD": "Good",
+  "PL": "Played",
+  "PR": "Poor",
   "Moderately Played": "Good",
   "Heavily Played": "Played",
-  Damaged: "Poor",
+  "Damaged": "Poor",
 };
 
 /**
@@ -36,16 +36,16 @@ export const CONDITION_ALIASES: Record<string, string> = {
  */
 export function calculateConditionPrice(
   basePrice: number | null | undefined,
-  condition: string,
+  condition: string
 ): number {
   if (!basePrice || basePrice <= 0) return 0;
 
   // Normalize condition
   const normalizedCondition = CONDITION_ALIASES[condition] || condition;
-
+  
   // Get multiplier (default to Near Mint if unknown)
-  const multiplier = CONDITION_MULTIPLIERS[normalizedCondition] ?? 1.0;
-
+  const multiplier = CONDITION_MULTIPLIERS[normalizedCondition] ?? 1.00;
+  
   return basePrice * multiplier;
 }
 
@@ -56,7 +56,7 @@ export function calculateConditionPrice(
  */
 export function getConditionMultiplierDisplay(condition: string): string {
   const normalizedCondition = CONDITION_ALIASES[condition] || condition;
-  const multiplier = CONDITION_MULTIPLIERS[normalizedCondition] ?? 1.0;
+  const multiplier = CONDITION_MULTIPLIERS[normalizedCondition] ?? 1.00;
   return `${Math.round(multiplier * 100)}%`;
 }
 
@@ -73,14 +73,14 @@ export const CONDITION_TIERS = [
   "Poor",
 ] as const;
 
-export type CardCondition = (typeof CONDITION_TIERS)[number];
+export type CardCondition = typeof CONDITION_TIERS[number];
 
 /**
  * Get condition tier color for UI display
  */
 export function getConditionColor(condition: string): string {
   const normalizedCondition = CONDITION_ALIASES[condition] || condition;
-
+  
   switch (normalizedCondition) {
     case "Mint":
       return "#FFD700"; // Gold
@@ -110,13 +110,10 @@ export function calculateCollectionValue(
     priceGBP: number | null | undefined;
     condition: string;
     quantity: number;
-  }>,
+  }>
 ): number {
   return items.reduce((total, item) => {
-    const adjustedPrice = calculateConditionPrice(
-      item.priceGBP,
-      item.condition,
-    );
+    const adjustedPrice = calculateConditionPrice(item.priceGBP, item.condition);
     return total + adjustedPrice * item.quantity;
   }, 0);
 }
@@ -126,7 +123,7 @@ export function calculateCollectionValue(
  */
 export function getConditionImpact(condition: string): string {
   const normalizedCondition = CONDITION_ALIASES[condition] || condition;
-
+  
   switch (normalizedCondition) {
     case "Mint":
       return "Pack-fresh perfection! Worth 5% more than Near Mint.";

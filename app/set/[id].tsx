@@ -88,7 +88,7 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
       Animated.loop(
         Animated.sequence([
           Animated.timing(scaleAnim, {
-            toValue: 1.15,
+            toValue: 1.95,
             duration: 300,
             useNativeDriver: true,
           }),
@@ -101,12 +101,24 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
       ).start();
     } else if (variantLower.includes("reverse")) {
       // Reverse Holo - Rotate continuously
-      Animated.loop(
-        Animated.timing(rotateAnim, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-        })
+     Animated.loop(
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.05,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 0.95,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+        ])
       ).start();
     } else if (variantLower.includes("cosmos")) {
       // Cosmos - Glow pulse
