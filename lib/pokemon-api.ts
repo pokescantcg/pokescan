@@ -643,6 +643,14 @@ export function formatGBP(
 
   return `£${price.toFixed(2)}`;
 }
+const TCG_KEY_TO_FINISH: Record<string, string> = {
+  normal: "normal",
+  holofoil: "holo",
+  reverseHolofoil: "reverse_holo",
+  "1stEditionHolofoil": "holo",
+  "1stEditionNormal": "normal",
+};
+
 export function expandCardVariants(
   cards: PokemonCard[]
 ): PokemonCard[] {
@@ -657,11 +665,11 @@ export function expandCardVariants(
     }
 
     const variants = [
-      { key: "normal", label: "Non-Holo", data: prices.normal },
-      { key: "holofoil", label: "Holo", data: prices.holofoil },
-      { key: "reverseHolofoil", label: "Reverse Holo", data: prices.reverseHolofoil },
-      { key: "1stEditionHolofoil", label: "1st Ed Holo", data: prices["1stEditionHolofoil"] },
-      { key: "1stEditionNormal", label: "1st Ed", data: prices["1stEditionNormal"] },
+      { key: "normal",             label: "Non-Holo",     data: prices.normal },
+      { key: "holofoil",           label: "Holo",         data: prices.holofoil },
+      { key: "reverseHolofoil",    label: "Reverse Holo", data: prices.reverseHolofoil },
+      { key: "1stEditionHolofoil", label: "1st Ed Holo",  data: prices["1stEditionHolofoil"] },
+      { key: "1stEditionNormal",   label: "1st Ed",       data: prices["1stEditionNormal"] },
     ];
 
     let pushed = false;
@@ -676,8 +684,9 @@ export function expandCardVariants(
         variant: variant.label,
         variantType: variant.label,
         variantLabel: variant.label,
-        finishType: variant.label,
-        rarity: `${card.rarity || ""} • ${variant.label}`,
+        finishType: TCG_KEY_TO_FINISH[variant.key] ?? "normal",
+        isStamped: card.isStamped ?? false,
+        rarity: card.rarity,
         tcgplayer: {
           ...card.tcgplayer,
           prices: { [variant.key]: variant.data },
