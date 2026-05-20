@@ -10,99 +10,98 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Linking,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery } from "@tanstack/react-query";
+import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
-import { getUKPrice, formatGBP } from "@/lib/pokemon-api";
+import {
+  fetchCard,
+  getUKPrice,
+  formatGBP,
+  PokemonCard,
+  generateEbaySearchUrl,
+  generateEbaySoldUrl,
+} from "@/lib/pokemon-api";
+import { useUser } from "@/lib/user-context";
+import { CardVariant } from "@/lib/storage";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
+const CONDITIONS = [
+  "Mint",
+  "Near Mint",
+  "Excellent",
+  "Good",
+  "Light Play",
+  "Played",
+];
+const GRADERS = ["None", "PSA", "Beckett", "CGC", "ACE"];
+
+function getAvailableVariants(card: PokemonCard | null): string[] {
+  if (!card?.tcgplayer?.prices) {
+    return ["Non-Holo", "Holo", "Reverse Holo"];
+  }
+
+  const variants: string[] = [];
+  const prices = card.tcgplayer.prices;
+
+  if (prices.normal) variants.push("Non-Holo");
+  if (prices.holofoil) variants.push("Holo");
+  if (prices.reverseHolofoil) variants.push("Reverse Holo");
+  if (prices["1stEditionNormal"]) variants.push("1st Ed");
+  if (prices["1stEditionHolofoil"]) variants.push("1st Ed Holo");
+
+  return variants.length > 0 ? variants : ["Non-Holo", "Holo", "Reverse Holo"];
+}
+
+function getVariantIcon(variant: string): string {
+  const v = variant.toLowerCase();
+  if (v.includes("non-holo")) return "square-outline";
+  if (v.includes("holo") && !v.includes("reverse")) return "sparkles";
+  if (v.includes("reverse")) return "refresh-circle";
+  if (v.includes("1st")) return "medal-outline";
+  return "card-outline";
+}
 
 export default function CardDetailScreen() {
-  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { id, variant: routeVariant } = useLocalSearchParams<{
+    id?: string;
+    variant?: string;
+  }>();
+
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
+  const { user, addCard } = useUser();
 
-  const [card, setCard] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const MAX_RETRIES = 2;
+  const [selectedVariant, setSelectedVariant] = useState<string>(
+    routeVariant || "Non-Holo",
+  );
+  const [selectedCondition, setSelectedCondition] = useState("Near Mint");
+  const [selectedGrader, setSelectedGrader] = useState("None");
+  const [gradeNumber, setGradeNumber] = useState("");
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
-  const loadCard = async (attempt = 0) => {
-    try {
-      setLoading(true);
-      setError(null);
+  const {
+    data: card,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ["card", id],
+    queryFn: () => {
+      if (!id) throw new Error("No card ID");
+      return fetchCard(id);
+    },
+    enabled: !!id,
+  });
 
-      if (!id) {
-        throw new Error("No card ID provided");
-      }
-
-      console.log(`🔵 Loading card with ID: ${id} (attempt ${attempt + 1})`);
-
-      // Add timeout to catch hung requests
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-      const response = await fetch(
-        `https://pokemon-card-scan.replit.app/api/pokemon/cards/${id}`,
-        { signal: controller.signal }
-      );
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      if (!data.data) {
-        throw new Error("Invalid response format");
-      }
-
-      console.log(`🟢 Card loaded successfully: ${data.data.name}`);
-      setCard(data.data);
-    } catch (err: any) {
-      console.error(`🔴 Error loading card (attempt ${attempt + 1}):`, err.message);
-
-      // Auto-retry on server crash (5xx errors) or timeout
-      if (attempt < MAX_RETRIES && (err.code === 'ABORT_ERR' || err.message?.includes('5'))) {
-        console.log(`🟡 Retrying... (${attempt + 1}/${MAX_RETRIES})`);
-        setRetryCount(attempt + 1);
-        
-        // Wait 2 seconds before retry
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        return loadCard(attempt + 1);
-      }
-
-      const errorMsg =
-        err.code === 'ABORT_ERR'
-          ? "Request timed out. Server may be busy. Please try again."
-          : err.message || "Failed to load card";
-      
-      setError(errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadCard();
-  }, [id]);
-
-  const handleRetry = () => {
-    setRetryCount(0);
-    loadCard();
-  };
-
-  if (loading) {
+  if (isLoading) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View
@@ -116,20 +115,16 @@ export default function CardDetailScreen() {
           </Pressable>
         </View>
         <View style={styles.centerContent}>
-          <MaterialCommunityIcons
-            name="pokeball"
-            size={48}
-            color={colors.pokemonRed}
-          />
+          <ActivityIndicator size="large" color={colors.pokemonRed} />
           <Text style={[styles.text, { color: colors.textSecondary }]}>
-            {retryCount > 0 ? `Retrying... (${retryCount}/${MAX_RETRIES})` : "Loading card..."}
+            Loading card...
           </Text>
         </View>
       </View>
     );
   }
 
-  if (error || !card) {
+  if (isError || !card) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <View
@@ -143,47 +138,73 @@ export default function CardDetailScreen() {
           </Pressable>
         </View>
         <View style={styles.centerContent}>
-          <MaterialCommunityIcons
+          <Ionicons
             name="alert-circle-outline"
             size={48}
             color={colors.pokemonRed}
           />
           <Text style={[styles.text, { color: colors.text }]}>
-            Card unavailable
+            Card not found
           </Text>
-          <Text style={[styles.smallText, { color: colors.textSecondary }]}>
-            {error || "Unable to load card data"}
-          </Text>
-          <View style={styles.buttonGroup}>
-            <Pressable
-              onPress={handleRetry}
-              style={[styles.button, { backgroundColor: colors.pokemonRed }]}
-            >
-              <Ionicons name="refresh" size={16} color="#FFF" />
-              <Text style={styles.buttonText}>Try Again</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.back()}
-              style={[
-                styles.button,
-                {
-                  backgroundColor: colors.card,
-                  borderWidth: 1,
-                  borderColor: colors.pokemonRed,
-                },
-              ]}
-            >
-              <Text style={[styles.buttonText, { color: colors.pokemonRed }]}>
-                Go Back
-              </Text>
-            </Pressable>
-          </View>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.button, { backgroundColor: colors.pokemonRed }]}
+          >
+            <Text style={styles.buttonText}>Go Back</Text>
+          </Pressable>
         </View>
       </View>
     );
   }
 
   const price = getUKPrice(card);
+  const availableVariants = getAvailableVariants(card);
+
+  const handleAddToCollection = () => {
+    if (!user) {
+      Alert.alert("Sign in required", "Please sign in to add cards");
+      return;
+    }
+
+    if (!user.isPremium) {
+      Alert.alert("Premium required", "Upgrade to Premium to add cards");
+      return;
+    }
+
+    addCard({
+      cardId: card.id,
+      cardName: card.name,
+      cardImage: card.images?.small || "",
+      setName: card.set?.name || "",
+      setId: card.set?.id || "",
+      rarity: card.rarity || "",
+      quantity: 1,
+      condition: selectedCondition,
+      variant: selectedVariant as CardVariant,
+      priceGBP: price.price,
+      gradingCompany: selectedGrader !== "None" ? selectedGrader : null,
+      grade: gradeNumber || null,
+    });
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert("Success", `${card.name} added to collection`);
+  };
+
+  const openEbayActive = () => {
+    if (!card?.name) return;
+    const url = generateEbaySearchUrl(card.name, card.set?.name, card.number);
+    Linking.openURL(url).catch(() =>
+      Alert.alert("Error", "Could not open eBay"),
+    );
+  };
+
+  const openEbaySold = () => {
+    if (!card?.name) return;
+    const url = generateEbaySoldUrl(card.name, card.set?.name, card.number);
+    Linking.openURL(url).catch(() =>
+      Alert.alert("Error", "Could not open eBay"),
+    );
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -193,165 +214,383 @@ export default function CardDetailScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
-          {card?.name || "Card"}
+        <Text
+          style={[styles.headerTitle, { color: colors.text }]}
+          numberOfLines={1}
+        >
+          {card.name}
         </Text>
         <View style={{ width: 36 }} />
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView showsVerticalScrollIndicator={false}>
         {/* Card Image */}
-        <View style={styles.imageSection}>
+        <View style={styles.imageContainer}>
           <Image
-            source={{ uri: card?.images?.large || "" }}
+            source={{ uri: card.images?.large || "" }}
             style={styles.cardImage}
             contentFit="contain"
             placeholder={{ color: colors.surface }}
           />
         </View>
 
-        {/* Card Info */}
-        <View style={styles.infoSection}>
-          <Text style={[styles.cardName, { color: colors.text }]}>
-            {card?.name || "Unknown Card"}
-          </Text>
-          <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
-            {card?.set?.name || "Unknown Set"} #{card?.number || ""}
-          </Text>
+        <View style={styles.content}>
+          {/* Card Title & Meta */}
+          <View>
+            <Text style={[styles.cardName, { color: colors.text }]}>
+              {card.name}
+            </Text>
+            <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
+              {card.set?.name} #{card.number}
+            </Text>
+          </View>
 
-          {/* Details Grid */}
+          {/* Card Details Grid */}
           <View style={styles.detailsGrid}>
-            {card?.supertype && (
+            {card.supertype && (
               <View
                 style={[
-                  styles.detailItem,
-                  { backgroundColor: colors.card, borderColor: colors.borderLight },
+                  styles.detailBox,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.borderLight,
+                  },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
-                  TYPE
+                  Type
                 </Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>
                   {card.supertype}
                 </Text>
               </View>
             )}
-
-            {card?.hp && (
+            {card.hp && (
               <View
                 style={[
-                  styles.detailItem,
-                  { backgroundColor: colors.card, borderColor: colors.borderLight },
+                  styles.detailBox,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.borderLight,
+                  },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
                   HP
                 </Text>
-                <Text style={[styles.detailValue, { color: colors.pokemonRed }]}>
+                <Text
+                  style={[styles.detailValue, { color: colors.pokemonRed }]}
+                >
                   {card.hp}
                 </Text>
               </View>
             )}
-
-            {card?.rarity && (
+            {card.rarity && (
               <View
                 style={[
-                  styles.detailItem,
-                  { backgroundColor: colors.card, borderColor: colors.borderLight },
+                  styles.detailBox,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.borderLight,
+                  },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
-                  RARITY
+                  Rarity
                 </Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>
                   {card.rarity}
                 </Text>
               </View>
             )}
+          </View>
 
-            {card?.artist && (
-              <View
-                style={[
-                  styles.detailItem,
-                  { backgroundColor: colors.card, borderColor: colors.borderLight },
+          {/* UK Pricing */}
+          <View
+            style={[
+              styles.section,
+              { backgroundColor: colors.card, borderColor: colors.borderLight },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              💰 UK Pricing
+            </Text>
+            {price.price ? (
+              <>
+                <Text style={[styles.priceValue, { color: colors.success }]}>
+                  {formatGBP(price.price)}
+                </Text>
+                <Text style={[styles.priceSource, { color: colors.textMuted }]}>
+                  via {price.source || "Market"}
+                </Text>
+              </>
+            ) : (
+              <Text style={[styles.priceValue, { color: colors.textMuted }]}>
+                Price data unavailable
+              </Text>
+            )}
+          </View>
+
+          {/* eBay UK */}
+          <View
+            style={[
+              styles.section,
+              { backgroundColor: colors.card, borderColor: colors.borderLight },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              🌐 eBay UK
+            </Text>
+            <View style={styles.ebayButtons}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.ebayBtn,
+                  { backgroundColor: "#E53238", opacity: pressed ? 0.8 : 1 },
                 ]}
+                onPress={openEbayActive}
               >
-                <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
-                  ARTIST
+                <Ionicons name="search" size={16} color="#FFF" />
+                <Text style={styles.ebayBtnText}>Active</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.ebayBtn,
+                  { backgroundColor: "#0064D2", opacity: pressed ? 0.8 : 1 },
+                ]}
+                onPress={openEbaySold}
+              >
+                <Ionicons name="checkmark-done" size={16} color="#FFF" />
+                <Text style={styles.ebayBtnText}>Sold</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Variant Selection */}
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              ✨ Variant
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.variantRow}
+            >
+              {availableVariants.map((v) => (
+                <Pressable
+                  key={v}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor:
+                        selectedVariant === v
+                          ? colors.pokemonYellow
+                          : colors.card,
+                      borderColor:
+                        selectedVariant === v
+                          ? colors.pokemonYellow
+                          : colors.borderLight,
+                    },
+                  ]}
+                  onPress={() => setSelectedVariant(v)}
+                >
+                  <Ionicons
+                    name={getVariantIcon(v) as any}
+                    size={14}
+                    color={
+                      selectedVariant === v ? "#000" : colors.textSecondary
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.chipText,
+                      {
+                        color:
+                          selectedVariant === v ? "#000" : colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {v}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Condition Selection */}
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              📋 Condition
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.conditionRow}
+            >
+              {CONDITIONS.map((c) => (
+                <Pressable
+                  key={c}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor:
+                        selectedCondition === c
+                          ? colors.pokemonRed
+                          : colors.card,
+                    },
+                  ]}
+                  onPress={() => setSelectedCondition(c)}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      {
+                        color:
+                          selectedCondition === c
+                            ? "#FFF"
+                            : colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {c}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Grading Selection */}
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              🏆 Grading
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.conditionRow}
+            >
+              {GRADERS.map((g) => (
+                <Pressable
+                  key={g}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor:
+                        selectedGrader === g
+                          ? colors.pokemonYellow
+                          : colors.card,
+                    },
+                  ]}
+                  onPress={() => setSelectedGrader(g)}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      {
+                        color:
+                          selectedGrader === g ? "#000" : colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {g}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            {selectedGrader !== "None" && (
+              <View style={{ marginTop: 12, gap: 8 }}>
+                <Text style={[styles.gradeLabel, { color: colors.text }]}>
+                  Grade (1-10)
                 </Text>
-                <Text style={[styles.detailValue, { color: colors.text }]}>
-                  {card.artist}
-                </Text>
+                <View
+                  style={[
+                    styles.gradeInput,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.borderLight,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.gradeValue, { color: colors.text }]}>
+                    {gradeNumber || "—"}
+                  </Text>
+                </View>
+                <View style={styles.gradeButtons}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                    <Pressable
+                      key={num}
+                      style={[
+                        styles.gradeBtn,
+                        {
+                          backgroundColor:
+                            gradeNumber === String(num)
+                              ? colors.pokemonRed
+                              : colors.card,
+                          borderColor: colors.borderLight,
+                        },
+                      ]}
+                      onPress={() => setGradeNumber(String(num))}
+                    >
+                      <Text
+                        style={[
+                          styles.gradeBtnText,
+                          {
+                            color:
+                              gradeNumber === String(num)
+                                ? "#FFF"
+                                : colors.textSecondary,
+                          },
+                        ]}
+                      >
+                        {num}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
             )}
           </View>
 
-          {/* Pricing Section */}
-          {price.price && (
-            <View
-              style={[
-                styles.priceSection,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.borderLight,
-                },
-              ]}
-            >
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                UK Market Price
-              </Text>
-              <Text style={[styles.priceValue, { color: colors.success }]}>
-                {formatGBP(price.price)}
-              </Text>
-              <Text style={[styles.priceSource, { color: colors.textMuted }]}>
-                via {price.source || "TCGPlayer"}
-              </Text>
-            </View>
-          )}
+          {/* Action Buttons */}
+          <LinearGradient
+            colors={[colors.pokemonRed, colors.pokemonDarkRed]}
+            style={{ borderRadius: 14, marginVertical: 20 }}
+          >
+            <Pressable style={styles.actionBtn} onPress={handleAddToCollection}>
+              <Ionicons name="add-circle-outline" size={20} color="#FFF" />
+              <Text style={styles.actionBtnText}>Add to Collection</Text>
+            </Pressable>
+          </LinearGradient>
 
-          {/* TCGPlayer Variants Info */}
-          {card?.tcgplayer?.prices && (
-            <View
+          {/* Marketplace Buttons */}
+          <View style={styles.marketplaceButtons}>
+            <Pressable
               style={[
-                styles.priceSection,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.borderLight,
-                },
+                styles.marketplaceBtn,
+                { backgroundColor: colors.success },
               ]}
             >
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>
-                Available Variants
-              </Text>
-              <View style={styles.variantsList}>
-                {card.tcgplayer.prices?.normal && (
-                  <Text style={[styles.variantItem, { color: colors.text }]}>
-                    • Non-Holo
-                  </Text>
-                )}
-                {card.tcgplayer.prices?.holofoil && (
-                  <Text style={[styles.variantItem, { color: colors.text }]}>
-                    • Holo
-                  </Text>
-                )}
-                {card.tcgplayer.prices?.reverseHolofoil && (
-                  <Text style={[styles.variantItem, { color: colors.text }]}>
-                    • Reverse Holo
-                  </Text>
-                )}
-                {card.tcgplayer.prices?.["1stEditionNormal"] && (
-                  <Text style={[styles.variantItem, { color: colors.text }]}>
-                    • 1st Edition
-                  </Text>
-                )}
-                {card.tcgplayer.prices?.["1stEditionHolofoil"] && (
-                  <Text style={[styles.variantItem, { color: colors.text }]}>
-                    • 1st Edition Holo
-                  </Text>
-                )}
-              </View>
-            </View>
-          )}
+              <MaterialCommunityIcons
+                name="cash-multiple"
+                size={18}
+                color="#FFF"
+              />
+              <Text style={styles.actionBtnText}>List for Sale</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.marketplaceBtn,
+                { backgroundColor: colors.pokemonBlue },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="swap-horizontal"
+                size={18}
+                color="#FFF"
+              />
+              <Text style={styles.actionBtnText}>List for Trade</Text>
+            </Pressable>
+          </View>
         </View>
       </ScrollView>
     </View>
@@ -384,18 +623,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
   },
-  imageSection: {
+  imageContainer: {
     alignItems: "center",
     paddingVertical: 20,
   },
   cardImage: {
-    width: SCREEN_WIDTH * 0.65,
-    height: SCREEN_WIDTH * 0.65 * 1.4,
+    width: SCREEN_WIDTH * 0.7,
+    height: SCREEN_WIDTH * 0.7 * 1.4,
     borderRadius: 12,
   },
-  infoSection: {
+  content: {
     paddingHorizontal: 20,
+    paddingVertical: 16,
     gap: 16,
+    paddingBottom: 40,
   },
   cardName: {
     fontSize: 28,
@@ -404,13 +645,14 @@ const styles = StyleSheet.create({
   cardMeta: {
     fontSize: 14,
     fontFamily: "Outfit_400Regular",
+    marginTop: 4,
   },
   detailsGrid: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: 8,
+    flexWrap: "wrap",
   },
-  detailItem: {
+  detailBox: {
     flex: 1,
     minWidth: 100,
     paddingHorizontal: 12,
@@ -420,7 +662,7 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: 9,
-    fontFamily: "Outfit_600SemiBold",
+    fontFamily: "Outfit_500Medium",
     textTransform: "uppercase",
   },
   detailValue: {
@@ -428,14 +670,14 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit_600SemiBold",
     marginTop: 4,
   },
-  priceSection: {
+  section: {
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
   },
   sectionTitle: {
-    fontSize: 14,
-    fontFamily: "Outfit_600SemiBold",
+    fontSize: 16,
+    fontFamily: "Outfit_700Bold",
     marginBottom: 8,
   },
   priceValue: {
@@ -447,40 +689,113 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit_400Regular",
     marginTop: 4,
   },
-  variantsList: {
-    gap: 4,
+  ebayButtons: {
+    flexDirection: "row",
+    gap: 10,
   },
-  variantItem: {
+  ebayBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 6,
+  },
+  ebayBtnText: {
+    fontSize: 13,
+    fontFamily: "Outfit_600SemiBold",
+    color: "#FFF",
+  },
+  variantRow: {
+    gap: 8,
+    paddingBottom: 12,
+  },
+  conditionRow: {
+    gap: 8,
+    paddingBottom: 12,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    minWidth: 90,
+  },
+  chipText: {
     fontSize: 12,
-    fontFamily: "Outfit_400Regular",
-    paddingVertical: 2,
+    fontFamily: "Outfit_600SemiBold",
+  },
+  gradeLabel: {
+    fontSize: 13,
+    fontFamily: "Outfit_600SemiBold",
+  },
+  gradeInput: {
+    height: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gradeValue: {
+    fontSize: 18,
+    fontFamily: "Outfit_700Bold",
+  },
+  gradeButtons: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  gradeBtn: {
+    width: "19%",
+    height: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gradeBtnText: {
+    fontSize: 13,
+    fontFamily: "Outfit_600SemiBold",
+  },
+  actionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    gap: 8,
+  },
+  actionBtnText: {
+    fontSize: 16,
+    fontFamily: "Outfit_600SemiBold",
+    color: "#FFF",
+  },
+  marketplaceButtons: {
+    flexDirection: "row",
+    gap: 10,
+    paddingBottom: 20,
+  },
+  marketplaceBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 6,
   },
   text: {
     fontSize: 16,
     fontFamily: "Outfit_500Medium",
   },
-  smallText: {
-    fontSize: 13,
-    fontFamily: "Outfit_400Regular",
-    textAlign: "center",
-    paddingHorizontal: 20,
-  },
-  buttonGroup: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 16,
-    width: "100%",
-    paddingHorizontal: 20,
-  },
   button: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 10,
-    gap: 6,
+    marginTop: 16,
   },
   buttonText: {
     color: "#FFF",
