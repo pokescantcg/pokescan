@@ -70,6 +70,24 @@ function getVariantIcon(variant: string): string {
   return "card-outline";
 }
 
+// Get all pricing data from TCGPlayer
+function getAllPricing(card: PokemonCard | null) {
+  if (!card?.tcgplayer?.prices) return null;
+
+  const pricing: any = {};
+  const prices = card.tcgplayer.prices;
+
+  // Raw card prices (ungraded)
+  if (prices.normal) pricing.normal = prices.normal;
+  if (prices.holofoil) pricing.holofoil = prices.holofoil;
+  if (prices.reverseHolofoil) pricing.reverseHolofoil = prices.reverseHolofoil;
+  if (prices["1stEditionNormal"]) pricing.firstEdNormal = prices["1stEditionNormal"];
+  if (prices["1stEditionHolofoil"]) pricing.firstEdHolo = prices["1stEditionHolofoil"];
+  if (prices.unlimitedHolofoil) pricing.unlimitedHolo = prices.unlimitedHolofoil;
+
+  return pricing;
+}
+
 export default function CardDetailScreen() {
   const { id, variant: routeVariant } = useLocalSearchParams<{
     id?: string;
@@ -82,13 +100,12 @@ export default function CardDetailScreen() {
   const { user, addCard, addMarketListing } = useUser();
 
   const [selectedVariant, setSelectedVariant] = useState<string>(
-    routeVariant || "Non-Holo",
+    routeVariant || "Non-Holo"
   );
   const [selectedCondition, setSelectedCondition] = useState("Near Mint");
   const [selectedGrader, setSelectedGrader] = useState("None");
   const [gradeNumber, setGradeNumber] = useState("");
   const [salePrice, setSalePrice] = useState("");
-  const [tradeMode, setTradeMode] = useState(false);
   const [listingOpen, setListingOpen] = useState(false);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -143,11 +160,7 @@ export default function CardDetailScreen() {
           </Pressable>
         </View>
         <View style={styles.centerContent}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={48}
-            color={colors.pokemonRed}
-          />
+          <Ionicons name="alert-circle-outline" size={48} color={colors.pokemonRed} />
           <Text style={[styles.text, { color: colors.text }]}>
             Card not found
           </Text>
@@ -162,7 +175,7 @@ export default function CardDetailScreen() {
     );
   }
 
-  const price = getUKPrice(card);
+  const allPricing = getAllPricing(card);
   const availableVariants = getAvailableVariants(card);
 
   const handleAddToCollection = () => {
@@ -171,6 +184,7 @@ export default function CardDetailScreen() {
       return;
     }
 
+    const price = getUKPrice(card);
     addCard({
       cardId: card.id,
       cardName: card.name,
@@ -210,8 +224,7 @@ export default function CardDetailScreen() {
       cardImage: card.images?.small || "",
       variant: selectedVariant as CardVariant,
       condition: selectedCondition,
-      grade:
-        selectedGrader !== "None" ? `${selectedGrader} ${gradeNumber}` : null,
+      grade: selectedGrader !== "None" ? `${selectedGrader} ${gradeNumber}` : null,
       price: parseFloat(salePrice),
       currency: "GBP",
       type: "sale",
@@ -229,10 +242,7 @@ export default function CardDetailScreen() {
 
     addMarketListing(listing);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert(
-      "Listed!",
-      `${card.name} has been listed for sale at £${salePrice}`,
-    );
+    Alert.alert("Listed!", `${card.name} has been listed for sale at £${salePrice}`);
     setListingOpen(false);
     setSalePrice("");
   };
@@ -252,8 +262,7 @@ export default function CardDetailScreen() {
       cardImage: card.images?.small || "",
       variant: selectedVariant as CardVariant,
       condition: selectedCondition,
-      grade:
-        selectedGrader !== "None" ? `${selectedGrader} ${gradeNumber}` : null,
+      grade: selectedGrader !== "None" ? `${selectedGrader} ${gradeNumber}` : null,
       price: 0,
       currency: "GBP",
       type: "trade",
@@ -273,16 +282,15 @@ export default function CardDetailScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert(
       "Trade Offer Posted!",
-      `${card.name} has been posted for trades`,
+      `${card.name} has been posted for trades`
     );
-    setTradeMode(false);
   };
 
   const openEbayActive = () => {
     if (!card?.name) return;
     const url = generateEbaySearchUrl(card.name, card.set?.name, card.number);
     Linking.openURL(url).catch(() =>
-      Alert.alert("Error", "Could not open eBay"),
+      Alert.alert("Error", "Could not open eBay")
     );
   };
 
@@ -290,7 +298,7 @@ export default function CardDetailScreen() {
     if (!card?.name) return;
     const url = generateEbaySoldUrl(card.name, card.set?.name, card.number);
     Linking.openURL(url).catch(() =>
-      Alert.alert("Error", "Could not open eBay"),
+      Alert.alert("Error", "Could not open eBay")
     );
   };
 
@@ -302,10 +310,7 @@ export default function CardDetailScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
-        <Text
-          style={[styles.headerTitle, { color: colors.text }]}
-          numberOfLines={1}
-        >
+        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
           {card.name}
         </Text>
         <View style={{ width: 36 }} />
@@ -339,10 +344,7 @@ export default function CardDetailScreen() {
               <View
                 style={[
                   styles.detailBox,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.borderLight,
-                  },
+                  { backgroundColor: colors.card, borderColor: colors.borderLight },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
@@ -357,18 +359,13 @@ export default function CardDetailScreen() {
               <View
                 style={[
                   styles.detailBox,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.borderLight,
-                  },
+                  { backgroundColor: colors.card, borderColor: colors.borderLight },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
                   HP
                 </Text>
-                <Text
-                  style={[styles.detailValue, { color: colors.pokemonRed }]}
-                >
+                <Text style={[styles.detailValue, { color: colors.pokemonRed }]}>
                   {card.hp}
                 </Text>
               </View>
@@ -377,10 +374,7 @@ export default function CardDetailScreen() {
               <View
                 style={[
                   styles.detailBox,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.borderLight,
-                  },
+                  { backgroundColor: colors.card, borderColor: colors.borderLight },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
@@ -393,7 +387,7 @@ export default function CardDetailScreen() {
             )}
           </View>
 
-          {/* UK Pricing */}
+          {/* UK Pricing - Comprehensive Breakdown */}
           <View
             style={[
               styles.section,
@@ -401,17 +395,140 @@ export default function CardDetailScreen() {
             ]}
           >
             <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              💰 UK Pricing
+              💰 UK Market Pricing
             </Text>
-            {price.price ? (
-              <>
-                <Text style={[styles.priceValue, { color: colors.success }]}>
-                  {formatGBP(price.price)}
+
+            {allPricing ? (
+              <View style={styles.pricingGrid}>
+                {/* Raw (Ungraded) Prices */}
+                <Text style={[styles.pricingCategory, { color: colors.textSecondary }]}>
+                  📋 Raw (Ungraded)
                 </Text>
-                <Text style={[styles.priceSource, { color: colors.textMuted }]}>
-                  via {price.source || "Market"}
+
+                {allPricing.normal && (
+                  <View style={styles.priceRow}>
+                    <Text style={[styles.priceLabel, { color: colors.text }]}>
+                      Non-Holo
+                    </Text>
+                    <View style={styles.priceValues}>
+                      {allPricing.normal.low && (
+                        <Text style={[styles.priceText, { color: colors.textMuted }]}>
+                          Low: {formatGBP(allPricing.normal.low)}
+                        </Text>
+                      )}
+                      {allPricing.normal.mid && (
+                        <Text style={[styles.priceText, { color: colors.success }]}>
+                          Mid: {formatGBP(allPricing.normal.mid)}
+                        </Text>
+                      )}
+                      {allPricing.normal.high && (
+                        <Text style={[styles.priceText, { color: colors.textMuted }]}>
+                          High: {formatGBP(allPricing.normal.high)}
+                        </Text>
+                      )}
+                      {allPricing.normal.market && (
+                        <Text style={[styles.priceMarket, { color: colors.pokemonYellow }]}>
+                          Market: {formatGBP(allPricing.normal.market)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {allPricing.holofoil && (
+                  <View style={styles.priceRow}>
+                    <Text style={[styles.priceLabel, { color: colors.text }]}>
+                      Holo
+                    </Text>
+                    <View style={styles.priceValues}>
+                      {allPricing.holofoil.low && (
+                        <Text style={[styles.priceText, { color: colors.textMuted }]}>
+                          Low: {formatGBP(allPricing.holofoil.low)}
+                        </Text>
+                      )}
+                      {allPricing.holofoil.mid && (
+                        <Text style={[styles.priceText, { color: colors.success }]}>
+                          Mid: {formatGBP(allPricing.holofoil.mid)}
+                        </Text>
+                      )}
+                      {allPricing.holofoil.high && (
+                        <Text style={[styles.priceText, { color: colors.textMuted }]}>
+                          High: {formatGBP(allPricing.holofoil.high)}
+                        </Text>
+                      )}
+                      {allPricing.holofoil.market && (
+                        <Text style={[styles.priceMarket, { color: colors.pokemonYellow }]}>
+                          Market: {formatGBP(allPricing.holofoil.market)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {allPricing.reverseHolofoil && (
+                  <View style={styles.priceRow}>
+                    <Text style={[styles.priceLabel, { color: colors.text }]}>
+                      Reverse Holo
+                    </Text>
+                    <View style={styles.priceValues}>
+                      {allPricing.reverseHolofoil.low && (
+                        <Text style={[styles.priceText, { color: colors.textMuted }]}>
+                          Low: {formatGBP(allPricing.reverseHolofoil.low)}
+                        </Text>
+                      )}
+                      {allPricing.reverseHolofoil.mid && (
+                        <Text style={[styles.priceText, { color: colors.success }]}>
+                          Mid: {formatGBP(allPricing.reverseHolofoil.mid)}
+                        </Text>
+                      )}
+                      {allPricing.reverseHolofoil.high && (
+                        <Text style={[styles.priceText, { color: colors.textMuted }]}>
+                          High: {formatGBP(allPricing.reverseHolofoil.high)}
+                        </Text>
+                      )}
+                      {allPricing.reverseHolofoil.market && (
+                        <Text style={[styles.priceMarket, { color: colors.pokemonYellow }]}>
+                          Market: {formatGBP(allPricing.reverseHolofoil.market)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {allPricing.firstEdNormal && (
+                  <View style={styles.priceRow}>
+                    <Text style={[styles.priceLabel, { color: colors.text }]}>
+                      1st Ed Non-Holo
+                    </Text>
+                    <View style={styles.priceValues}>
+                      {allPricing.firstEdNormal.market && (
+                        <Text style={[styles.priceMarket, { color: colors.pokemonYellow }]}>
+                          Market: {formatGBP(allPricing.firstEdNormal.market)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                {allPricing.firstEdHolo && (
+                  <View style={styles.priceRow}>
+                    <Text style={[styles.priceLabel, { color: colors.text }]}>
+                      1st Ed Holo
+                    </Text>
+                    <View style={styles.priceValues}>
+                      {allPricing.firstEdHolo.market && (
+                        <Text style={[styles.priceMarket, { color: colors.pokemonYellow }]}>
+                          Market: {formatGBP(allPricing.firstEdHolo.market)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                )}
+
+                <Text style={[styles.priceSource, { color: colors.textMuted, marginTop: 12 }]}>
+                  Source: TCGPlayer UK
                 </Text>
-              </>
+              </View>
             ) : (
               <Text style={[styles.priceValue, { color: colors.textMuted }]}>
                 Price data unavailable
@@ -470,13 +587,9 @@ export default function CardDetailScreen() {
                     styles.chip,
                     {
                       backgroundColor:
-                        selectedVariant === v
-                          ? colors.pokemonYellow
-                          : colors.card,
+                        selectedVariant === v ? colors.pokemonYellow : colors.card,
                       borderColor:
-                        selectedVariant === v
-                          ? colors.pokemonYellow
-                          : colors.borderLight,
+                        selectedVariant === v ? colors.pokemonYellow : colors.borderLight,
                     },
                   ]}
                   onPress={() => setSelectedVariant(v)}
@@ -484,16 +597,13 @@ export default function CardDetailScreen() {
                   <Ionicons
                     name={getVariantIcon(v) as any}
                     size={14}
-                    color={
-                      selectedVariant === v ? "#000" : colors.textSecondary
-                    }
+                    color={selectedVariant === v ? "#000" : colors.textSecondary}
                   />
                   <Text
                     style={[
                       styles.chipText,
                       {
-                        color:
-                          selectedVariant === v ? "#000" : colors.textSecondary,
+                        color: selectedVariant === v ? "#000" : colors.textSecondary,
                       },
                     ]}
                   >
@@ -521,9 +631,7 @@ export default function CardDetailScreen() {
                     styles.chip,
                     {
                       backgroundColor:
-                        selectedCondition === c
-                          ? colors.pokemonRed
-                          : colors.card,
+                        selectedCondition === c ? colors.pokemonRed : colors.card,
                     },
                   ]}
                   onPress={() => setSelectedCondition(c)}
@@ -532,10 +640,7 @@ export default function CardDetailScreen() {
                     style={[
                       styles.chipText,
                       {
-                        color:
-                          selectedCondition === c
-                            ? "#FFF"
-                            : colors.textSecondary,
+                        color: selectedCondition === c ? "#FFF" : colors.textSecondary,
                       },
                     ]}
                   >
@@ -563,9 +668,7 @@ export default function CardDetailScreen() {
                     styles.chip,
                     {
                       backgroundColor:
-                        selectedGrader === g
-                          ? colors.pokemonYellow
-                          : colors.card,
+                        selectedGrader === g ? colors.pokemonYellow : colors.card,
                     },
                   ]}
                   onPress={() => setSelectedGrader(g)}
@@ -574,8 +677,7 @@ export default function CardDetailScreen() {
                     style={[
                       styles.chipText,
                       {
-                        color:
-                          selectedGrader === g ? "#000" : colors.textSecondary,
+                        color: selectedGrader === g ? "#000" : colors.textSecondary,
                       },
                     ]}
                   >
@@ -593,10 +695,7 @@ export default function CardDetailScreen() {
                 <View
                   style={[
                     styles.gradeInput,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.borderLight,
-                    },
+                    { backgroundColor: colors.card, borderColor: colors.borderLight },
                   ]}
                 >
                   <Text style={[styles.gradeValue, { color: colors.text }]}>
@@ -659,11 +758,7 @@ export default function CardDetailScreen() {
               ]}
               onPress={() => setListingOpen(!listingOpen)}
             >
-              <MaterialCommunityIcons
-                name="cash-multiple"
-                size={18}
-                color="#FFF"
-              />
+              <MaterialCommunityIcons name="cash-multiple" size={18} color="#FFF" />
               <Text style={styles.actionBtnText}>List for Sale</Text>
             </Pressable>
             <Pressable
@@ -673,11 +768,7 @@ export default function CardDetailScreen() {
               ]}
               onPress={handleListForTrade}
             >
-              <MaterialCommunityIcons
-                name="swap-horizontal"
-                size={18}
-                color="#FFF"
-              />
+              <MaterialCommunityIcons name="swap-horizontal" size={18} color="#FFF" />
               <Text style={styles.actionBtnText}>List for Trade</Text>
             </Pressable>
           </View>
@@ -687,19 +778,14 @@ export default function CardDetailScreen() {
             <View
               style={[
                 styles.section,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.borderLight,
-                },
+                { backgroundColor: colors.card, borderColor: colors.borderLight },
               ]}
             >
               <Text style={[styles.sectionTitle, { color: colors.text }]}>
                 💷 Set Price
               </Text>
               <View style={styles.priceInputContainer}>
-                <Text style={[styles.currencySymbol, { color: colors.text }]}>
-                  £
-                </Text>
+                <Text style={[styles.currencySymbol, { color: colors.text }]}>£</Text>
                 <TextInput
                   style={[
                     styles.priceInput,
@@ -809,6 +895,33 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit_700Bold",
     marginBottom: 8,
   },
+  pricingGrid: {
+    gap: 12,
+  },
+  pricingCategory: {
+    fontSize: 14,
+    fontFamily: "Outfit_700Bold",
+    marginTop: 8,
+  },
+  priceRow: {
+    gap: 6,
+  },
+  priceLabel: {
+    fontSize: 13,
+    fontFamily: "Outfit_600SemiBold",
+  },
+  priceValues: {
+    gap: 4,
+    paddingLeft: 12,
+  },
+  priceText: {
+    fontSize: 12,
+    fontFamily: "Outfit_500Medium",
+  },
+  priceMarket: {
+    fontSize: 13,
+    fontFamily: "Outfit_700Bold",
+  },
   priceValue: {
     fontSize: 24,
     fontFamily: "Outfit_700Bold",
@@ -816,7 +929,6 @@ const styles = StyleSheet.create({
   priceSource: {
     fontSize: 11,
     fontFamily: "Outfit_400Regular",
-    marginTop: 4,
   },
   ebayButtons: {
     flexDirection: "row",

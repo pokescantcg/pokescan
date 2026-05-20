@@ -76,23 +76,159 @@ function getVariantInfo(
 
 function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
   const scaleAnim = new Animated.Value(1);
+  const rotateAnim = new Animated.Value(0);
+  const glowAnim = new Animated.Value(0);
 
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(scaleAnim, {
-          toValue: 1.1,
-          duration: 400,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
+    const variantLower = variantInfo.label.toLowerCase();
+
+    // Different animations for different variants
+    if (variantLower.includes("holo") && !variantLower.includes("reverse")) {
+      // Holo - Sparkle pulse
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.15,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else if (variantLower.includes("reverse")) {
+      // Reverse Holo - Rotate continuously
+      Animated.loop(
+        Animated.timing(rotateAnim, {
           toValue: 1,
-          duration: 400,
+          duration: 2000,
           useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, [scaleAnim]);
+        })
+      ).start();
+    } else if (variantLower.includes("cosmos")) {
+      // Cosmos - Glow pulse
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(glowAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: false,
+          }),
+          Animated.timing(glowAnim, {
+            toValue: 0,
+            duration: 800,
+            useNativeDriver: false,
+          }),
+        ])
+      ).start();
+    } else if (variantLower.includes("cracked")) {
+      // Cracked Ice - Shake effect
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.05,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 0.95,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 150,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else if (variantLower.includes("master") || variantLower.includes("poke")) {
+      // Master/Poke Ball - Bounce
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.2,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else if (variantLower.includes("stamp")) {
+      // Stamps - Gentle pulse
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.08,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else if (variantLower.includes("1st")) {
+      // 1st Edition - Rotate slowly
+      Animated.loop(
+        Animated.timing(rotateAnim, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: true,
+        })
+      ).start();
+    } else {
+      // Default - Standard pulse
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 400,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    }
+  }, [scaleAnim, rotateAnim, glowAnim, variantInfo.label]);
+
+  const rotate = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  const shadowOpacity = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.9],
+  });
+
+  const getVariantStyle = () => {
+    const variantLower = variantInfo.label.toLowerCase();
+
+    if (variantLower.includes("cosmos")) {
+      return {
+        shadowColor: variantInfo.color,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: shadowOpacity,
+        shadowRadius: 8,
+      };
+    }
+
+    return {};
+  };
 
   return (
     <Animated.View
@@ -100,8 +236,12 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
         styles.variantBadge,
         { 
           backgroundColor: variantInfo.color,
-          transform: [{ scale: scaleAnim }],
+          transform: [
+            { scale: scaleAnim },
+            { rotate: rotate },
+          ],
         },
+        getVariantStyle(),
       ]}
     >
       <View style={styles.pokeball}>
@@ -110,6 +250,191 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
         <View style={styles.pokeballBottom} />
       </View>
       <Text style={styles.variantBadgeText}>{variantInfo.label}</Text>
+    </Animated.View>
+  );
+}
+
+function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: React.ReactNode }) {
+  const glowAnim = new Animated.Value(0);
+  const rotateAnim = new Animated.Value(0);
+
+  useEffect(() => {
+    // Glow pulse animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: false,
+        }),
+        Animated.timing(glowAnim, {
+          toValue: 0,
+          duration: 1500,
+          useNativeDriver: false,
+        }),
+      ])
+    ).start();
+
+    // Rotation for special rarities
+    if (rarity?.toLowerCase().includes("rare") || rarity?.toLowerCase().includes("ultra")) {
+      Animated.loop(
+        Animated.timing(rotateAnim, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: true,
+        })
+      ).start();
+    }
+  }, [glowAnim, rotateAnim, rarity]);
+
+  const getBorderStyle = () => {
+    if (!rarity) return null;
+
+    const rarityLower = rarity.toLowerCase();
+
+    // Secret Rare - Rainbow gradient rotating
+    if (rarityLower.includes("secret")) {
+      const rotate = rotateAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ['0deg', '360deg'],
+      });
+
+      return {
+        borderWidth: 3,
+        borderColor: 'transparent',
+        borderRadius: 10,
+        shadowColor: '#ff00ff',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.8,
+        shadowRadius: 10,
+        transform: [{ rotate }],
+      };
+    }
+
+    // Ultra Rare - Gold pulsing
+    if (rarityLower.includes("ultra")) {
+      const opacity = glowAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.5, 1],
+      });
+
+      return {
+        borderWidth: 2.5,
+        borderColor: '#FFD700',
+        borderRadius: 10,
+        shadowColor: '#FFD700',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: opacity,
+        shadowRadius: 8,
+      };
+    }
+
+    // Hyper Rare - Blue electric pulse
+    if (rarityLower.includes("hyper")) {
+      const opacity = glowAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.4, 1],
+      });
+
+      return {
+        borderWidth: 2.5,
+        borderColor: '#00BFFF',
+        borderRadius: 10,
+        shadowColor: '#00BFFF',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: opacity,
+        shadowRadius: 10,
+      };
+    }
+
+    // Double Rare - Purple shimmer
+    if (rarityLower.includes("double")) {
+      const opacity = glowAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.3, 0.9],
+      });
+
+      return {
+        borderWidth: 2,
+        borderColor: '#9370DB',
+        borderRadius: 10,
+        shadowColor: '#9370DB',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: opacity,
+        shadowRadius: 6,
+      };
+    }
+
+    // Rare - Green glow
+    if (rarityLower.includes("rare") && !rarityLower.includes("common")) {
+      const opacity = glowAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.3, 0.7],
+      });
+
+      return {
+        borderWidth: 2,
+        borderColor: '#32CD32',
+        borderRadius: 10,
+        shadowColor: '#32CD32',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: opacity,
+        shadowRadius: 5,
+      };
+    }
+
+    // Uncommon - Silver subtle glow
+    if (rarityLower.includes("uncommon")) {
+      return {
+        borderWidth: 1.5,
+        borderColor: '#C0C0C0',
+        borderRadius: 10,
+        shadowColor: '#C0C0C0',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.4,
+        shadowRadius: 3,
+      };
+    }
+
+    // Common - Simple gray border
+    if (rarityLower.includes("common")) {
+      return {
+        borderWidth: 1,
+        borderColor: '#808080',
+        borderRadius: 10,
+      };
+    }
+
+    // Promo - Orange glow
+    if (rarityLower.includes("promo")) {
+      const opacity = glowAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0.4, 0.8],
+      });
+
+      return {
+        borderWidth: 2,
+        borderColor: '#FF8C00',
+        borderRadius: 10,
+        shadowColor: '#FF8C00',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: opacity,
+        shadowRadius: 6,
+      };
+    }
+
+    return null;
+  };
+
+  const borderStyle = getBorderStyle();
+
+  if (!borderStyle) {
+    return <>{children}</>;
+  }
+
+  return (
+    <Animated.View style={borderStyle}>
+      {children}
     </Animated.View>
   );
 }
@@ -275,30 +600,32 @@ export default function SetDetailScreen() {
           });
         }}
       >
-        <View
-          style={[
-            styles.cardImageContainer,
-            {
-              height: CARD_IMG_HEIGHT,
-              backgroundColor: colors.surface,
-            },
-          ]}
-        >
-          {item.images?.small ? (
-            <Image
-              source={{ uri: item.images.small }}
-              style={styles.cardImage}
-              contentFit="contain"
-              placeholder={{ color: colors.surfaceVariant }}
-            />
-          ) : (
-            <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-              <Ionicons name="image-outline" size={32} color={colors.textMuted} />
-            </View>
-          )}
+        <AnimatedRarityBorder rarity={item.rarity}>
+          <View
+            style={[
+              styles.cardImageContainer,
+              {
+                height: CARD_IMG_HEIGHT,
+                backgroundColor: colors.surface,
+              },
+            ]}
+          >
+            {item.images?.small ? (
+              <Image
+                source={{ uri: item.images.small }}
+                style={styles.cardImage}
+                contentFit="contain"
+                placeholder={{ color: colors.surfaceVariant }}
+              />
+            ) : (
+              <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+                <Ionicons name="image-outline" size={32} color={colors.textMuted} />
+              </View>
+            )}
 
-          <AnimatedVariantBadge variantInfo={variantInfo} />
-        </View>
+            <AnimatedVariantBadge variantInfo={variantInfo} />
+          </View>
+        </AnimatedRarityBorder>
 
         <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={2}>
           {item.name}
@@ -310,9 +637,14 @@ export default function SetDetailScreen() {
 
         <View style={[styles.priceBadge, { backgroundColor: colors.success + "20" }]}>
           {price.price ? (
-            <Text style={[styles.cardPrice, { color: colors.success }]}>
-              {formatGBP(price.price)}
-            </Text>
+            <>
+              <Text style={[styles.cardPrice, { color: colors.success }]}>
+                {formatGBP(price.price)}
+              </Text>
+              <Text style={[styles.priceSource, { color: colors.textMuted }]}>
+                {price.source || "Market"}
+              </Text>
+            </>
           ) : (
             <Text style={[styles.cardPrice, { color: colors.textMuted }]}>N/A</Text>
           )}
@@ -712,6 +1044,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "Outfit_700Bold",
     textAlign: "center",
+  },
+  priceSource: {
+    fontSize: 8,
+    fontFamily: "Outfit_500Medium",
+    textAlign: "center",
+    marginTop: 2,
   },
   centerContent: {
     flex: 1,

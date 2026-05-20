@@ -29,6 +29,7 @@ import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
 import { CollectionItem, getSessionToken } from "@/lib/storage";
 import { getApiUrl } from "@/lib/query-client";
+import { calculateConditionPrice, getConditionMultiplierDisplay } from "@/lib/condition-pricing";
 import PokeBackground from "@/components/PokeBackground";
 
 function setLogoUrl(setId: string) {
@@ -124,9 +125,16 @@ function CollectionCard({
             </Pressable>
           )}
         </View>
-        <Text style={[styles.cardPrice, { color: item.priceGBP ? colors.success : colors.textMuted }]}>
-          {formatGBP(item.priceGBP)} each
-        </Text>
+        <View style={{ gap: 2 }}>
+          <Text style={[styles.cardPrice, { color: item.priceGBP ? colors.success : colors.textMuted }]}>
+            {formatGBP(calculateConditionPrice(item.priceGBP, item.condition))} each
+          </Text>
+          {item.priceGBP && item.condition !== "Near Mint" && (
+            <Text style={[styles.conditionAdjustment, { color: colors.textMuted }]}>
+              {getConditionMultiplierDisplay(item.condition)} of NM ({formatGBP(item.priceGBP)})
+            </Text>
+          )}
+        </View>
       </View>
       <View style={styles.qtyControls}>
         <Pressable
@@ -589,7 +597,7 @@ export default function CollectionScreen() {
       g.data.push(item);
       g.cardCount += 1;
       g.totalQuantity += item.quantity;
-      g.setValue += (item.priceGBP ?? 0) * item.quantity;
+      g.setValue += calculateConditionPrice(item.priceGBP, item.condition) * item.quantity;
       if (new Date(item.addedAt) > new Date(g.latestAdded)) {
         g.latestAdded = item.addedAt;
       }
@@ -602,7 +610,7 @@ export default function CollectionScreen() {
       result.forEach(s => s.data.sort((a, b) => a.cardName.localeCompare(b.cardName)));
     } else if (sortBy === "value") {
       result.sort((a, b) => b.setValue - a.setValue);
-      result.forEach(s => s.data.sort((a, b) => (b.priceGBP ?? 0) - (a.priceGBP ?? 0)));
+      result.forEach(s => s.data.sort((a, b) => (calculateConditionPrice(b.priceGBP, b.condition) - calculateConditionPrice(a.priceGBP, a.condition))));
     } else {
       result.sort((a, b) => new Date(b.latestAdded).getTime() - new Date(a.latestAdded).getTime());
       result.forEach(s => s.data.sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()));
@@ -742,6 +750,7 @@ export default function CollectionScreen() {
             <Ionicons name="cash" size={18} color={colors.success} />
             <Text style={[styles.statValue, { color: colors.success }]}>{formatGBP(collectionValue)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Value</Text>
+            <Text style={[styles.priceSource, { color: colors.textMuted }]}>TCGPlayer</Text>
           </View>
         </View>
         <View style={styles.sortRow}>
@@ -973,6 +982,8 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: 18, fontFamily: "Outfit_700Bold" },
   statLabel: { fontSize: 11, fontFamily: "Outfit_400Regular" },
+  priceSource: { fontSize: 9, fontFamily: "Outfit_500Medium", marginTop: 2 },
+  conditionAdjustment: { fontSize: 9, fontFamily: "Outfit_400Regular", fontStyle: "italic" },
   sortRow: { flexDirection: "row", gap: 8 },
   sortBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   sortBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
