@@ -57,6 +57,7 @@ import {
 import { startSyncService, getSyncStatus, runFullSync } from "./card-sync";
 import { runFullResync } from "./full-resync";
 import type { ScrydexSyncProgress } from "./scrydex-scraper";
+import { pool } from "./db";
 
 let resyncState: {
   running: boolean;
@@ -2312,7 +2313,49 @@ ${setReference}`,
       });
       const token = await storage.createSession(user.id);
       const { passwordHash: _ph, ...safeUser } = user as any;
-
+      //       ── Trial grant ───────────────────────────────────
+      //       // If the email/mobile hasn't been seen before, grant 3-day trial.
+      //       // pokescan_blocked_credentials already blocks reuse — here we also
+      //       // write to pokescan_registered_identifiers so trial history persists
+      //       // even after an account is deleted and recreated.
+      if (!blocked) {
+        const trialEnd = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+        try {
+          await pool.query(
+            `UPDATE pokescan_users
+               SET trial_started_at = NOW(),
+                   trial_ends_at    = $1,
+                    is_premium       = TRUE,
+                    is_trial_used    = TRUE
+              WHERE id = $2`,
+            [trialEnd, user.id],
+          );
+          //           // Record identifiers so future re-registrations are caught
+          if (email) {
+            await pool.query(
+              `INSERT INTO pokescan_registered_identifiers (email, trial_granted)
+                VALUES ($1, TRUE)
+                ON CONFLICT DO NOTHING`,
+              [email.toLowerCase().trim()],
+            );
+          }
+          if (mobileNumber?.trim()) {
+            await pool.query(
+              `INSERT INTO pokescan_registered_identifiers (mobile_number, trial_granted)
+                VALUES ($1, TRUE)
+                ON CONFLICT DO NOTHING`,
+              [mobileNumber.trim()],
+            );
+          }
+          //           // Reflect trial on the safeUser object returned to the client
+          (safeUser as any).isPremium = true;
+          (safeUser as any).trialEndsAt = trialEnd;
+          (safeUser as any).isTrialUsed = true;
+        } catch (trialErr) {
+          console.error("[Trial] Failed to grant trial:", trialErr);
+          // Non-fatal — user still registers, just without trial
+        }
+      }
       // Auto-send email verification OTP
       try {
         const { code } = createOtp(user.email.toLowerCase().trim());
@@ -2417,8 +2460,28 @@ ${setReference}`,
         });
         return;
       }
-      await storage.deleteUser(caller.id);
+      // Soft-delete: anonymise PII but keep collections & scan history.
+      //       // pokescan_registered_identifiers rows are intentionally NOT touched —
+      //       // they are the fraud-prevention record that blocks free trial re-use.
+      await pool.query(
+        `UPDATE pokescan_users
+                  SET deleted_at     = NOW(),
+                      email          = $1,
+                      mobile_number  = '',
+                      password_hash  = NULL,
+                      avatar_url     = NULL
+                WHERE id = $2`,
+        [`deleted_${caller.id}@deleted.invalid`, caller.id],
+      );
+      // Destroy all sessions
+      await pool.query(`DELETE FROM pokescan_sessions WHERE user_id = $1`, [
+        caller.id,
+      ]);
       res.json({ success: true });
+
+      // NOTE: If your storage.deleteUser() also deletes collections/scan history
+      //       via a cascade, make sure you do NOT call it anymore — the pool.query
+      //       above replaces it entirely.
     } catch (error: any) {
       console.error("Delete account error:", error);
       res
@@ -3179,12 +3242,50 @@ ${setReference}`,
         res.status(401).json({ error: "Invalid or expired session" });
         return;
       }
-      if (!user.isPremium) {
-        res
-          .status(403)
-          .json({ error: "Premium required to access the marketplace." });
-        return;
-      }
+
+      app.get("/api/auth/trial-status", async (req: Request, res: Response) => {
+        try {
+          const token = req.headers.authorization?.replace("Bearer ", "");
+          if (!token) {
+            res.status(401).json({ error: "Unauthorized" });
+            return;
+          }
+          const user = await storage.validateSession(token);
+          if (!user) {
+            res.status(401).json({ error: "Invalid session" });
+            return;
+          }
+
+          // Paid Stripe subscriber
+          if (
+            user.stripeSubscriptionId &&
+            user.subscriptionStatus === "active"
+          ) {
+            res.json({ status: "paid" });
+            return;
+          }
+
+          // Trial dates
+          if ((user as any).trialEndsAt) {
+            const msLeft =
+              new Date((user as any).trialEndsAt).getTime() - Date.now();
+            if (msLeft > 0) {
+              res.json({
+                status: "active",
+                daysLeft: Math.ceil(msLeft / (1000 * 60 * 60 * 24)),
+                hoursLeft: Math.ceil(msLeft / (1000 * 60 * 60)),
+              });
+            } else {
+              res.json({ status: "expired" });
+            }
+            return;
+          }
+
+          res.json({ status: user.isTrialUsed ? "ineligible" : "none" });
+        } catch (err: any) {
+          res.status(500).json({ error: "Could not fetch trial status" });
+        }
+      });
 
       // Public marketplace shows only approved listings.
       // The owner additionally sees their own pending/rejected listings so they
@@ -3215,12 +3316,6 @@ ${setReference}`,
       const user = await storage.validateSession(token);
       if (!user) {
         res.status(401).json({ error: "Invalid or expired session" });
-        return;
-      }
-      if (!user.isPremium) {
-        res
-          .status(403)
-          .json({ error: "Premium required to list on the marketplace." });
         return;
       }
 
@@ -6402,7 +6497,7 @@ matches must be true or false.`;
     res.json({ users });
   });
 
-  // ─── Support ─────────────────────────────────────────────────────────────────
+  // ─── Support ──────────────re�──────────────────────────────────────────────────
   app.get("/api/support/admin", async (_req: Request, res: Response) => {
     try {
       const admins = await db

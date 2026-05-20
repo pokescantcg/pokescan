@@ -256,6 +256,32 @@ process.on("unhandledRejection", (reason) => {
 
   setupErrorHandler(app);
 
+  //   // ── Trial expiry job ─────────────────────────────────
+  //   // Runs every 30 minutes. Flips isPremium=false on any
+  //   // user whose trial_ends_at has passed and has no active
+  //   // Stripe subscription. Collections/data are untouched.
+  async function expireTrials() {
+    try {
+      const { pool } = await import("./db"); // already imported via warmupDb
+      const result = await pool.query(
+        `UPDATE pokescan_users
+            SET is_premium = FALSE
+          WHERE trial_ends_at IS NOT NULL
+            AND trial_ends_at < NOW()
+            AND is_premium = TRUE
+            AND (stripe_subscription_id IS NULL
+                 OR subscription_status != 'active')`,
+      );
+      if (result.rowCount && result.rowCount > 0) {
+        console.log(`[TrialExpiry] Expired ${result.rowCount} trial(s)`);
+      }
+    } catch (err) {
+      console.error("[TrialExpiry] Error:", err);
+    }
+  }
+  expireTrials(); // run once on startup
+  setInterval(expireTrials, 30 * 60 * 1000); // then every 30 min
+
   // Health check endpoint for uptime monitoring
   app.get("/health", (_req, res) => {
     res.status(200).json({ status: "ok", ts: Date.now() });

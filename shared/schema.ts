@@ -374,3 +374,27 @@ export const cardPriceHistory = pgTable("card_price_history", {
   fetchedAt: timestamp("fetched_at")
     .default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const pokescanRegisteredIdentifiers = pgTable(
+  "pokescan_registered_identifiers",
+  {
+    id: varchar("id", { length: 36 })
+      .primaryKey()
+      .default(sql`gen_random_uuid()::varchar`),
+
+    // At least one of email / mobileNumber will be set.
+    email: text("email"),
+    mobileNumber: text("mobile_number"),
+
+    // Track when this identity was first seen (= first registration).
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
+      .notNull()
+      .default(sql`NOW()`),
+
+    // True = was granted a trial on first registration.
+    trialGranted: boolean("trial_granted").notNull().default(false),
+  }
+);
+
+export type PokescanRegisteredIdentifier =
+  typeof pokescanRegisteredIdentifiers.$inferSelect;
