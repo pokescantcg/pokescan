@@ -2779,6 +2779,15 @@ ${setReference}`,
         res.status(401).json({ error: "Invalid or expired session" });
         return;
       }
+
+      // Check if user has AT LEAST email OR mobile (not both required)
+      if (!user.email && !user.mobileNumber) {
+        res.status(400).json({
+          error:
+            "Please add an email or phone number to your account before starting a trial",
+        });
+        return;
+      }
       res.json({ user });
     } catch (error: any) {
       console.error("Session validation error:", error);
