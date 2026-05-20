@@ -7774,21 +7774,47 @@ Return ONLY valid JSON in exactly this format with no markdown:
     }
   });
 
+  // UPDATED ENDPOINT for routes.ts
+  // Replace the old /api/admin/resync-status endpoint with this one
+  // This properly extracts stats from the progress callback
 
   app.get("/api/admin/resync-status", (_req: Request, res: Response) => {
-    const progress = resyncState.progress || {};
+    // Extract data from existing resyncState
+    const isRunning = resyncState.running;
     const startTime = resyncState.startedAt
       ? resyncState.startedAt.getTime()
       : 0;
+    const elapsed = startTime ? Date.now() - startTime : 0;
+
+    // Get progress data - contains the counts we need
+    const progress = resyncState.progress || {};
+
+    // Extract counts from progress object
+    // The progress callback sends: setsAdded, cardsAdded, variantsAdded, pricesAdded
+    const setsAdded = progress.setsAdded || progress.setsProcessed || 0;
+    const cardsAdded = progress.cardsAdded || progress.cardsProcessed || 0;
+    const variantsAdded = progress.variantsAdded || 0;
+    const pricesAdded = progress.pricesAdded || 0;
+    const totalAdded = setsAdded + cardsAdded + variantsAdded + pricesAdded;
+
+    // Get current phase
+    const phase = progress.phase || "idle";
 
     return res.json({
-      isRunning: resyncState.running,
+      isRunning: isRunning,
       connectedMonitors: 1,
       startTime: startTime,
-      setsAdded: progress.setsAdded || 0,
-      variantsAdded: progress.variantsAdded || 0,
-      cardsAdded: progress.cardsAdded || 0,
-      pricesAdded: progress.pricesAdded || 0,
+      elapsed: elapsed,
+      setsAdded: setsAdded,
+      variantsAdded: variantsAdded,
+      cardsAdded: cardsAdded,
+      pricesAdded: pricesAdded,
+      totalAdded: totalAdded,
+      phase: phase,
+      setsProcessed: progress.setsProcessed || 0,
+      setsTotal: progress.setsTotal || 0,
+      cardsProcessed: progress.cardsProcessed || 0,
+      error: resyncState.error,
       timestamp: Date.now(),
     });
   });
