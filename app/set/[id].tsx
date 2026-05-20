@@ -8,6 +8,7 @@ import {
   FlatList,
   ActivityIndicator,
   Dimensions,
+  RefreshControl,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -17,12 +18,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useThemeColors } from "@/constants/colors";
 import {
   fetchSetCards,
-  expandCardVariants,
   getUKPrice,
   formatGBP,
   PokemonCard,
 } from "@/lib/pokemon-api";
-import { getSetCardsFromCache } from "@/lib/card-cache";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const CARD_WIDTH = (SCREEN_WIDTH - 48) / 3;
@@ -118,44 +117,78 @@ export default function SetDetailScreen() {
   const insets = useSafeAreaInsets();
 
   const [selectedRarity, setSelectedRarity] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const {
     data: cards = [],
     isLoading,
     isError,
+    error,
+    refetch,
   } = useQuery({
     queryKey: ["setCards", id],
     queryFn: async () => {
-      if (!id) throw new Error("No set ID");
+      if (!id) throw new Error("No set ID provided");
 
       try {
-        // Try cache first
-        const cached = getSetCardsFromCache(id);
-        if (cached && cached.length > 0) {
-          console.log(
-            `[SetDetail] Loaded ${cached.length} cards from cache for set ${id}`
-          );
-          const expanded = expandCardVariants(cached);
-          console.log(
-            `[SetDetail] Expanded to ${expanded.length} variants from ${cached.length} base cards`
-          );
-          return expanded;
+        console.log(`[SetDetail] Fetching cards for set: ${id}`);
+
+        // Fetch directly from API - simple and reliable
+        const response = await fetchSetCards(id);
+
+        if (!response || response.length === 0) {
+          throw new Error("No cards returned from API");
         }
 
-        // Fetch from API
-        console.log(`[SetDetail] Fetching cards for set ${id} from API`);
-        const fetched = await fetchSetCards(id);
-        const expanded = expandCardVariants(fetched);
-        console.log(
-          `[SetDetail] Fetched ${fetched.length} cards, expanded to ${expanded.length} variants`
-        );
+        console.log(`[SetDetail] Received ${response.length} cards from API for set ${id}`);
+
+        // Expand variants inline - simple approach
+        const expanded: PokemonCard[] = [];
+
+        for (const card of response) {
+          if (!card.tcgplayer?.prices) {
+            // No variants available, add base card
+            expanded.push(card);
+            continue;
+          }
+
+          const prices = card.tcgplayer.prices;
+          const variants = [];
+
+          // Check each variant type
+          if (prices.normal) {
+            variants.push({ ...card, variantLabel: "Non-Holo", finishType: "normal" });
+          }
+          if (prices.holofoil) {
+            variants.push({ ...card, variantLabel: "Holo", finishType: "holo" });
+          }
+          if (prices.reverseHolofoil) {
+            variants.push({ ...card, variantLabel: "Reverse Holo", finishType: "reverse_holo" });
+          }
+          if (prices["1stEditionNormal"]) {
+            variants.push({ ...card, variantLabel: "1st Ed Non-Holo", finishType: "1st_edition" });
+          }
+          if (prices["1stEditionHolofoil"]) {
+            variants.push({ ...card, variantLabel: "1st Ed Holo", finishType: "1st_edition_holo" });
+          }
+
+          // If variants found, add them; otherwise add base card
+          if (variants.length > 0) {
+            expanded.push(...variants);
+          } else {
+            expanded.push(card);
+          }
+        }
+
+        console.log(`[SetDetail] Expanded ${response.length} cards to ${expanded.length} variants`);
         return expanded;
-      } catch (err) {
-        console.error("[SetDetail] Error loading cards:", err);
-        throw err;
+      } catch (err: any) {
+        console.error("[SetDetail] Error fetching cards:", err.message);
+        throw new Error(`Failed to load cards: ${err.message}`);
       }
     },
-    staleTime: 1000 * 60 * 60,
+    retry: 2,
+    staleTime: 1000 * 60 * 30, // 30 minutes
   });
 
   const rarities = useMemo(() => {
@@ -168,20 +201,19 @@ export default function SetDetailScreen() {
     return cards.filter((c) => c.rarity === selectedRarity);
   }, [cards, selectedRarity]);
 
-  const renderCard = ({ item, index }: { item: PokemonCard; index: number }) => {
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  };
+
+  const renderCard = ({ item }: { item: PokemonCard }) => {
     const price = getUKPrice(item);
     const variantInfo = getVariantInfo(
       item.variantLabel,
       item.finishType,
       item.variant
     );
-
-    // Debug logging
-    if (index < 3) {
-      console.log(
-        `[Card ${index}] name=${item.name}, variant=${item.variantLabel}, finishType=${item.finishType}, display=${variantInfo.label}`
-      );
-    }
 
     return (
       <Pressable
@@ -207,14 +239,26 @@ export default function SetDetailScreen() {
           ]}
         >
           {/* Card Image */}
-          <Image
-            source={{ uri: item.images?.small || "" }}
-            style={styles.cardImage}
-            contentFit="contain"
-            placeholder={{ color: colors.surfaceVariant }}
-          />
+          {item.images?.small ? (
+            <Image
+              source={{ uri: item.images.small }}
+              style={styles.cardImage}
+              contentFit="contain"
+              placeholder={{ color: colors.surfaceVariant }}
+            />
+          ) : (
+            <View
+              style={{
+                flex: 1,
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <Ionicons name="image-outline" size={32} color={colors.textMuted} />
+            </View>
+          )}
 
-          {/* Variant Badge - Always Visible */}
+          {/* Variant Badge */}
           <View
             style={[
               styles.variantBadge,
@@ -264,7 +308,7 @@ export default function SetDetailScreen() {
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>
+          <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
             {name || "Set"}
           </Text>
           <View style={styles.backBtn} />
@@ -286,7 +330,7 @@ export default function SetDetailScreen() {
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>
+          <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
             {name || "Set"}
           </Text>
           <View style={styles.backBtn} />
@@ -297,12 +341,21 @@ export default function SetDetailScreen() {
             size={48}
             color={colors.pokemonRed}
           />
-          <Text style={[styles.text, { color: colors.text }]}>
-            Error loading cards
+          <Text style={[styles.text, { color: colors.text }, { textAlign: "center" }]}>
+            Error Loading Cards
+          </Text>
+          <Text style={[styles.errorText, { color: colors.textSecondary }]}>
+            {error?.message || "Unknown error"}
           </Text>
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => refetch()}
             style={[styles.button, { backgroundColor: colors.pokemonRed }]}
+          >
+            <Text style={styles.buttonText}>Retry</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.button, { backgroundColor: colors.textMuted }]}
           >
             <Text style={styles.buttonText}>Go Back</Text>
           </Pressable>
@@ -318,7 +371,7 @@ export default function SetDetailScreen() {
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>
+          <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
             {name || "Set"}
           </Text>
           <View style={styles.backBtn} />
@@ -346,7 +399,7 @@ export default function SetDetailScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
           {name || "Set"}
         </Text>
         <View style={styles.backBtn} />
@@ -406,6 +459,9 @@ export default function SetDetailScreen() {
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.gridContainer}
         scrollIndicatorInsets={{ right: 1 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={[styles.text, { color: colors.textMuted }]}>
@@ -496,7 +552,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 4,
-    backgroundColor: "#000",
   },
   variantBadgeText: {
     fontSize: 8,
@@ -522,6 +577,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 12,
+    paddingHorizontal: 20,
   },
   emptyContainer: {
     flex: 1,
@@ -533,11 +589,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: "Outfit_500Medium",
   },
+  errorText: {
+    fontSize: 12,
+    fontFamily: "Outfit_400Regular",
+    textAlign: "center",
+  },
   button: {
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 10,
-    marginTop: 16,
+    marginTop: 8,
   },
   buttonText: {
     color: "#FFF",
