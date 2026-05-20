@@ -1,705 +1,548 @@
-import React, { useCallback, useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import {
   StyleSheet,
   Text,
   View,
-  FlatList,
   Pressable,
   useColorScheme,
-  Platform,
+  FlatList,
   ActivityIndicator,
   Dimensions,
-  RefreshControl,
-  ScrollView,
-  Animated,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
+import { useQuery } from "@tanstack/react-query";
 import { useThemeColors } from "@/constants/colors";
 import {
   fetchSetCards,
-  PokemonCard,
+  expandCardVariants,
   getUKPrice,
   formatGBP,
+  PokemonCard,
 } from "@/lib/pokemon-api";
-import { CachedCard } from "@/lib/card-cache";
-import { useUser } from "@/lib/user-context";
-
-function parseCardNumber(num: string): [number, string] {
-  const match = num.match(/^(\d+)(.*)/);
-  if (match) return [parseInt(match[1], 10), match[2]];
-  return [Infinity, num];
-}
-
-function sortCardsByNumber(cards: PokemonCard[]): PokemonCard[] {
-  return [...cards].sort((a, b) => {
-    const [aNum, aSuffix] = parseCardNumber(a.number || "");
-    const [bNum, bSuffix] = parseCardNumber(b.number || "");
-    if (aNum !== bNum) return aNum - bNum;
-    return aSuffix.localeCompare(bSuffix);
-  });
-}
-
-const RARITY_ORDER = [
-  "Common","Uncommon","Rare","Rare Holo","Double Rare","Amazing Rare",
-  "Rare Holo V","Rare Holo VMAX","Rare Holo VSTAR","Rare Holo EX","Rare Holo GX",
-  "Trainer Gallery Rare Holo","ACE SPEC Rare","Rare Ultra","Illustration Rare",
-  "Rare Rainbow","Special Illustration Rare","Hyper Rare","Rare Secret",
-  "Rare Shiny","Rare Shiny GX","Rare Shining","Promo",
-];
-
-function rarityRank(r: string): number {
-  const idx = RARITY_ORDER.indexOf(r);
-  return idx === -1 ? RARITY_ORDER.length : idx;
-}
-
-function cachedToPokemonCard(c: CachedCard): PokemonCard {
-  return {
-    id: c.id, name: c.name, number: c.number,
-    supertype: c.supertype || "Pokémon", rarity: c.rarity,
-    types: c.types, hp: c.hp, artist: c.artist,
-    set: { id: c.setId, name: c.setName, series: "", printedTotal: 0,
-      total: 0, releaseDate: "", updatedAt: "", images: { symbol: "", logo: "" } },
-    images: { small: c.imageSmall, large: c.imageLarge },
-  };
-}
+import { getSetCardsFromCache } from "@/lib/card-cache";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const NUM_COLS = 3;
-const H_PAD = 12;
-const GAP = 6;
-const CARD_WIDTH = (SCREEN_WIDTH - H_PAD * 2 - GAP * (NUM_COLS - 1)) / NUM_COLS;
+const CARD_WIDTH = (SCREEN_WIDTH - 48) / 3;
 const CARD_IMG_HEIGHT = CARD_WIDTH * 1.4;
-const POKEBALL_GOLD = "#FFD700";
 
-// Maps internal finish_type to human label
-const FINISH_LABELS: Record<string, string> = {
-  normal: "Non-Holo",
-  non_holo: "Non-Holo",
-  holo: "Holo",
-  reverse_holo: "Reverse Holo",
-  cosmos_holo: "Cosmos Holo",
-  cracked_ice: "Cracked Ice",
-  master_ball: "Master Ball",
-  poke_ball: "Poké Ball",
-  staff_stamp: "Staff Stamp",
-  prerelease_stamp: "Prerelease",
-  winner_stamp: "Winner",
-  league_stamp: "League",
-  champion_stamp: "Champion",
-  set_stamp: "Set Stamp",
+// Complete variant mapping with all 16 types
+const VARIANT_INFO: Record<string, { label: string; color: string; icon: string }> = {
+  // Base variants
+  normal: { label: "Non-Holo", color: "#95a5a6", icon: "square-outline" },
+  non_holo: { label: "Non-Holo", color: "#95a5a6", icon: "square-outline" },
+  holo: { label: "Holo", color: "#f39c12", icon: "sparkles" },
+  reverse_holo: { label: "Reverse Holo", color: "#3498db", icon: "refresh-circle" },
+
+  // Special finish variants
+  cosmos_holo: { label: "Cosmos Holo", color: "#9b59b6", icon: "star-box" },
+  cracked_ice: { label: "Cracked Ice", color: "#1abc9c", icon: "snowflake" },
+  master_ball: { label: "Master Ball", color: "#c0392b", icon: "circle-slice-8" },
+  poke_ball: { label: "Poké Ball", color: "#e74c3c", icon: "circle" },
+
+  // Stamp variants
+  staff_stamp: { label: "Staff Stamp", color: "#34495e", icon: "stamper" },
+  prerelease_stamp: { label: "Prerelease", color: "#16a085", icon: "stamp" },
+  winner_stamp: { label: "Winner", color: "#d4af37", icon: "trophy" },
+  league_stamp: { label: "League", color: "#2980b9", icon: "shield-star" },
+  champion_stamp: { label: "Champion", color: "#f39c12", icon: "crown" },
+  set_stamp: { label: "Set Stamp", color: "#8e44ad", icon: "tag" },
 };
 
-// Enhanced per-variant visual config with animations
-const VARIANT_STYLE: Record<string, {
-  border: string; badge: string; badgeText: string;
-  gradientColors: string[]; showGradient: boolean;
-  animationType: "shimmer" | "glow" | "pulse" | "sparkle" | "cosmic" | "bounce" | "none";
-  accentColor: string;
-}> = {
-  holo: {
-    border: "#FFD700",
-    badge: "rgba(255,215,0,0.22)",
-    badgeText: "#FFD700",
-    gradientColors: ["rgba(255,0,200,0.10)","rgba(0,255,255,0.18)","rgba(255,255,0,0.10)"],
-    showGradient: true,
-    animationType: "shimmer",
-    accentColor: "#FFD700",
-  },
-  reverse_holo: {
-    border: "#00BFFF",
-    badge: "rgba(0,191,255,0.22)",
-    badgeText: "#00BFFF",
-    gradientColors: ["rgba(0,191,255,0.04)","rgba(120,0,255,0.14)","rgba(0,191,255,0.04)"],
-    showGradient: true,
-    animationType: "glow",
-    accentColor: "#00BFFF",
-  },
-  cosmos_holo: {
-    border: "#B44FFF",
-    badge: "rgba(180,79,255,0.22)",
-    badgeText: "#B44FFF",
-    gradientColors: ["rgba(180,79,255,0.12)","rgba(0,80,255,0.16)","rgba(180,79,255,0.08)"],
-    showGradient: true,
-    animationType: "cosmic",
-    accentColor: "#B44FFF",
-  },
-  cracked_ice: {
-    border: "#4DD0E1",
-    badge: "rgba(77,208,225,0.22)",
-    badgeText: "#4DD0E1",
-    gradientColors: ["rgba(77,208,225,0.08)","rgba(100,200,255,0.12)"],
-    showGradient: true,
-    animationType: "sparkle",
-    accentColor: "#4DD0E1",
-  },
-  master_ball: {
-    border: "#FF1744",
-    badge: "rgba(255,23,68,0.22)",
-    badgeText: "#FF1744",
-    gradientColors: ["rgba(255,23,68,0.10)","rgba(255,100,100,0.12)"],
-    showGradient: true,
-    animationType: "pulse",
-    accentColor: "#FF1744",
-  },
-  poke_ball: {
-    border: "#FF5252",
-    badge: "rgba(255,82,82,0.22)",
-    badgeText: "#FF5252",
-    gradientColors: ["rgba(255,82,82,0.08)","rgba(255,150,100,0.12)"],
-    showGradient: true,
-    animationType: "bounce",
-    accentColor: "#FF5252",
-  },
-  normal: {
-    border: "transparent",
-    badge: "rgba(255,255,255,0.10)",
-    badgeText: "#AAAAAA",
-    gradientColors: [],
-    showGradient: false,
-    animationType: "none",
-    accentColor: "#AAAAAA",
-  },
-};
+function getVariantInfo(
+  variantLabel?: string,
+  finishType?: string,
+  variant?: string
+): { label: string; color: string; icon: string } {
+  // Priority: variantLabel > finishType > variant
+  const source = variantLabel || finishType || variant || "normal";
+  const normalized = source.toLowerCase().trim().replace(/\s+/g, "_");
 
-function getVariantStyle(finishType: string) {
-  return VARIANT_STYLE[finishType] ?? VARIANT_STYLE.normal;
-}
+  // Direct match in map
+  if (VARIANT_INFO[normalized]) {
+    return VARIANT_INFO[normalized];
+  }
 
-type CardCollectionData = { total: number; variants: Record<string, number> };
+  // Fuzzy matching
+  if (
+    normalized.includes("reverse") ||
+    normalized.includes("reversal") ||
+    normalized.includes("rev")
+  ) {
+    return VARIANT_INFO.reverse_holo;
+  }
+  if (normalized.includes("holo") && !normalized.includes("reverse")) {
+    return VARIANT_INFO.holo;
+  }
+  if (normalized.includes("cosmos")) {
+    return VARIANT_INFO.cosmos_holo;
+  }
+  if (normalized.includes("cracked") || normalized.includes("crack")) {
+    return VARIANT_INFO.cracked_ice;
+  }
+  if (normalized.includes("master")) {
+    return VARIANT_INFO.master_ball;
+  }
+  if (normalized.includes("poke") || normalized.includes("pokéball")) {
+    return VARIANT_INFO.poke_ball;
+  }
+  if (normalized.includes("staff")) {
+    return VARIANT_INFO.staff_stamp;
+  }
+  if (normalized.includes("prerelease")) {
+    return VARIANT_INFO.prerelease_stamp;
+  }
+  if (normalized.includes("winner")) {
+    return VARIANT_INFO.winner_stamp;
+  }
+  if (normalized.includes("league")) {
+    return VARIANT_INFO.league_stamp;
+  }
+  if (normalized.includes("champion")) {
+    return VARIANT_INFO.champion_stamp;
+  }
+  if (normalized.includes("set") && normalized.includes("stamp")) {
+    return VARIANT_INFO.set_stamp;
+  }
 
-const VARIANT_COLORS: Record<string, string> = {
-  Holo: "#FFD700", "Reverse Holo": "#00BFFF", "Non-Holo": "#C0C0C0",
-};
-const VARIANT_LABELS: Record<string, string> = {
-  Holo: "H", "Reverse Holo": "R", "Non-Holo": "N",
-};
-
-function CollectionBadge({ data }: { data: CardCollectionData }) {
-  const entries = Object.entries(data.variants).filter(([, qty]) => qty > 0);
-  return (
-    <View style={styles.collectionBadge}>
-      <View style={styles.collectionBadgeInner}>
-        {entries.map(([variant, qty]) => {
-          const label = VARIANT_LABELS[variant] ?? variant[0];
-          const color = VARIANT_COLORS[variant] ?? POKEBALL_GOLD;
-          return (
-            <View key={variant} style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-              <View style={[styles.variantDot, { backgroundColor: color }]} />
-              <Text style={{ fontSize: 8, fontFamily: "Outfit_700Bold", color }}>{label}</Text>
-              {qty > 1 && (
-                <Text style={{ fontSize: 7, fontFamily: "Outfit_600SemiBold", color }}>×{qty}</Text>
-              )}
-            </View>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-// Animated variant badge component
-function AnimatedVariantBadge({
-  label, animationType, badgeColor, textColor
-}: {
-  label: string; animationType: string; badgeColor: string; textColor: string;
-}) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    if (animationType === "pulse") {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(scaleAnim, { toValue: 1.1, duration: 600, useNativeDriver: true }),
-          Animated.timing(scaleAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
-        ])
-      ).start();
-    } else if (animationType === "bounce") {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(scaleAnim, { toValue: 0.95, duration: 300, useNativeDriver: true }),
-          Animated.timing(scaleAnim, { toValue: 1.05, duration: 300, useNativeDriver: true }),
-          Animated.timing(scaleAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
-        ])
-      ).start();
-    }
-  }, [animationType, scaleAnim]);
-
-  return (
-    <Animated.View
-      style={[
-        styles.variantBadge,
-        { backgroundColor: badgeColor, transform: [{ scale: scaleAnim }] },
-      ]}
-    >
-      <Text style={[styles.variantBadgeText, { color: textColor }]}>{label}</Text>
-    </Animated.View>
-  );
-}
-
-function CardGridItem({
-  card, colors, collectionData,
-}: {
-  card: any;
-  colors: ReturnType<typeof useThemeColors>;
-  collectionData: CardCollectionData | null;
-}) {
-  const priceData = getUKPrice(card);
-  const finishType = card.finishType || "normal";
-  const vs = getVariantStyle(finishType);
-  const inCollection = (collectionData?.total ?? 0) > 0;
-  const label = FINISH_LABELS[finishType] || card.variantLabel || finishType;
-
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.gridItem,
-        {
-          backgroundColor: colors.card,
-          borderColor: inCollection
-            ? POKEBALL_GOLD + "80"
-            : vs.border !== "transparent"
-            ? vs.border + "60"
-            : colors.borderLight,
-          borderWidth: inCollection || vs.border !== "transparent" ? 2 : 1,
-          width: CARD_WIDTH,
-          opacity: pressed ? 0.82 : 1,
-        },
-      ]}
-      onPress={() =>
-        router.push({
-          pathname: "/card/[id]",
-          params: { id: card.id, variant: finishType },
-        })
-      }
-    >
-      <View style={[styles.cardImageContainer, { backgroundColor: colors.surface }]}>
-        <Image
-          source={{ uri: card.images?.small || "" }}
-          style={[styles.gridImage, { height: CARD_IMG_HEIGHT, width: CARD_WIDTH }]}
-          contentFit="contain"
-          placeholder={{ color: colors.surface }}
-          transition={200}
-        />
-
-        {/* Variant visual overlay */}
-        {vs.showGradient && (
-          <LinearGradient
-            colors={vs.gradientColors as any}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.variantOverlay}
-            pointerEvents="none"
-          />
-        )}
-
-        {/* Reverse holo diagonal shine stripe */}
-        {finishType === "reverse_holo" && (
-          <LinearGradient
-            colors={["transparent","rgba(180,220,255,0.22)","transparent"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.variantOverlay, { opacity: 0.7 }]}
-            pointerEvents="none"
-          />
-        )}
-
-        {/* Holo sparkle edge glow */}
-        {finishType === "holo" && (
-          <LinearGradient
-            colors={["rgba(255,215,0,0.18)","transparent","rgba(255,100,255,0.14)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.variantOverlay, { opacity: 0.8 }]}
-            pointerEvents="none"
-          />
-        )}
-
-        {/* ENHANCED: Animated Variant badge */}
-        {finishType !== "normal" && (
-          <AnimatedVariantBadge
-            label={label}
-            animationType={vs.animationType}
-            badgeColor={vs.badge}
-            textColor={vs.badgeText}
-          />
-        )}
-
-        {/* Static badge for normal finish */}
-        {finishType === "normal" && (
-          <View style={[styles.variantBadge, { backgroundColor: vs.badge }]}>
-            <Text style={[styles.variantBadgeText, { color: vs.badgeText }]}>
-              {label}
-            </Text>
-          </View>
-        )}
-
-        {card.isStamped && (
-          <View style={styles.stampBadge}>
-            <Text style={styles.stampBadgeText}>STAMP</Text>
-          </View>
-        )}
-
-        {inCollection && <CollectionBadge data={collectionData!} />}
-      </View>
-
-      <View style={styles.gridInfo}>
-        <Text style={[styles.gridName, { color: colors.text }]} numberOfLines={2}>
-          {card.name}
-        </Text>
-        <Text style={[styles.gridNumber, { color: colors.textMuted }]}>
-          #{card.number}
-        </Text>
-        {priceData && priceData.price ? (
-          <Text style={[styles.gridPrice, { color: colors.success }]}>
-            {formatGBP(priceData.price)}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
-
-const NON_ENGLISH_PATTERNS = ["_ja","_ko","_zh","_cn","topsun","babanuki","mengka","oldmaid","hanafuda"];
-
-function getSetLanguageLabel(setId: string): string {
-  const id = (setId || "").toLowerCase();
-  if (["babanuki","mengka","topsun","oldmaid","hanafuda"].some((p) => id.includes(p))) return "Non-TCG";
-  if (id.includes("_ja")) return "Japanese";
-  if (id.includes("_ko")) return "Korean";
-  if (id.includes("_zh") || id.includes("_cn")) return "Chinese";
-  return "";
-}
-
-function isNonEnglishSet(setId: string): boolean {
-  const id = (setId || "").toLowerCase();
-  return NON_ENGLISH_PATTERNS.some((p) => id.includes(p));
+  // Default fallback
+  return VARIANT_INFO.normal;
 }
 
 export default function SetDetailScreen() {
-  const { id, name } = useLocalSearchParams<{ id: string; name: string }>();
+  const { id, name } = useLocalSearchParams<{ id?: string; name?: string }>();
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
-  const { collection } = useUser();
 
-  const collectionMap = useMemo(() => {
-    const map = new Map<string, CardCollectionData>();
-    for (const item of collection) {
-      const existing = map.get(item.cardId) ?? { total: 0, variants: {} };
-      const v = item.variant || "Non-Holo";
-      existing.total += item.quantity;
-      existing.variants[v] = (existing.variants[v] ?? 0) + item.quantity;
-      map.set(item.cardId, existing);
-    }
-    return map;
-  }, [collection]);
+  const [selectedRarity, setSelectedRarity] = useState<string | null>(null);
 
-  const [allCards, setAllCards] = useState<PokemonCard[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [hasError, setHasError] = useState(false);
-  const [loadKey, setLoadKey] = useState(0);
-  const [activeFilter, setActiveFilter] = useState<string | null>(null);
-
-  const handleRefresh = useCallback(() => {
-    setIsRefreshing(true);
-    setHasError(false);
-    setAllCards([]);
-    setTotalCount(0);
-    setActiveFilter(null);
-    setLoadKey((k) => k + 1);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!isRefreshing) setIsLoading(true);
-    setHasError(false);
-
-    const load = async () => {
-      if (Platform.OS !== "web" && !isRefreshing) {
-        try {
-          const { getSetCardsFromCache } = await import("@/lib/card-cache");
-          const cached = await getSetCardsFromCache(id as string);
-          if (!cancelled && cached.length > 0) {
-            const cards = sortCardsByNumber(cached.map(cachedToPokemonCard));
-            setAllCards(cards);
-            setTotalCount(cards.length);
-            setIsLoading(false);
-            setIsRefreshing(false);
-            return;
-          }
-        } catch {}
-      }
+  const {
+    data: cards = [],
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ["setCards", id],
+    queryFn: async () => {
+      if (!id) throw new Error("No set ID");
 
       try {
-        const result = await fetchSetCards(id as string, 1);
-        if (cancelled) return;
-        setAllCards(sortCardsByNumber(result.cards));
-        setTotalCount(result.totalCount);
-        setIsLoading(false);
-        setIsRefreshing(false);
+        // Try cache first
+        const cached = getSetCardsFromCache(id);
+        if (cached && cached.length > 0) {
+          console.log(
+            `[SetDetail] Loaded ${cached.length} cards from cache for set ${id}`
+          );
+          const expanded = expandCardVariants(cached);
+          console.log(
+            `[SetDetail] Expanded to ${expanded.length} variants from ${cached.length} base cards`
+          );
+          return expanded;
+        }
 
-        if (result.cards.length < result.totalCount) {
-          setIsLoadingMore(true);
-          let pg = 2;
-          let accumulated = [...result.cards];
-          while (!cancelled && accumulated.length < result.totalCount) {
-            try {
-              const next = await fetchSetCards(id as string, pg);
-              if (cancelled) break;
-              accumulated = [...accumulated, ...next.cards];
-              setAllCards(sortCardsByNumber(accumulated));
-              setTotalCount(next.totalCount);
-              if (next.cards.length === 0) break;
-              pg++;
-            } catch { break; }
-          }
-          if (!cancelled) setIsLoadingMore(false);
-        }
-      } catch {
-        if (!cancelled) {
-          setHasError(true);
-          setIsLoading(false);
-          setIsRefreshing(false);
-        }
+        // Fetch from API
+        console.log(`[SetDetail] Fetching cards for set ${id} from API`);
+        const fetched = await fetchSetCards(id);
+        const expanded = expandCardVariants(fetched);
+        console.log(
+          `[SetDetail] Fetched ${fetched.length} cards, expanded to ${expanded.length} variants`
+        );
+        return expanded;
+      } catch (err) {
+        console.error("[SetDetail] Error loading cards:", err);
+        throw err;
       }
-    };
+    },
+    staleTime: 1000 * 60 * 60,
+  });
 
-    load();
-    return () => { cancelled = true; };
-  }, [id, loadKey]);
+  const rarities = useMemo(() => {
+    const unique = new Set(cards.map((c) => c.rarity).filter(Boolean));
+    return ["All", ...Array.from(unique).sort()];
+  }, [cards]);
 
-  const availableRarities = useMemo(() => {
-    const seen = new Set<string>();
-    allCards.forEach((c) => { if (c.rarity) seen.add(c.rarity); });
-    return Array.from(seen).sort((a, b) => rarityRank(a) - rarityRank(b));
-  }, [allCards]);
+  const filteredCards = useMemo(() => {
+    if (!selectedRarity || selectedRarity === "All") return cards;
+    return cards.filter((c) => c.rarity === selectedRarity);
+  }, [cards, selectedRarity]);
 
-  const expandedCards = useMemo(() => {
-    if (!Array.isArray(allCards)) return [];
-    const withRenderIds = allCards.map((card: any) => ({
-      ...card,
-      renderId: card.variantId || card.id,
-    }));
-    if (!activeFilter) return withRenderIds;
-    return withRenderIds.filter((c: any) => c.rarity === activeFilter);
-  }, [allCards, activeFilter]);
+  const renderCard = ({ item, index }: { item: PokemonCard; index: number }) => {
+    const price = getUKPrice(item);
+    const variantInfo = getVariantInfo(
+      item.variantLabel,
+      item.finishType,
+      item.variant
+    );
 
-  const webTopInset = Platform.OS === "web" ? 67 : 0;
-  const loaded = allCards.length;
-  const filteredCount = expandedCards.length;
+    // Debug logging
+    if (index < 3) {
+      console.log(
+        `[Card ${index}] name=${item.name}, variant=${item.variantLabel}, finishType=${item.finishType}, display=${variantInfo.label}`
+      );
+    }
 
-  const renderItem = useCallback(
-    ({ item }: { item: any }) => (
-      <CardGridItem
-        card={item}
-        colors={colors}
-        collectionData={collectionMap.get(item.cardId ?? item.id) ?? null}
-      />
-    ),
-    [colors, collectionMap],
-  );
-
-  return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <LinearGradient
-        colors={colorScheme === "dark" ? ["#2A0A0A","#1A1A2E"] : ["#FFF0F0","#F5F5F5"]}
-        style={[styles.header, { paddingTop: (insets.top || webTopInset) + 4 }]}
+    return (
+      <Pressable
+        style={{ width: CARD_WIDTH, marginBottom: 16 }}
+        onPress={() => {
+          router.push({
+            pathname: "/card/[id]",
+            params: {
+              id: item.id,
+              variant: variantInfo.label,
+            },
+          });
+        }}
       >
-        <View style={styles.headerRow}>
+        {/* Card Image Container */}
+        <View
+          style={[
+            styles.cardImageContainer,
+            {
+              height: CARD_IMG_HEIGHT,
+              backgroundColor: colors.surface,
+            },
+          ]}
+        >
+          {/* Card Image */}
+          <Image
+            source={{ uri: item.images?.small || "" }}
+            style={styles.cardImage}
+            contentFit="contain"
+            placeholder={{ color: colors.surfaceVariant }}
+          />
+
+          {/* Variant Badge - Always Visible */}
+          <View
+            style={[
+              styles.variantBadge,
+              { backgroundColor: variantInfo.color },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name={variantInfo.icon as any}
+              size={10}
+              color="#FFF"
+            />
+            <Text style={styles.variantBadgeText}>{variantInfo.label}</Text>
+          </View>
+        </View>
+
+        {/* Card Name */}
+        <Text
+          style={[styles.cardName, { color: colors.text }]}
+          numberOfLines={2}
+        >
+          {item.name}
+        </Text>
+
+        {/* Card Number */}
+        <Text style={[styles.cardNumber, { color: colors.textSecondary }]}>
+          #{item.number}
+        </Text>
+
+        {/* Price */}
+        {price.price ? (
+          <Text style={[styles.cardPrice, { color: colors.success }]}>
+            {formatGBP(price.price)}
+          </Text>
+        ) : (
+          <Text style={[styles.cardPrice, { color: colors.textMuted }]}>
+            Price N/A
+          </Text>
+        )}
+      </Pressable>
+    );
+  };
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
-          <View style={styles.headerInfo}>
-            <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
-              {name || "Set"}
-            </Text>
-            <View style={styles.headerMeta}>
-              <View style={styles.headerMetaItem}>
-                <MaterialCommunityIcons name="cards-outline" size={13} color={colors.pokemonRed} />
-                <Text style={[styles.headerCount, { color: colors.textSecondary }]}>
-                  {activeFilter
-                    ? `${filteredCount} of ${loaded}${totalCount > loaded ? `/${totalCount}` : ""} cards`
-                    : `${loaded}${totalCount > 0 ? `/${totalCount}` : ""} cards`}
-                </Text>
-              </View>
-            </View>
-          </View>
-          <Pressable onPress={handleRefresh} style={styles.refreshBtn} disabled={isLoading || isRefreshing}>
-            <Ionicons name="refresh" size={20} color={isLoading || isRefreshing ? colors.textMuted : colors.text} />
+          <Text style={[styles.headerTitle, { color: colors.text }]}>
+            {name || "Set"}
+          </Text>
+          <View style={styles.backBtn} />
+        </View>
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={colors.pokemonRed} />
+          <Text style={[styles.text, { color: colors.textSecondary }]}>
+            Loading cards...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (isError) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
+          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={24} color={colors.text} />
+          </Pressable>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>
+            {name || "Set"}
+          </Text>
+          <View style={styles.backBtn} />
+        </View>
+        <View style={styles.centerContent}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={48}
+            color={colors.pokemonRed}
+          />
+          <Text style={[styles.text, { color: colors.text }]}>
+            Error loading cards
+          </Text>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.button, { backgroundColor: colors.pokemonRed }]}
+          >
+            <Text style={styles.buttonText}>Go Back</Text>
           </Pressable>
         </View>
+      </View>
+    );
+  }
 
-        {!isLoading && availableRarities.length > 1 && (
-          <ScrollView
-            horizontal showsHorizontalScrollIndicator={false}
-            style={styles.filterScroll} contentContainerStyle={styles.filterContent}
+  if (cards.length === 0) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
+          <Pressable onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={24} color={colors.text} />
+          </Pressable>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>
+            {name || "Set"}
+          </Text>
+          <View style={styles.backBtn} />
+        </View>
+        <View style={styles.centerContent}>
+          <Ionicons name="card-outline" size={48} color={colors.textMuted} />
+          <Text style={[styles.text, { color: colors.text }]}>
+            No cards found
+          </Text>
+          <Pressable
+            onPress={() => router.back()}
+            style={[styles.button, { backgroundColor: colors.pokemonRed }]}
           >
+            <Text style={styles.buttonText}>Go Back</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
+        </Pressable>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>
+          {name || "Set"}
+        </Text>
+        <View style={styles.backBtn} />
+      </View>
+
+      {/* Card Count */}
+      <View style={styles.cardCountContainer}>
+        <Text style={[styles.cardCount, { color: colors.textSecondary }]}>
+          {filteredCards.length}/{cards.length} variants
+        </Text>
+      </View>
+
+      {/* Rarity Filter */}
+      {rarities.length > 1 && (
+        <View style={styles.filterContainer}>
+          {rarities.map((rarity) => (
             <Pressable
-              style={[styles.filterChip, {
-                backgroundColor: !activeFilter ? colors.pokemonRed : colors.surface,
-                borderColor: !activeFilter ? colors.pokemonRed : colors.borderLight,
-              }]}
-              onPress={() => setActiveFilter(null)}
+              key={rarity}
+              style={[
+                styles.filterBtn,
+                {
+                  backgroundColor:
+                    selectedRarity === rarity || (!selectedRarity && rarity === "All")
+                      ? colors.pokemonRed
+                      : colors.card,
+                  borderColor: colors.borderLight,
+                },
+              ]}
+              onPress={() =>
+                setSelectedRarity(rarity === "All" ? null : rarity)
+              }
             >
-              <Text style={[styles.filterChipText, { color: !activeFilter ? "#FFF" : colors.textSecondary }]}>
-                All
+              <Text
+                style={[
+                  styles.filterBtnText,
+                  {
+                    color:
+                      selectedRarity === rarity || (!selectedRarity && rarity === "All")
+                        ? "#FFF"
+                        : colors.textSecondary,
+                  },
+                ]}
+              >
+                {rarity}
               </Text>
             </Pressable>
-            {availableRarities.map((rarity) => {
-              const active = activeFilter === rarity;
-              return (
-                <Pressable
-                  key={rarity}
-                  style={[styles.filterChip, {
-                    backgroundColor: active ? colors.pokemonRed : colors.surface,
-                    borderColor: active ? colors.pokemonRed : colors.borderLight,
-                  }]}
-                  onPress={() => setActiveFilter(active ? null : rarity)}
-                >
-                  <Text style={[styles.filterChipText, { color: active ? "#FFF" : colors.textSecondary }]}>
-                    {rarity}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        )}
-      </LinearGradient>
-
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <MaterialCommunityIcons name="pokeball" size={40} color={colors.pokemonRed} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Loading cards...</Text>
+          ))}
         </View>
-      ) : (
-        <FlatList
-          data={expandedCards}
-          renderItem={renderItem}
-          keyExtractor={(item: any) => item.renderId || item.id}
-          numColumns={NUM_COLS}
-          columnWrapperStyle={styles.gridRow}
-          contentContainerStyle={[styles.listContent, { paddingBottom: 40 }]}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing} onRefresh={handleRefresh}
-              tintColor={colors.pokemonRed} colors={[colors.pokemonRed]}
-            />
-          }
-          ListFooterComponent={
-            isLoadingMore ? (
-              <View style={styles.footerLoader}>
-                <ActivityIndicator color={colors.pokemonRed} />
-                <Text style={[styles.footerText, { color: colors.textSecondary }]}>
-                  Loading {totalCount - loaded} more cards...
-                </Text>
-              </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            hasError ? (
-              <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="wifi-off" size={48} color={colors.textMuted} />
-                <Text style={[styles.emptyText, { color: colors.text }]}>Couldn't load cards</Text>
-                <Text style={[styles.emptySubText, { color: colors.textSecondary }]}>
-                  This set may be unavailable. Pull down or tap refresh to try again.
-                </Text>
-                <Pressable onPress={handleRefresh} style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}>
-                  <Ionicons name="refresh" size={16} color="#FFF" />
-                  <Text style={styles.retryBtnText}>Retry</Text>
-                </Pressable>
-              </View>
-            ) : activeFilter ? (
-              <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="filter-outline" size={48} color={colors.textMuted} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                  No {activeFilter} cards in this set
-                </Text>
-              </View>
-            ) : isNonEnglishSet(id as string) ? (
-              <View style={styles.emptyContainer}>
-                <Text style={{ fontSize: 48, textAlign: "center" }}>
-                  {getSetLanguageLabel(id as string) === "Japanese" ? "🇯🇵"
-                    : getSetLanguageLabel(id as string) === "Korean" ? "🇰🇷"
-                    : getSetLanguageLabel(id as string) === "Chinese" ? "🇨🇳" : "🎴"}
-                </Text>
-                <Text style={[styles.emptyText, { color: colors.text }]}>{getSetLanguageLabel(id as string)} Set</Text>
-                <Text style={[styles.emptySubText, { color: colors.textSecondary }]}>
-                  Individual card data for this set isn't available yet.{"\n\n"}
-                  Use the Scanner tab to identify any card.
-                </Text>
-                <Pressable onPress={() => router.push("/(tabs)/scanner")} style={[styles.retryBtn, { backgroundColor: colors.pokemonRed }]}>
-                  <Ionicons name="scan-outline" size={16} color="#FFF" />
-                  <Text style={styles.retryBtnText}>Open Scanner</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <View style={styles.emptyContainer}>
-                <MaterialCommunityIcons name="cards-outline" size={48} color={colors.textMuted} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No cards found for this set</Text>
-              </View>
-            )
-          }
-        />
       )}
+
+      {/* Cards Grid */}
+      <FlatList
+        data={filteredCards}
+        renderItem={renderCard}
+        keyExtractor={(item, index) => `${item.id}-${item.variantLabel}-${index}`}
+        numColumns={3}
+        columnWrapperStyle={styles.gridRow}
+        contentContainerStyle={styles.gridContainer}
+        scrollIndicatorInsets={{ right: 1 }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={[styles.text, { color: colors.textMuted }]}>
+              No cards match this filter
+            </Text>
+          </View>
+        }
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { paddingHorizontal: 16, paddingBottom: 8 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 0 },
-  backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  headerInfo: { flex: 1 },
-  headerTitle: { fontSize: 20, fontFamily: "Outfit_700Bold" },
-  headerMeta: { flexDirection: "row", gap: 16, alignItems: "center", marginTop: 3 },
-  headerMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  headerCount: { fontSize: 13, fontFamily: "Outfit_500Medium" },
-  filterScroll: { marginTop: 10, marginHorizontal: -16 },
-  filterContent: { paddingHorizontal: 16, paddingBottom: 6, gap: 8, flexDirection: "row" },
-  filterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
-  filterChipText: { fontSize: 12, fontFamily: "Outfit_600SemiBold" },
-  listContent: { paddingHorizontal: H_PAD, paddingTop: 10 },
-  gridRow: { gap: GAP, marginBottom: GAP },
-  gridItem: { borderRadius: 10, borderWidth: 1, overflow: "hidden" },
-  cardImageContainer: { height: CARD_IMG_HEIGHT, width: CARD_WIDTH, borderRadius: 10, overflow: "hidden" },
-  gridImage: { borderTopLeftRadius: 9, borderTopRightRadius: 9 },
-  gridInfo: { padding: 6, gap: 1 },
-  gridName: { fontSize: 11, fontFamily: "Outfit_600SemiBold", lineHeight: 14 },
-  gridNumber: { fontSize: 10, fontFamily: "Outfit_400Regular" },
-  gridPrice: { fontSize: 11, fontFamily: "Outfit_700Bold", marginTop: 2 },
-  variantOverlay: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: 10 },
+  container: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    gap: 12,
+  },
+  backBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontFamily: "Outfit_700Bold",
+    flex: 1,
+    textAlign: "center",
+  },
+  cardCountContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  cardCount: {
+    fontSize: 13,
+    fontFamily: "Outfit_500Medium",
+  },
+  filterContainer: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  filterBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  filterBtnText: {
+    fontSize: 12,
+    fontFamily: "Outfit_600SemiBold",
+  },
+  gridContainer: {
+    paddingHorizontal: 12,
+    paddingBottom: 20,
+  },
+  gridRow: {
+    gap: 12,
+    justifyContent: "space-between",
+  },
+  cardImageContainer: {
+    position: "relative",
+    marginBottom: 8,
+    borderRadius: 10,
+    overflow: "hidden",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cardImage: {
+    width: "100%",
+    height: "100%",
+  },
   variantBadge: {
-    position: "absolute", bottom: 6, left: 6,
-    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3,
-    borderWidth: 1, borderColor: "rgba(255,255,255,0.3)",
+    position: "absolute",
+    bottom: 4,
+    right: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 4,
+    backgroundColor: "#000",
   },
-  variantBadgeText: { fontSize: 9, fontFamily: "Outfit_700Bold" },
-  variantDot: { width: 5, height: 5, borderRadius: 2.5 },
-  stampBadge: {
-    position: "absolute", top: 6, right: 6,
-    backgroundColor: "rgba(255,215,0,0.22)",
-    borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2,
+  variantBadgeText: {
+    fontSize: 8,
+    fontFamily: "Outfit_600SemiBold",
+    color: "#FFF",
   },
-  stampBadgeText: { color: "#FFD700", fontSize: 9, fontFamily: "Outfit_700Bold" },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
-  loadingText: { fontSize: 14, fontFamily: "Outfit_500Medium" },
-  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", paddingTop: 80, gap: 12 },
-  emptyText: { fontSize: 16, fontFamily: "Outfit_600SemiBold" },
-  emptySubText: { fontSize: 13, fontFamily: "Outfit_400Regular", textAlign: "center", paddingHorizontal: 32 },
-  refreshBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  retryBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginTop: 8 },
-  retryBtnText: { color: "#FFF", fontSize: 14, fontFamily: "Outfit_600SemiBold" },
-  footerLoader: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 16 },
-  footerText: { fontSize: 13, fontFamily: "Outfit_400Regular" },
-  collectionBadge: { position: "absolute", bottom: 4, right: 4 },
-  collectionBadgeInner: { flexDirection: "row", gap: 3, flexWrap: "wrap", justifyContent: "flex-end" },
+  cardName: {
+    fontSize: 12,
+    fontFamily: "Outfit_600SemiBold",
+    marginBottom: 2,
+  },
+  cardNumber: {
+    fontSize: 11,
+    fontFamily: "Outfit_400Regular",
+    marginBottom: 4,
+  },
+  cardPrice: {
+    fontSize: 12,
+    fontFamily: "Outfit_700Bold",
+  },
+  centerContent: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  text: {
+    fontSize: 16,
+    fontFamily: "Outfit_500Medium",
+  },
+  button: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 16,
+  },
+  buttonText: {
+    color: "#FFF",
+    fontSize: 14,
+    fontFamily: "Outfit_600SemiBold",
+    textAlign: "center",
+  },
 });

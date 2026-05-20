@@ -80,7 +80,7 @@ export default function CardDetailScreen() {
   const { user, addCard } = useUser();
 
   const [selectedVariant, setSelectedVariant] = useState<string>(
-    routeVariant || "Non-Holo",
+    routeVariant || "Non-Holo"
   );
   const [selectedCondition, setSelectedCondition] = useState("Near Mint");
   const [selectedGrader, setSelectedGrader] = useState("None");
@@ -138,11 +138,7 @@ export default function CardDetailScreen() {
           </Pressable>
         </View>
         <View style={styles.centerContent}>
-          <Ionicons
-            name="alert-circle-outline"
-            size={48}
-            color={colors.pokemonRed}
-          />
+          <Ionicons name="alert-circle-outline" size={48} color={colors.pokemonRed} />
           <Text style={[styles.text, { color: colors.text }]}>
             Card not found
           </Text>
@@ -194,7 +190,7 @@ export default function CardDetailScreen() {
     if (!card?.name) return;
     const url = generateEbaySearchUrl(card.name, card.set?.name, card.number);
     Linking.openURL(url).catch(() =>
-      Alert.alert("Error", "Could not open eBay"),
+      Alert.alert("Error", "Could not open eBay")
     );
   };
 
@@ -202,7 +198,7 @@ export default function CardDetailScreen() {
     if (!card?.name) return;
     const url = generateEbaySoldUrl(card.name, card.set?.name, card.number);
     Linking.openURL(url).catch(() =>
-      Alert.alert("Error", "Could not open eBay"),
+      Alert.alert("Error", "Could not open eBay")
     );
   };
 
@@ -214,10 +210,7 @@ export default function CardDetailScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
-        <Text
-          style={[styles.headerTitle, { color: colors.text }]}
-          numberOfLines={1}
-        >
+        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
           {card.name}
         </Text>
         <View style={{ width: 36 }} />
@@ -251,10 +244,7 @@ export default function CardDetailScreen() {
               <View
                 style={[
                   styles.detailBox,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.borderLight,
-                  },
+                  { backgroundColor: colors.card, borderColor: colors.borderLight },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
@@ -269,18 +259,13 @@ export default function CardDetailScreen() {
               <View
                 style={[
                   styles.detailBox,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.borderLight,
-                  },
+                  { backgroundColor: colors.card, borderColor: colors.borderLight },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
                   HP
                 </Text>
-                <Text
-                  style={[styles.detailValue, { color: colors.pokemonRed }]}
-                >
+                <Text style={[styles.detailValue, { color: colors.pokemonRed }]}>
                   {card.hp}
                 </Text>
               </View>
@@ -289,10 +274,7 @@ export default function CardDetailScreen() {
               <View
                 style={[
                   styles.detailBox,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.borderLight,
-                  },
+                  { backgroundColor: colors.card, borderColor: colors.borderLight },
                 ]}
               >
                 <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
@@ -382,13 +364,9 @@ export default function CardDetailScreen() {
                     styles.chip,
                     {
                       backgroundColor:
-                        selectedVariant === v
-                          ? colors.pokemonYellow
-                          : colors.card,
+                        selectedVariant === v ? colors.pokemonYellow : colors.card,
                       borderColor:
-                        selectedVariant === v
-                          ? colors.pokemonYellow
-                          : colors.borderLight,
+                        selectedVariant === v ? colors.pokemonYellow : colors.borderLight,
                     },
                   ]}
                   onPress={() => setSelectedVariant(v)}
@@ -396,16 +374,13 @@ export default function CardDetailScreen() {
                   <Ionicons
                     name={getVariantIcon(v) as any}
                     size={14}
-                    color={
-                      selectedVariant === v ? "#000" : colors.textSecondary
-                    }
+                    color={selectedVariant === v ? "#000" : colors.textSecondary}
                   />
                   <Text
                     style={[
                       styles.chipText,
                       {
-                        color:
-                          selectedVariant === v ? "#000" : colors.textSecondary,
+                        color: selectedVariant === v ? "#000" : colors.textSecondary,
                       },
                     ]}
                   >
@@ -433,9 +408,7 @@ export default function CardDetailScreen() {
                     styles.chip,
                     {
                       backgroundColor:
-                        selectedCondition === c
-                          ? colors.pokemonRed
-                          : colors.card,
+                        selectedCondition === c ? colors.pokemonRed : colors.card,
                     },
                   ]}
                   onPress={() => setSelectedCondition(c)}
@@ -444,10 +417,7 @@ export default function CardDetailScreen() {
                     style={[
                       styles.chipText,
                       {
-                        color:
-                          selectedCondition === c
-                            ? "#FFF"
-                            : colors.textSecondary,
+                        color: selectedCondition === c ? "#FFF" : colors.textSecondary,
                       },
                     ]}
                   >
@@ -475,9 +445,7 @@ export default function CardDetailScreen() {
                     styles.chip,
                     {
                       backgroundColor:
-                        selectedGrader === g
-                          ? colors.pokemonYellow
-                          : colors.card,
+                        selectedGrader === g ? colors.pokemonYellow : colors.card,
                     },
                   ]}
                   onPress={() => setSelectedGrader(g)}
@@ -486,8 +454,7 @@ export default function CardDetailScreen() {
                     style={[
                       styles.chipText,
                       {
-                        color:
-                          selectedGrader === g ? "#000" : colors.textSecondary,
+                        color: selectedGrader === g ? "#000" : colors.textSecondary,
                       },
                     ]}
                   >
@@ -505,10 +472,7 @@ export default function CardDetailScreen() {
                 <View
                   style={[
                     styles.gradeInput,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.borderLight,
-                    },
+                    { backgroundColor: colors.card, borderColor: colors.borderLight },
                   ]}
                 >
                   <Text style={[styles.gradeValue, { color: colors.text }]}>
@@ -570,11 +534,7 @@ export default function CardDetailScreen() {
                 { backgroundColor: colors.success },
               ]}
             >
-              <MaterialCommunityIcons
-                name="cash-multiple"
-                size={18}
-                color="#FFF"
-              />
+              <MaterialCommunityIcons name="cash-multiple" size={18} color="#FFF" />
               <Text style={styles.actionBtnText}>List for Sale</Text>
             </Pressable>
             <Pressable
@@ -583,11 +543,7 @@ export default function CardDetailScreen() {
                 { backgroundColor: colors.pokemonBlue },
               ]}
             >
-              <MaterialCommunityIcons
-                name="swap-horizontal"
-                size={18}
-                color="#FFF"
-              />
+              <MaterialCommunityIcons name="swap-horizontal" size={18} color="#FFF" />
               <Text style={styles.actionBtnText}>List for Trade</Text>
             </Pressable>
           </View>
