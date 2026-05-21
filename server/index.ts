@@ -4,12 +4,7 @@ import { registerRoutes } from "./routes";
 import { warmupDb } from "./db";
 import * as fs from "fs";
 import * as path from "path";
-
-const app = express();
-app.disable("etag");
-app.get("/api/users", (req, res) => {
-  res.json([{ id: 1, email: "test@example.com" }]);
-});
+import syncRoutes from "./routes/sync-routes";
 const log = console.log;
 
 declare module "http" {
@@ -231,23 +226,22 @@ function setupErrorHandler(app: express.Application) {
   });
 }
 
-// Keep the process alive and log unexpected errors instead of crashing silently
+const app = express();
+app.disable("etag");
+app.use("/api/sync", syncRoutes);
+
 process.on("uncaughtException", (err) => {
   console.error("[Server] Uncaught exception — keeping process alive:", err);
 });
 
 process.on("unhandledRejection", (reason) => {
-  console.error(
-    "[Server] Unhandled promise rejection — keeping process alive:",
-    reason,
-  );
+  console.error("[Server] Unhandled promise rejection — keeping process alive:", reason);
 });
 
 (async () => {
   setupCors(app);
   setupBodyParsing(app);
   setupRequestLogging(app);
-
   configureExpoAndLanding(app);
 
   await warmupDb();
@@ -256,13 +250,9 @@ process.on("unhandledRejection", (reason) => {
 
   setupErrorHandler(app);
 
-  //   // ── Trial expiry job ─────────────────────────────────
-  //   // Runs every 30 minutes. Flips isPremium=false on any
-  //   // user whose trial_ends_at has passed and has no active
-  //   // Stripe subscription. Collections/data are untouched.
   async function expireTrials() {
     try {
-      const { pool } = await import("./db"); // already imported via warmupDb
+      const { pool } = await import("./db");
       const result = await pool.query(
         `UPDATE pokescan_users
             SET is_premium = FALSE
@@ -270,7 +260,7 @@ process.on("unhandledRejection", (reason) => {
             AND trial_ends_at < NOW()
             AND is_premium = TRUE
             AND (stripe_subscription_id IS NULL
-                 OR subscription_status != 'active')`,
+                 OR subscription_status != 'active')`
       );
       if (result.rowCount && result.rowCount > 0) {
         console.log(`[TrialExpiry] Expired ${result.rowCount} trial(s)`);
@@ -279,27 +269,18 @@ process.on("unhandledRejection", (reason) => {
       console.error("[TrialExpiry] Error:", err);
     }
   }
-  expireTrials(); // run once on startup
-  setInterval(expireTrials, 30 * 60 * 1000); // then every 30 min
+  expireTrials();
+  setInterval(expireTrials, 30 * 60 * 1000);
 
-  // Health check endpoint for uptime monitoring
   app.get("/health", (_req, res) => {
     res.status(200).json({ status: "ok", ts: Date.now() });
   });
 
   const port = parseInt(process.env.PORT || "5000", 10);
-  server.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`express server serving on port ${port}`);
-    },
-  );
+  server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+    log(`express server serving on port ${port}`);
+  });
 })().catch((err) => {
   console.error("[Server] Fatal startup error:", err);
-  // Give logs time to flush before exiting
   setTimeout(() => process.exit(1), 500);
 });

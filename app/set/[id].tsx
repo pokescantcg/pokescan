@@ -12,6 +12,7 @@ import {
   Animated,
   TextInput,
   Modal,
+  ScrollView,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
@@ -19,11 +20,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { useThemeColors } from "@/constants/colors";
-import {
-  getUKPrice,
-  formatGBP,
-  PokemonCard,
-} from "@/lib/pokemon-api";
+import { getUKPrice, formatGBP, PokemonCard } from "@/lib/pokemon-api";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const CARD_WIDTH = (SCREEN_WIDTH - 48) / 3;
@@ -49,7 +46,7 @@ const VARIANT_INFO: Record<string, { label: string; color: string }> = {
 function getVariantInfo(
   variantLabel?: string,
   finishType?: string,
-  variant?: string
+  variant?: string,
 ): { label: string; color: string } {
   const source = variantLabel || finishType || variant || "normal";
   const normalized = source.toLowerCase().trim().replace(/\s+/g, "_");
@@ -59,7 +56,8 @@ function getVariantInfo(
   }
 
   if (normalized.includes("reverse")) return VARIANT_INFO.reverse_holo;
-  if (normalized.includes("holo") && !normalized.includes("reverse")) return VARIANT_INFO.holo;
+  if (normalized.includes("holo") && !normalized.includes("reverse"))
+    return VARIANT_INFO.holo;
   if (normalized.includes("cosmos")) return VARIANT_INFO.cosmos_holo;
   if (normalized.includes("cracked")) return VARIANT_INFO.cracked_ice;
   if (normalized.includes("master")) return VARIANT_INFO.master_ball;
@@ -69,7 +67,8 @@ function getVariantInfo(
   if (normalized.includes("winner")) return VARIANT_INFO.winner_stamp;
   if (normalized.includes("league")) return VARIANT_INFO.league_stamp;
   if (normalized.includes("champion")) return VARIANT_INFO.champion_stamp;
-  if (normalized.includes("set") && normalized.includes("stamp")) return VARIANT_INFO.set_stamp;
+  if (normalized.includes("set") && normalized.includes("stamp"))
+    return VARIANT_INFO.set_stamp;
 
   return VARIANT_INFO.normal;
 }
@@ -88,7 +87,7 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
       Animated.loop(
         Animated.sequence([
           Animated.timing(scaleAnim, {
-            toValue: 1.5,
+            toValue: 1.15,
             duration: 300,
             useNativeDriver: true,
           }),
@@ -97,28 +96,23 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
             duration: 300,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
     } else if (variantLower.includes("reverse")) {
-      // Reverse Holo - 
-     Animated.loop(
+      // Reverse Holo - Sparkle pulse
+      Animated.loop(
         Animated.sequence([
           Animated.timing(scaleAnim, {
-            toValue: 1.05,
-            duration: 150,
-            useNativeDriver: true,
-          }),
-          Animated.timing(scaleAnim, {
-            toValue: 0.95,
-            duration: 150,
+            toValue: 1.15,
+            duration: 300,
             useNativeDriver: true,
           }),
           Animated.timing(scaleAnim, {
             toValue: 1,
-            duration: 150,
+            duration: 300,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
     } else if (variantLower.includes("cosmos")) {
       // Cosmos - Glow pulse
@@ -134,7 +128,7 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
             duration: 800,
             useNativeDriver: false,
           }),
-        ])
+        ]),
       ).start();
     } else if (variantLower.includes("cracked")) {
       // Cracked Ice - Shake effect
@@ -155,9 +149,12 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
             duration: 150,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
-    } else if (variantLower.includes("master") || variantLower.includes("poke")) {
+    } else if (
+      variantLower.includes("master") ||
+      variantLower.includes("poke")
+    ) {
       // Master/Poke Ball - Bounce
       Animated.loop(
         Animated.sequence([
@@ -171,7 +168,7 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
             duration: 400,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
     } else if (variantLower.includes("stamp")) {
       // Stamps - Gentle pulse
@@ -187,7 +184,7 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
             duration: 500,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
     } else if (variantLower.includes("1st")) {
       // 1st Edition - Rotate slowly
@@ -196,7 +193,7 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
           toValue: 1,
           duration: 3000,
           useNativeDriver: true,
-        })
+        }),
       ).start();
     } else {
       // Default - Standard pulse
@@ -212,14 +209,14 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
             duration: 400,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       ).start();
     }
   }, [scaleAnim, rotateAnim, glowAnim, variantInfo.label]);
 
   const rotate = rotateAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
+    outputRange: ["0deg", "360deg"],
   });
 
   const shadowOpacity = glowAnim.interpolate({
@@ -246,12 +243,9 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
     <Animated.View
       style={[
         styles.variantBadge,
-        { 
+        {
           backgroundColor: variantInfo.color,
-          transform: [
-            { scale: scaleAnim },
-            { rotate: rotate },
-          ],
+          transform: [{ scale: scaleAnim }, { rotate: rotate }],
         },
         getVariantStyle(),
       ]}
@@ -266,7 +260,13 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
   );
 }
 
-function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: React.ReactNode }) {
+function AnimatedRarityBorder({
+  rarity,
+  children,
+}: {
+  rarity: string;
+  children: React.ReactNode;
+}) {
   const glowAnim = new Animated.Value(0);
   const rotateAnim = new Animated.Value(0);
 
@@ -275,7 +275,7 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
     Animated.loop(
       Animated.sequence([
         Animated.timing(glowAnim, {
-          toValue: 1.5,
+          toValue: 1,
           duration: 1500,
           useNativeDriver: false,
         }),
@@ -284,17 +284,20 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
           duration: 1500,
           useNativeDriver: false,
         }),
-      ])
+      ]),
     ).start();
 
     // Rotation for special rarities
-    if (rarity?.toLowerCase().includes("rare") || rarity?.toLowerCase().includes("ultra")) {
+    if (
+      rarity?.toLowerCase().includes("rare") ||
+      rarity?.toLowerCase().includes("ultra")
+    ) {
       Animated.loop(
         Animated.timing(rotateAnim, {
-          toValue: 1.5,
+          toValue: 1,
           duration: 3000,
           useNativeDriver: true,
-        })
+        }),
       ).start();
     }
   }, [glowAnim, rotateAnim, rarity]);
@@ -308,14 +311,14 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
     if (rarityLower.includes("secret")) {
       const rotate = rotateAnim.interpolate({
         inputRange: [0, 1],
-        outputRange: ['0deg', '360deg'],
+        outputRange: ["0deg", "360deg"],
       });
 
       return {
         borderWidth: 3,
-        borderColor: 'transparent',
+        borderColor: "transparent",
         borderRadius: 10,
-        shadowColor: '#ff00ff',
+        shadowColor: "#ff00ff",
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.8,
         shadowRadius: 10,
@@ -332,9 +335,9 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
 
       return {
         borderWidth: 2.5,
-        borderColor: '#FFD700',
+        borderColor: "#FFD700",
         borderRadius: 10,
-        shadowColor: '#FFD700',
+        shadowColor: "#FFD700",
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: opacity,
         shadowRadius: 8,
@@ -350,9 +353,9 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
 
       return {
         borderWidth: 2.5,
-        borderColor: '#00BFFF',
+        borderColor: "#00BFFF",
         borderRadius: 10,
-        shadowColor: '#00BFFF',
+        shadowColor: "#00BFFF",
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: opacity,
         shadowRadius: 10,
@@ -368,9 +371,9 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
 
       return {
         borderWidth: 2,
-        borderColor: '#9370DB',
+        borderColor: "#9370DB",
         borderRadius: 10,
-        shadowColor: '#9370DB',
+        shadowColor: "#9370DB",
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: opacity,
         shadowRadius: 6,
@@ -386,9 +389,9 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
 
       return {
         borderWidth: 2,
-        borderColor: '#32CD32',
+        borderColor: "#32CD32",
         borderRadius: 10,
-        shadowColor: '#32CD32',
+        shadowColor: "#32CD32",
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: opacity,
         shadowRadius: 5,
@@ -399,9 +402,9 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
     if (rarityLower.includes("uncommon")) {
       return {
         borderWidth: 1.5,
-        borderColor: '#C0C0C0',
+        borderColor: "#C0C0C0",
         borderRadius: 10,
-        shadowColor: '#C0C0C0',
+        shadowColor: "#C0C0C0",
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.4,
         shadowRadius: 3,
@@ -412,7 +415,7 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
     if (rarityLower.includes("common")) {
       return {
         borderWidth: 1,
-        borderColor: '#808080',
+        borderColor: "#808080",
         borderRadius: 10,
       };
     }
@@ -426,9 +429,9 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
 
       return {
         borderWidth: 2,
-        borderColor: '#FF8C00',
+        borderColor: "#FF8C00",
         borderRadius: 10,
-        shadowColor: '#FF8C00',
+        shadowColor: "#FF8C00",
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: opacity,
         shadowRadius: 6,
@@ -444,11 +447,7 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
     return <>{children}</>;
   }
 
-  return (
-    <Animated.View style={borderStyle}>
-      {children}
-    </Animated.View>
-  );
+  return <Animated.View style={borderStyle}>{children}</Animated.View>;
 }
 
 export default function SetDetailScreen() {
@@ -478,7 +477,7 @@ export default function SetDetailScreen() {
           `https://api.pokemontcg.io/v2/cards?q=set.id:${id}`,
           {
             headers: { "Content-Type": "application/json" },
-          }
+          },
         );
 
         if (!response.ok) throw new Error(`API error: ${response.status}`);
@@ -578,7 +577,7 @@ export default function SetDetailScreen() {
       filtered = filtered.filter(
         (c) =>
           c.name?.toLowerCase().includes(query) ||
-          c.number?.toString().includes(query)
+          c.number?.toString().includes(query),
       );
     }
 
@@ -596,7 +595,7 @@ export default function SetDetailScreen() {
     const variantInfo = getVariantInfo(
       item.variantLabel,
       item.finishType,
-      item.variant
+      item.variant,
     );
 
     return (
@@ -630,8 +629,18 @@ export default function SetDetailScreen() {
                 placeholder={{ color: colors.surfaceVariant }}
               />
             ) : (
-              <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-                <Ionicons name="image-outline" size={32} color={colors.textMuted} />
+              <View
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <Ionicons
+                  name="image-outline"
+                  size={32}
+                  color={colors.textMuted}
+                />
               </View>
             )}
 
@@ -639,7 +648,10 @@ export default function SetDetailScreen() {
           </View>
         </AnimatedRarityBorder>
 
-        <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={2}>
+        <Text
+          style={[styles.cardName, { color: colors.text }]}
+          numberOfLines={2}
+        >
           {item.name}
         </Text>
 
@@ -647,7 +659,12 @@ export default function SetDetailScreen() {
           #{item.number}
         </Text>
 
-        <View style={[styles.priceBadge, { backgroundColor: colors.success + "20" }]}>
+        <View
+          style={[
+            styles.priceBadge,
+            { backgroundColor: colors.success + "20" },
+          ]}
+        >
           {price.price ? (
             <>
               <Text style={[styles.cardPrice, { color: colors.success }]}>
@@ -658,7 +675,9 @@ export default function SetDetailScreen() {
               </Text>
             </>
           ) : (
-            <Text style={[styles.cardPrice, { color: colors.textMuted }]}>N/A</Text>
+            <Text style={[styles.cardPrice, { color: colors.textMuted }]}>
+              N/A
+            </Text>
           )}
         </View>
       </Pressable>
@@ -672,14 +691,19 @@ export default function SetDetailScreen() {
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+          <Text
+            style={[styles.headerTitle, { color: colors.text }]}
+            numberOfLines={1}
+          >
             {name || "Set"}
           </Text>
           <View style={styles.backBtn} />
         </View>
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.pokemonRed} />
-          <Text style={[styles.text, { color: colors.textSecondary }]}>Loading cards...</Text>
+          <Text style={[styles.text, { color: colors.textSecondary }]}>
+            Loading cards...
+          </Text>
         </View>
       </View>
     );
@@ -692,14 +716,27 @@ export default function SetDetailScreen() {
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+          <Text
+            style={[styles.headerTitle, { color: colors.text }]}
+            numberOfLines={1}
+          >
             {name || "Set"}
           </Text>
           <View style={styles.backBtn} />
         </View>
         <View style={styles.centerContent}>
-          <Ionicons name="alert-circle-outline" size={48} color={colors.pokemonRed} />
-          <Text style={[styles.text, { color: colors.text }, { textAlign: "center" }]}>
+          <Ionicons
+            name="alert-circle-outline"
+            size={48}
+            color={colors.pokemonRed}
+          />
+          <Text
+            style={[
+              styles.text,
+              { color: colors.text },
+              { textAlign: "center" },
+            ]}
+          >
             Error Loading Cards
           </Text>
           <Pressable
@@ -720,14 +757,19 @@ export default function SetDetailScreen() {
           <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+          <Text
+            style={[styles.headerTitle, { color: colors.text }]}
+            numberOfLines={1}
+          >
             {name || "Set"}
           </Text>
           <View style={styles.backBtn} />
         </View>
         <View style={styles.centerContent}>
           <Ionicons name="card-outline" size={48} color={colors.textMuted} />
-          <Text style={[styles.text, { color: colors.text }]}>No cards found</Text>
+          <Text style={[styles.text, { color: colors.text }]}>
+            No cards found
+          </Text>
         </View>
       </View>
     );
@@ -739,7 +781,10 @@ export default function SetDetailScreen() {
         <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </Pressable>
-        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+        <Text
+          style={[styles.headerTitle, { color: colors.text }]}
+          numberOfLines={1}
+        >
           {name || "Set"}
         </Text>
         <View style={styles.backBtn} />
@@ -781,46 +826,58 @@ export default function SetDetailScreen() {
               <View
                 style={[
                   styles.dropdownContent,
-                  { backgroundColor: colors.card, borderColor: colors.borderLight },
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.borderLight,
+                  },
                 ]}
               >
-                {rarities.map((rarity) => (
-                  <Pressable
-                    key={rarity}
-                    style={[
-                      styles.dropdownItem,
-                      {
-                        backgroundColor:
-                          selectedRarity === rarity || (!selectedRarity && rarity === "All")
-                            ? colors.pokemonRed + "20"
-                            : "transparent",
-                        borderBottomColor: colors.borderLight,
-                      },
-                    ]}
-                    onPress={() => {
-                      setSelectedRarity(rarity === "All" ? null : rarity);
-                      setShowRarityDropdown(false);
-                    }}
-                  >
-                    <Text
+                <ScrollView bounces={false} showsVerticalScrollIndicator={true}>
+                  {rarities.map((rarity) => (
+                    <Pressable
+                      key={rarity}
                       style={[
-                        styles.dropdownItemText,
+                        styles.dropdownItem,
                         {
-                          color: colors.text,
-                          fontWeight:
-                            selectedRarity === rarity || (!selectedRarity && rarity === "All")
-                              ? "700"
-                              : "400",
+                          backgroundColor:
+                            selectedRarity === rarity ||
+                            (!selectedRarity && rarity === "All")
+                              ? colors.pokemonRed + "20"
+                              : "transparent",
+                          borderBottomColor: colors.borderLight,
                         },
                       ]}
+                      onPress={() => {
+                        setSelectedRarity(rarity === "All" ? null : rarity);
+                        setShowRarityDropdown(false);
+                      }}
                     >
-                      {rarity}
-                    </Text>
-                    {(selectedRarity === rarity || (!selectedRarity && rarity === "All")) && (
-                      <Ionicons name="checkmark" size={18} color={colors.pokemonRed} />
-                    )}
-                  </Pressable>
-                ))}
+                      <Text
+                        style={[
+                          styles.dropdownItemText,
+                          {
+                            color: colors.text,
+                            fontWeight:
+                              selectedRarity === rarity ||
+                              (!selectedRarity && rarity === "All")
+                                ? "700"
+                                : "400",
+                          },
+                        ]}
+                      >
+                        {rarity}
+                      </Text>
+                      {(selectedRarity === rarity ||
+                        (!selectedRarity && rarity === "All")) && (
+                        <Ionicons
+                          name="checkmark"
+                          size={18}
+                          color={colors.pokemonRed}
+                        />
+                      )}
+                    </Pressable>
+                  ))}
+                </ScrollView>
               </View>
             </Pressable>
           </Modal>
@@ -831,7 +888,9 @@ export default function SetDetailScreen() {
       <FlatList
         data={filteredCards}
         renderItem={renderCard}
-        keyExtractor={(item, index) => `${item.id}-${item.variantLabel}-${index}`}
+        keyExtractor={(item, index) =>
+          `${item.id}-${item.variantLabel}-${index}`
+        }
         numColumns={3}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.gridContainer}
@@ -845,7 +904,10 @@ export default function SetDetailScreen() {
             <View
               style={[
                 styles.searchContainer,
-                { backgroundColor: colors.card, borderColor: colors.borderLight },
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.borderLight,
+                },
               ]}
             >
               <Ionicons name="search" size={18} color={colors.textSecondary} />
@@ -858,20 +920,30 @@ export default function SetDetailScreen() {
               />
               {searchQuery.length > 0 && (
                 <Pressable onPress={() => setSearchQuery("")}>
-                  <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                  <Ionicons
+                    name="close-circle"
+                    size={18}
+                    color={colors.textSecondary}
+                  />
                 </Pressable>
               )}
             </View>
 
             {/* Results Count */}
-            <Text style={[styles.resultsCount, { color: colors.textSecondary }]}>
+            <Text
+              style={[styles.resultsCount, { color: colors.textSecondary }]}
+            >
               {filteredCards.length}/{cards.length} variants
             </Text>
           </View>
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Ionicons name="search-outline" size={48} color={colors.textMuted} />
+            <Ionicons
+              name="search-outline"
+              size={48}
+              color={colors.textMuted}
+            />
             <Text style={[styles.emptyText, { color: colors.textMuted }]}>
               {searchQuery ? "No cards match" : "No cards found"}
             </Text>

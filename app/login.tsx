@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -10,10 +10,12 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   ActivityIndicator,
+  Modal,
+  Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
@@ -36,8 +38,21 @@ export default function LoginScreen() {
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
   const { sendLoginOtp, verifyOtp } = useUser();
+  const { newUser, username } = useLocalSearchParams<{ newUser?: string; username?: string }>();
 
   const [step, setStep] = useState<Step>("password");
+  const [showWelcome, setShowWelcome] = useState(!!newUser);
+  const welcomeScale = useRef(new Animated.Value(0.85)).current;
+  const welcomeOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (showWelcome) {
+      Animated.parallel([
+        Animated.spring(welcomeScale, { toValue: 1, useNativeDriver: true, tension: 60, friction: 8 }),
+        Animated.timing(welcomeOpacity, { toValue: 1, duration: 250, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [showWelcome]);
 
   // Step 1 — password
   const [credential, setCredential] = useState("");
@@ -168,10 +183,57 @@ export default function LoginScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <LinearGradient colors={["#1A0A0A", "#0D0D1A"]} style={StyleSheet.absoluteFill} />
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      {/* ── Welcome Modal (shown after sign-up) ─────────────────────────── */}
+      <Modal visible={showWelcome} transparent animationType="none" onRequestClose={() => setShowWelcome(false)}>
+        <Pressable style={styles.welcomeOverlay} onPress={() => setShowWelcome(false)}>
+          <Animated.View
+            style={[
+              styles.welcomeCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+              { transform: [{ scale: welcomeScale }], opacity: welcomeOpacity },
+            ]}
+          >
+            <View style={styles.welcomeIconWrap}>
+              <Text style={styles.welcomeEmoji}>🎉</Text>
+            </View>
+            <Text style={[styles.welcomeTitle, { color: colors.text }]}>
+              Welcome, {username || "Trainer"}!
+            </Text>
+            <Text style={[styles.welcomeBody, { color: colors.textMuted }]}>
+              Thanks for joining PokéScan. As a thank you, enjoy{" "}
+              <Text style={{ color: "#FFD700", fontFamily: "Outfit_700Bold" }}>3 days of Premium</Text>
+              {" "}— completely free. Happy scanning! ⚡
+            </Text>
+            <LinearGradient
+              colors={["#CC0000", "#FF4444"]}
+              style={styles.welcomeBtn}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Pressable
+                style={styles.welcomeBtnInner}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowWelcome(false);
+                }}
+              >
+                <Text style={styles.welcomeBtnText}>Let's Go!</Text>
+                <Ionicons name="arrow-forward" size={18} color="#FFF" />
+              </Pressable>
+            </LinearGradient>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
+      >
         <ScrollView
           contentContainerStyle={[styles.scroll, { paddingTop: topPad + 24, paddingBottom: botPad + 24 }]}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <Pressable
             onPress={step === "password" ? () => router.back() : resetToPassword}
@@ -467,4 +529,32 @@ const styles = StyleSheet.create({
   registerRow: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
   registerText: { fontSize: 14, fontFamily: "Outfit_400Regular" },
   registerLink: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFDE00" },
+  // Welcome modal
+  welcomeOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center", alignItems: "center", paddingHorizontal: 24,
+  },
+  welcomeCard: {
+    width: "100%", borderRadius: 24, borderWidth: 1,
+    padding: 28, alignItems: "center",
+    shadowColor: "#CC0000", shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3, shadowRadius: 24, elevation: 12,
+  },
+  welcomeIconWrap: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: "#CC000022", alignItems: "center",
+    justifyContent: "center", marginBottom: 16,
+  },
+  welcomeEmoji: { fontSize: 38 },
+  welcomeTitle: { fontSize: 26, fontFamily: "Outfit_700Bold", textAlign: "center", marginBottom: 12 },
+  welcomeBody: {
+    fontSize: 15, fontFamily: "Outfit_400Regular",
+    textAlign: "center", lineHeight: 22, marginBottom: 24,
+  },
+  welcomeBtn: { width: "100%", borderRadius: 14, overflow: "hidden" },
+  welcomeBtnInner: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    gap: 8, height: 52,
+  },
+  welcomeBtnText: { fontSize: 17, fontFamily: "Outfit_700Bold", color: "#FFF" },
 });
