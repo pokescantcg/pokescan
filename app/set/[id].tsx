@@ -88,7 +88,7 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
       Animated.loop(
         Animated.sequence([
           Animated.timing(scaleAnim, {
-            toValue: 1.95,
+            toValue: 1.5,
             duration: 300,
             useNativeDriver: true,
           }),
@@ -100,7 +100,7 @@ function AnimatedVariantBadge({ variantInfo }: { variantInfo: any }) {
         ])
       ).start();
     } else if (variantLower.includes("reverse")) {
-      // Reverse Holo - Rotate continuously
+      // Reverse Holo - 
      Animated.loop(
         Animated.sequence([
           Animated.timing(scaleAnim, {
@@ -275,7 +275,7 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
     Animated.loop(
       Animated.sequence([
         Animated.timing(glowAnim, {
-          toValue: 1,
+          toValue: 1.5,
           duration: 1500,
           useNativeDriver: false,
         }),
@@ -291,7 +291,7 @@ function AnimatedRarityBorder({ rarity, children }: { rarity: string; children: 
     if (rarity?.toLowerCase().includes("rare") || rarity?.toLowerCase().includes("ultra")) {
       Animated.loop(
         Animated.timing(rotateAnim, {
-          toValue: 1,
+          toValue: 1.5,
           duration: 3000,
           useNativeDriver: true,
         })
