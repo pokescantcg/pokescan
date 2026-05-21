@@ -2,7 +2,7 @@
   "expo": {
     "name": "PokeScan TCG",
     "slug": "pokescan-tcg",
-    "version": "1.1.9",
+    "version": "1.2.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "pokescantcg",
@@ -22,7 +22,7 @@
 
     "android": {
       "package": "pokescan.tcg1",
-      "versionCode": 30,
+      "versionCode": 34,
 
       "adaptiveIcon": {
         "backgroundColor": "#0B1426",

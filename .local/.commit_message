@@ -1,0 +1,19 @@
+Fix collection value bug + show per-variant badges in set grid
+
+Collection value fix:
+- handleAddToCollection now uses ebayFetchedPrice as fallback when
+  getUKPrice(card) returns null, so priceGBP is stored correctly
+- Added useEffect that auto-backfills priceGBP on existing null-price
+  collection items when the eBay price finishes loading
+- Added updateCollectionItemPrice helper in lib/storage.ts
+- Extended PUT /api/collection/:id to accept standalone priceGBP updates
+  (price-only update when quantity is undefined) and combined qty+price
+  update when both are provided
+
+Set grid variant badges:
+- collectionMap now tracks per-variant counts per card
+  {total, variants: Record<string, number>}
+- CollectionBadge replaced pokeball-count icons with H/R/N variant
+  pills (gold=Holo, blue=Reverse Holo, silver=Non-Holo) with ×qty
+  shown when count > 1
+- CardGridItem updated to receive collectionData instead of collectionCount
