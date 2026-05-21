@@ -1,0 +1,39 @@
+VERDICT: REJECTED
+The redesign is mostly implemented correctly, but the diff contains a blocking quality violation and one notable requirement-risk that prevent approval.
+
+Critical findings:
+- **Blocking (AI-slop policy):** New `any`-based type bypVERDICT: REJECTED
+ass was introduced in the modal card fetch path: `const card = (cardData as any)?.datThe redesign is mostly implemented correctly, but the diff contains a blocking quality violation and one notable requirement-risk that prevent approval.
+a ?? (cardData as any);`. Your review criteria explicitly 
+require rejecting diffs that use casts to `any` to bypCritical findings:
+ass typing.
+- **Requirement-risk:** The modal is supposed to fetc- **Blocking (AI-slop policy):** New `any`-based type bypass was introduced in the modal card fetch path: `const card = (cardData as any)?.data ?? (cardData as any);`. Your review criteria explicitly require rejecting diffs that use casts to `any` to bypass typing.
+h full card data by `cardId` and show DB-backed fields (number/rarity). It does fetch via `useQuery`, but the implementation is weakly typed and does not use the imported `fetchCard` helper, making behavior less explicit and increasing chance of response-shape drift.
+
+What is implemented well (non-blocking positives):
+- Listing cards are simplified to image + card name + lister + price/TRADE.
+- Tap opens a modal and delete/report/message actions were moved off list rows into modal.
+- Modal includes image, type badge, condition, description, external URL, seller photos, and owner moderation banner.
+- No “last sold”/external pricing display remains in this flow.
+
+Security:
+- No serious security violations observed in this diff.
+
+Next actions (high impact):
+1. Remove `any` casts in card query flow; strongly type `useQuery` response and `card` extraction.
+2. Use explicit `queryFn: () => fetchCard(listing.cardId)` (or equivalent typed API helper) so DB card fetch is unambiguous and stable.
+3. Clean unused imports (`ActivityIndicator`, possibly `fetchCard` if not used) after the typed fetch adjustment.- **Requirement-risk:** The modal is supposed to fetch full card data by `cardId` and show DB-backed fields (number/rarity). It does fetch via `useQuery`, but the implementation is weakly typed and does not use the imported `fetchCard` helper, making behavior less explicit and increasing chance of response-shape drift.
+
+What is implemented well (non-blocking positives):
+- Listing cards are simplified to image + card name + lister + price/TRADE.
+- Tap opens a modal and delete/report/message actions were moved off list rows into modal.
+- Modal includes image, type badge, condition, description, external URL, seller photos, and owner moderation banner.
+- No “last sold”/external pricing display remains in this flow.
+
+Security:
+- No serious security violations observed in this diff.
+
+Next actions (high impact):
+1. Remove `any` casts in card query flow; strongly type `useQuery` response and `card` extraction.
+2. Use explicit `queryFn: () => fetchCard(listing.cardId)` (or equivalent typed API helper) so DB card fetch is unambiguous and stable.
+3. Clean unused imports (`ActivityIndicator`, possibly `fetchCard` if not used) after the typed fetch adjustment.

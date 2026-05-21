@@ -19,6 +19,7 @@ import {
   addToCollection,
   removeFromCollection,
   updateCollectionQuantity,
+<<<<<<< HEAD
   updateCollectionGrading,
   migrateLocalCollectionToServer,
   migrateLocalScanHistoryToServer,
@@ -26,6 +27,12 @@ import {
   addListing,
   removeListing,
   updateListing,
+=======
+  migrateLocalCollectionToServer,
+  getListings,
+  addListing,
+  removeListing,
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   getCollectionValue,
   getAllUsers,
   grantPremiumToUser,
@@ -45,9 +52,13 @@ import {
   sendOtpForLogin,
   updateUserAvatar,
   fetchAllUsersFromServer,
+<<<<<<< HEAD
   getSessionToken,
 } from "./storage";
 import { getApiUrl } from "@/lib/query-client";
+=======
+} from "./storage";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 interface UserContextValue {
   user: UserProfile | null;
@@ -68,11 +79,17 @@ interface UserContextValue {
   logout: () => Promise<void>;
   togglePremium: () => Promise<void>;
   addCard: (item: Omit<CollectionItem, "id" | "addedAt">) => Promise<void>;
+<<<<<<< HEAD
   removeCard: (cardId: string, condition: string, variant?: CardVariant, itemId?: string) => Promise<void>;
   updateQuantity: (cardId: string, condition: string, quantity: number, variant?: CardVariant, itemId?: string) => Promise<void>;
   updateGrading: (itemId: string, gradingCompany: string | null, grade: string | null) => Promise<void>;
   createListing: (listing: Omit<MarketListing, "id" | "createdAt" | "status" | "reviewedBy" | "reviewedAt" | "reviewNote">) => Promise<void>;
   updateListingDetails: (listingId: string, updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null; photos?: string[] }) => Promise<void>;
+=======
+  removeCard: (cardId: string, condition: string, variant?: CardVariant) => Promise<void>;
+  updateQuantity: (cardId: string, condition: string, quantity: number, variant?: CardVariant) => Promise<void>;
+  createListing: (listing: Omit<MarketListing, "id" | "createdAt" | "status" | "reviewedBy" | "reviewedAt" | "reviewNote">) => Promise<void>;
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   deleteListing: (listingId: string) => Promise<void>;
   grantPremium: (userId: string) => Promise<void>;
   revokePremium: (userId: string) => Promise<void>;
@@ -82,8 +99,11 @@ interface UserContextValue {
   deleteUserAccount: (userId: string) => Promise<void>;
   refreshData: () => Promise<void>;
   refreshUsers: () => Promise<void>;
+<<<<<<< HEAD
   pendingListingCount: number;
   refreshPendingListingCount: () => Promise<void>;
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   isStaff: boolean;
   isAdminUser: boolean;
   isSuperadminUser: boolean;
@@ -98,7 +118,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [listings, setListings] = useState<MarketListing[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [superadminFlag, setSuperadminFlag] = useState(false);
+<<<<<<< HEAD
   const [pendingListingCount, setPendingListingCount] = useState(0);
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
   const loadData = useCallback(async () => {
     try {
@@ -114,7 +137,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
       if (restoredUser) {
         userData = restoredUser;
         migrateLocalCollectionToServer().catch(() => {});
+<<<<<<< HEAD
         migrateLocalScanHistoryToServer(restoredUser.id).catch(() => {});
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       } else {
         const localUser = await getUser();
         if (localUser && localUser.authProvider !== "local") {
@@ -170,12 +196,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
     await upsertUserInRegistry(newUser);
     const users = await getAllUsers();
     setAllUsers(users);
+<<<<<<< HEAD
     migrateLocalCollectionToServer().catch(() => {});
     migrateLocalScanHistoryToServer(newUser.id).catch(() => {});
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     return { userId, email };
   }, []);
 
   const loginWithPassword = useCallback(async (credential: string, password: string) => {
+<<<<<<< HEAD
     try {
       const { user: newUser } = await loginWithPasswordStorage(credential, password);
       setUser(newUser);
@@ -203,6 +233,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
       throw e;
     }
+=======
+    const { user: newUser } = await loginWithPasswordStorage(credential, password);
+    setUser(newUser);
+    await upsertUserInRegistry(newUser);
+    const [users, saFlag] = await Promise.all([getAllUsers(), isSuperadmin()]);
+    setAllUsers(users);
+    setSuperadminFlag(saFlag);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   }, []);
 
   const handleSendRegistrationOtp = useCallback(async (userId: string, channel: "email" | "sms") => {
@@ -214,6 +252,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleVerifyOtp = useCallback(async (credential: string, code: string) => {
+<<<<<<< HEAD
     try {
       const { user: newUser } = await verifyOtpAndLogin(credential, code);
       setUser(newUser);
@@ -240,13 +279,24 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
       throw e;
     }
+=======
+    const { user: newUser } = await verifyOtpAndLogin(credential, code);
+    setUser(newUser);
+    migrateLocalCollectionToServer().then(() => getCollection().then(setCollection)).catch(() => {});
+    const [users, saFlag] = await Promise.all([getAllUsers(), isSuperadmin()]);
+    setAllUsers(users);
+    setSuperadminFlag(saFlag);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   }, []);
 
   const handleSocialRegister = useCallback(async (provider: AuthProvider, displayName: string, email?: string, avatarUrl?: string) => {
     const newUser = await registerSocialUser(provider, displayName, email, avatarUrl);
     setUser(newUser);
     migrateLocalCollectionToServer().then(() => getCollection().then(setCollection)).catch(() => {});
+<<<<<<< HEAD
     migrateLocalScanHistoryToServer(newUser.id).catch(() => {});
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     const users = await getAllUsers();
     setAllUsers(users);
   }, []);
@@ -287,6 +337,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setCollection(updated);
   }, []);
 
+<<<<<<< HEAD
   const removeCard = useCallback(async (cardId: string, condition: string, variant?: CardVariant, itemId?: string) => {
     const updated = await removeFromCollection(cardId, condition, variant, itemId);
     setCollection(updated);
@@ -299,6 +350,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const updateGrading = useCallback(async (itemId: string, gradingCompany: string | null, grade: string | null) => {
     const updated = await updateCollectionGrading(itemId, gradingCompany, grade);
+=======
+  const removeCard = useCallback(async (cardId: string, condition: string, variant?: CardVariant) => {
+    const updated = await removeFromCollection(cardId, condition, variant);
+    setCollection(updated);
+  }, []);
+
+  const updateQuantity = useCallback(async (cardId: string, condition: string, quantity: number, variant?: CardVariant) => {
+    const updated = await updateCollectionQuantity(cardId, condition, quantity, variant);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     setCollection(updated);
   }, []);
 
@@ -307,6 +367,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setListings(updated);
   }, []);
 
+<<<<<<< HEAD
   const handleUpdateListingDetails = useCallback(async (
     listingId: string,
     updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null; photos?: string[] }
@@ -315,6 +376,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setListings(updated);
   }, []);
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   const handleDeleteListing = useCallback(async (listingId: string) => {
     const updated = await removeListing(listingId);
     setListings(updated);
@@ -385,6 +448,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const isStaff = useMemo(() => isAdminOrMod(user), [user]);
   const isAdminUser = useMemo(() => isAdmin(user), [user]);
 
+<<<<<<< HEAD
   const refreshPendingListingCount = useCallback(async () => {
     if (!isStaff) {
       setPendingListingCount(0);
@@ -410,6 +474,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     refreshPendingListingCount();
   }, [refreshPendingListingCount]);
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   const value = useMemo(
     () => ({
       user,
@@ -432,9 +498,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
       addCard,
       removeCard,
       updateQuantity,
+<<<<<<< HEAD
       updateGrading,
       createListing,
       updateListingDetails: handleUpdateListingDetails,
+=======
+      createListing,
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       deleteListing: handleDeleteListing,
       grantPremium: handleGrantPremium,
       revokePremium: handleRevokePremium,
@@ -444,13 +514,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
       deleteUserAccount: handleDeleteUserAccount,
       refreshData: loadData,
       refreshUsers: handleRefreshUsers,
+<<<<<<< HEAD
       pendingListingCount,
       refreshPendingListingCount,
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       isStaff,
       isAdminUser,
       isSuperadminUser: superadminFlag,
     }),
+<<<<<<< HEAD
     [user, isLoading, collection, listings, collectionValue, allUsers, register, registerWithPassword, loginWithPassword, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleRequestAdminOtp, handleVerifyAdminOtp, logout, handleTogglePremium, addCard, removeCard, updateQuantity, updateGrading, createListing, handleUpdateListingDetails, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, handleRefreshUsers, pendingListingCount, refreshPendingListingCount, isStaff, isAdminUser, superadminFlag]
+=======
+    [user, isLoading, collection, listings, collectionValue, allUsers, register, registerWithPassword, loginWithPassword, handleSendRegistrationOtp, handleSendLoginOtp, handleVerifyOtp, handleSocialRegister, handleRequestAdminOtp, handleVerifyAdminOtp, logout, handleTogglePremium, addCard, removeCard, updateQuantity, createListing, handleDeleteListing, handleGrantPremium, handleRevokePremium, handleChangeUserRole, handleEditUserAccount, handleUpdateAvatar, handleDeleteUserAccount, loadData, handleRefreshUsers, isStaff, isAdminUser, superadminFlag]
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   );
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;

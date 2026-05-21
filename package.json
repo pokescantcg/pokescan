@@ -1,6 +1,7 @@
 {
   "name": "expo-app",
   "main": "expo-router/entry",
+<<<<<<< HEAD
   "version": "1.2.1",
   "scripts": {
     "postinstall": "patch-package",
@@ -14,6 +15,24 @@
     "start": "npx expo start",
     "lint": "npx expo lint",
     "lint:fix": "npx expo lint --fix"
+=======
+  "version": "1.1.9",
+  "scripts": {
+    "postinstall": "patch-package",
+    "expo:dev": "npx expo start --localhost",
+    "server:dev": "cross-env NODE_ENV=development tsx backend/server/index.ts",
+    "expo:start:static:build": "npx expo start --no-dev --minify --localhost",
+    "expo:static:build": "node scripts/build.js",
+    "server:build": "esbuild backend/server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=backend/server_dist",
+    "server:prod": "cross-env NODE_ENV=production node backend/server_dist/index.js",
+    "db:push": "drizzle-kit push",
+    "start": "npx expo start",
+    "lint": "npx expo lint",
+    "lint:fix": "npx expo lint --fix",
+    "type": "module",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   },
   "dependencies": {
     "@expo-google-fonts/outfit": "^0.4.3",
@@ -24,6 +43,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/nodemailer": "^7.0.11",
     "@ungap/structured-clone": "^1.3.0",
+<<<<<<< HEAD
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
     "drizzle-orm": "^0.45.2",
@@ -45,11 +65,39 @@
     "expo-location": "~19.0.8",
     "expo-router": "~6.0.23",
     "expo-secure-store": "~15.0.8",
+=======
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "cheerio": "^1.2.0",
+    "cors": "^2.8.6",
+    "drizzle-orm": "^0.45.2",
+    "drizzle-zod": "^0.8.3",
+    "expo": "~54.0.27",
+    "expo-auth-session": "^7.0.10",
+    "expo-blur": "~15.0.8",
+    "expo-camera": "^17.0.10",
+    "expo-constants": "~18.0.11",
+    "expo-crypto": "^15.0.8",
+    "expo-font": "~14.0.10",
+    "expo-glass-effect": "~0.1.4",
+    "expo-haptics": "~15.0.8",
+    "expo-image": "~3.0.11",
+    "expo-image-picker": "~17.0.9",
+    "expo-linear-gradient": "~15.0.8",
+    "expo-linking": "~8.0.10",
+    "expo-location": "~19.0.8",
+    "expo-router": "~6.0.17",
+    "expo-secure-store": "^55.0.8",
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     "expo-splash-screen": "~31.0.12",
     "expo-status-bar": "~3.0.9",
     "expo-symbols": "~1.0.8",
     "expo-system-ui": "~6.0.9",
+<<<<<<< HEAD
     "expo-web-browser": "~15.0.11",
+=======
+    "expo-web-browser": "~15.0.10",
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     "express": "^5.0.1",
     "http-proxy-middleware": "^3.0.5",
     "nodemailer": "^8.0.2",
@@ -61,7 +109,11 @@
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
     "react-native-gesture-handler": "~2.28.0",
+<<<<<<< HEAD
     "react-native-keyboard-controller": "1.18.0",
+=======
+    "react-native-keyboard-controller": "^1.20.6",
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
@@ -82,12 +134,19 @@
     "@types/express": "^5.0.0",
     "@types/react": "~19.1.10",
     "babel-plugin-react-compiler": "^19.0.0-beta-e993439-20250117",
+<<<<<<< HEAD
+=======
+    "cross-env": "^10.1.0",
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     "drizzle-kit": "^0.31.10",
     "esbuild": "^0.28.0",
     "eslint": "^9.31.0",
     "eslint-config-expo": "~10.0.0",
     "patch-package": "^8.0.0",
+<<<<<<< HEAD
     "tsc-alias": "^1.8.17",
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     "typescript": "~5.9.2"
   },
   "private": true,

@@ -43,11 +43,17 @@ Never use Docker, virtual environments, or containerization. Replit uses a Nix e
 
 For framework-specific configuration, refer to these guides:
 
+<<<<<<< HEAD
 - `.local/skills/repl_setup/references/angular.md` - Angular setup with allowedHosts and CLI flags
 - `.local/skills/repl_setup/references/react_vite.md` - React and Vite configuration
 - `.local/skills/repl_setup/references/vue.md` - Vue.js setup
 
 For Microsoft Fabric (MSFT_RAYFIN) apps, the standard Replit dev-server proxy rules don't apply — the project is published to the Microsoft Rayfin backend instead. Use the `msft-rayfin` skill for setup instructions and the `fabric-rayfin` skill for the deploy workflow.
+=======
+- `references/angular.md` - Angular setup with allowedHosts and CLI flags
+- `references/react_vite.md` - React and Vite configuration
+- `references/vue.md` - Vue.js setup
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 ## Frontend-Backend Connectivity
 

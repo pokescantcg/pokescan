@@ -1,0 +1,25 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1777882650373,
+      "tag": "0000_sad_fenris",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777926430416,
+      "tag": "0001_rare_tusk",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1778000000000,
+      "tag": "0003_admin_logs_notifications",
+      "breakpoints": true
+    }

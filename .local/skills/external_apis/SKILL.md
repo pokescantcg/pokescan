@@ -19,7 +19,10 @@ managed credentials.
 ## Available APIs
 
 - [Brave](references/brave.md) - Search real web image results through Brave passthrough billing.
+<<<<<<< HEAD
 - [ElevenLabs](references/elevenlabs.md)
 - [Exa](references/exa.md)
 - [Firecrawl](references/firecrawl.md)
 - [Nano Banana](references/nano_banana.md)
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f

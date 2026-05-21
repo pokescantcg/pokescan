@@ -18,7 +18,11 @@ Use this skill when:
 
 - Simple tasks that you can complete directly
 - Tasks that require immediate user interaction
+<<<<<<< HEAD
 - Read-only operations (use ripgrep or glob/read tools instead)
+=======
+- Read-only operations (use grep/glob/read tools instead)
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 - Quick file edits (use edit tool directly)
 - Analysis, planning, or debugging (e.g. performing code review)
 
@@ -70,7 +74,11 @@ console.log(result);  // Always print the result
 
 ### startAsyncSubagent(task, fromPlan, relevantFiles, relevantSkills)
 
+<<<<<<< HEAD
 Launch a subagent to handle a task asynchronously in the background. Returns immediately without waiting for completion. Use the `wait_for_background_tasks` tool to collect results later.
+=======
+Launch a subagent to handle a task asynchronously in the background. Returns immediately without waiting for completion. Use `waitForBackgroundTasks` to collect results later.
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 **Parameters:**
 
@@ -80,7 +88,11 @@ Launch a subagent to handle a task asynchronously in the background. Returns imm
 - `relevantSkills` (list[str], optional): Paths to all implementation skills you've read. Use the full path from the skills view. Pass every skill with integration details (auth, storage, payments) — not orchestration skills meant for you (design, delegation, react-vite).
 - `specialization` (str, default "GENERAL"): "GENERAL" or "SMALL_TASK" for quick tasks
 
+<<<<<<< HEAD
 **Returns:** Immediately with acknowledgment. Use the `wait_for_background_tasks` tool to collect results.
+=======
+**Returns:** Immediately with acknowledgment. Results come via `waitForBackgroundTasks`.
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 **Usage Patterns:**
 
@@ -140,9 +152,16 @@ await messageSubagent({
     subagentId: "subagent-happy-tiger",
     message: "After the fix, add regression tests for the auth edge case."
 });
+<<<<<<< HEAD
 ```
 
 Use the `wait_for_background_tasks` tool to collect results later.
+=======
+
+// Collect results later
+await waitForBackgroundTasks();
+```
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 ### messageSubagentAndGetResponse(subagentId, message, timeoutSeconds)
 
@@ -179,7 +198,11 @@ console.log(result.result);
 2. **Launch in parallel**: Independent tasks can run simultaneously with `startAsyncSubagent`
 3. **Use `subagent()` when you need the result immediately**: For tasks where you need to act on the output, use the synchronous `subagent()` and print the result.
 4. **Use `startAsyncSubagent()` for independent tasks that can run in the background**: The tasks will be performed in parallel.
+<<<<<<< HEAD
 5. **Use `messageSubagent()` for async follow-ups**: Message running subagents without blocking, then use the `wait_for_background_tasks` tool to collect results
+=======
+5. **Use `messageSubagent()` for async follow-ups**: Message running subagents without blocking and collect results with `waitForBackgroundTasks`
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 6. **Use `messageSubagentAndGetResponse()` for sync follow-ups**: Use this when you need the subagent's output before continuing
 7. **Trust the results**: Subagent outputs should generally be trusted
 8. **Pass all implementation skills via relevantSkills**: Include every implementation skill you've read — use the full path from the skills view for each one

@@ -219,6 +219,7 @@ When the user wants to connect to Databricks, use the `databricks-m2m` connector
 
 When querying data warehouses (BigQuery, Snowflake, Databricks), large schemas can make serial exploration slow (7-10s per query round-trip). Use the parallel subagent pattern to explore schemas faster.
 
+<<<<<<< HEAD
 ### CRITICAL: Warehouse queries are billed per byte scanned
 
 Warehouse targets (`bigquery`, `databricks`, `snowflake`) cost real money per query — a
@@ -242,6 +243,8 @@ these rules:
   server can cache results (15-min TTL). The `query-integration-data` skill is for
   answering questions in chat, not for powering a live UI.
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 ### When to Use Parallel Exploration
 
 Use this pattern when ALL of the following are true:
@@ -267,9 +270,12 @@ const tables = await executeSql({ sqlQuery: `SELECT TABLE_SCHEMA, TABLE_NAME, RO
 const tables = await executeSql({ sqlQuery: `SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema') ORDER BY table_schema, table_name`, target: "databricks" });
 ```
 
+<<<<<<< HEAD
 `INFORMATION_SCHEMA.TABLES` is a metadata read and is essentially free. Sampling rows
 from the tables it returns is **not** free — see the next step.
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 **Step 2: Group Tables** — Partition the table list into 2-4 clusters:
 
 - By schema/dataset name (e.g., `analytics.*`, `sales.*`, `marketing.*`)
@@ -291,6 +297,7 @@ Tables to explore:
 - analytics.conversions
 
 For each table:
+<<<<<<< HEAD
 1. Run: SELECT column_name, data_type, is_partitioning_column FROM \`project.dataset\`.INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'TABLE_NAME'
 2. Identify the partition / cluster column from step 1 (e.g. event_date, _PARTITIONTIME).
 3. Sample rows — project exact columns, scope by partition, and LIMIT.
@@ -300,6 +307,10 @@ For each table:
             FROM \`project.dataset.TABLE_NAME\`
             WHERE <partition_col> >= CURRENT_DATE() - 7
             LIMIT 5
+=======
+1. Run: SELECT column_name, data_type FROM \`project.dataset\`.INFORMATION_SCHEMA.COLUMNS WHERE table_name = 'TABLE_NAME'
+2. Run: SELECT * FROM \`project.dataset.TABLE_NAME\` LIMIT 5
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 Return your findings in this exact format:
 
@@ -326,6 +337,7 @@ Return your findings in this exact format:
 const group2 = await startAsyncSubagent({ /* same pattern, different tables */ });
 ```
 
+<<<<<<< HEAD
 **Step 4: Synthesize and Query** — Use the `wait_for_background_tasks` tool to wait for the schema-discovery subagents. Once they complete, read their outputs, combine the relevant tables/columns, and write the final SQL query.
 
 ### Dialect-Specific Notes
@@ -338,6 +350,22 @@ const group2 = await startAsyncSubagent({ /* same pattern, different tables */ }
 
 **Do NOT** use `SELECT *` in the sample query column above. `LIMIT 5` does not undo
 the cost of reading every column for the matched rows on a billed warehouse.
+=======
+**Step 4: Synthesize and Query** — Wait for all subagents, then write the final query:
+
+```javascript
+await waitForBackgroundTasks();
+// Read subagent outputs, combine relevant tables/columns, write the final SQL query
+```
+
+### Dialect-Specific Notes
+
+| Dialect | Table Quoting | INFORMATION_SCHEMA Path | Sample Query |
+|---------|--------------|------------------------|--------------|
+| BigQuery | `` `project.dataset.table` `` | `` `project.dataset`.INFORMATION_SCHEMA.COLUMNS `` | `SELECT * FROM \`p.d.t\` LIMIT 5` |
+| Snowflake | `"DATABASE"."SCHEMA"."TABLE"` | `DATABASE.INFORMATION_SCHEMA.COLUMNS` | `SELECT * FROM "DB"."SCH"."TBL" LIMIT 5` |
+| Databricks | `` `catalog.schema.table` `` | `catalog.information_schema.columns` | `SELECT * FROM \`c.s.t\` LIMIT 5` |
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 ### Tips
 

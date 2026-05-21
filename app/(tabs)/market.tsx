@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 import React, { useState, useCallback, useRef, useEffect } from "react";
+=======
+import React, { useState, useCallback } from "react";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 import {
   StyleSheet,
   Text,
@@ -12,6 +16,7 @@ import {
   Alert,
   RefreshControl,
   Linking,
+<<<<<<< HEAD
   TextInput,
   ActivityIndicator,
   Dimensions,
@@ -25,6 +30,10 @@ import Reanimated, {
 } from "react-native-reanimated";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+=======
+} from "react-native";
+import { Image } from "expo-image";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -46,6 +55,7 @@ const REPORT_REASONS = [
   "Other",
 ];
 
+<<<<<<< HEAD
 const CONDITIONS = ["Mint", "Near Mint", "Excellent", "Good", "Lightly Played", "Played", "Poor"];
 
 function PhotoZoomItem({
@@ -265,6 +275,8 @@ function FullScreenPhotoViewer({
   );
 }
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 function ListingDetailModal({
   listing,
   visible,
@@ -275,8 +287,11 @@ function ListingDetailModal({
   onDelete,
   onMessage,
   onReport,
+<<<<<<< HEAD
   onSaveEdit,
   isStaff,
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 }: {
   listing: MarketListing | null;
   visible: boolean;
@@ -287,6 +302,7 @@ function ListingDetailModal({
   onDelete: () => void;
   onMessage: () => void;
   onReport: (reason: string) => void;
+<<<<<<< HEAD
   onSaveEdit: (listingId: string, updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null; photos?: string[] }) => Promise<void>;
   isStaff: boolean;
 }) {
@@ -304,6 +320,11 @@ function ListingDetailModal({
   useEffect(() => {
     if (!visible) setViewerIndex(null);
   }, [visible]);
+=======
+}) {
+  const insets = useSafeAreaInsets();
+  const webTopInset = Platform.OS === "web" ? 67 : 0;
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
   const { data: card } = useQuery<PokemonCard>({
     queryKey: ["/api/pokemon/cards", listing?.cardId],
@@ -332,6 +353,7 @@ function ListingDetailModal({
     );
   };
 
+<<<<<<< HEAD
   const startEdit = () => {
     setEditPrice(listing.priceGBP != null ? String(listing.priceGBP) : "");
     setEditCondition(listing.condition);
@@ -418,6 +440,10 @@ function ListingDetailModal({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={isEditing ? cancelEdit : onClose}>
+=======
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       <View style={[modalStyles.container, { backgroundColor: colors.background }]}>
         {/* Header bar */}
         <View
@@ -430,15 +456,24 @@ function ListingDetailModal({
             },
           ]}
         >
+<<<<<<< HEAD
           <Pressable onPress={isEditing ? cancelEdit : onClose} hitSlop={12} style={modalStyles.closeBtn}>
             <Ionicons name={isEditing ? "arrow-back" : "chevron-down"} size={24} color={colors.textSecondary} />
           </Pressable>
           <Text style={[modalStyles.headerTitle, { color: colors.text }]} numberOfLines={1}>
             {isEditing ? "Edit Listing" : listing.cardName}
+=======
+          <Pressable onPress={onClose} hitSlop={12} style={modalStyles.closeBtn}>
+            <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
+          </Pressable>
+          <Text style={[modalStyles.headerTitle, { color: colors.text }]} numberOfLines={1}>
+            {listing.cardName}
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           </Text>
           <View style={{ width: 36 }} />
         </View>
 
+<<<<<<< HEAD
         {isEditing ? (
           <ScrollView
             showsVerticalScrollIndicator={false}
@@ -529,12 +564,137 @@ function ListingDetailModal({
             <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
               <Text style={[modalStyles.editLabel, { color: colors.textMuted }]}>
                 Photos ({editPhotos.length}/6)
+=======
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[modalStyles.scrollContent, { paddingBottom: insets.bottom + 120 }]}
+        >
+          {/* Card image */}
+          <View style={modalStyles.imageWrap}>
+            <Image
+              source={{ uri: listing.cardImage }}
+              style={modalStyles.cardImage}
+              contentFit="contain"
+            />
+          </View>
+
+          {/* Card identity */}
+          <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+            <Text style={[modalStyles.cardName, { color: colors.text }]}>{listing.cardName}</Text>
+            <Text style={[modalStyles.setName, { color: colors.textSecondary }]}>{listing.setName}</Text>
+            {card?.number && (
+              <Text style={[modalStyles.cardMeta, { color: colors.textMuted }]}>
+                #{card.number}
+                {listing.rarity && listing.rarity !== "Unknown" ? ` · ${listing.rarity}` : ""}
+              </Text>
+            )}
+            {!card?.number && listing.rarity && listing.rarity !== "Unknown" && (
+              <Text style={[modalStyles.cardMeta, { color: colors.textMuted }]}>{listing.rarity}</Text>
+            )}
+          </View>
+
+          {/* Listing details */}
+          <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+            {/* Type badge + price row */}
+            <View style={modalStyles.badgeRow}>
+              <View
+                style={[
+                  modalStyles.typeBadge,
+                  { backgroundColor: listing.type === "sale" ? colors.success : colors.pokemonBlue },
+                ]}
+              >
+                <Text style={modalStyles.typeBadgeText}>
+                  {listing.type === "sale" ? "FOR SALE" : "TRADE"}
+                </Text>
+              </View>
+              {listing.priceGBP ? (
+                <Text style={[modalStyles.price, { color: colors.success }]}>
+                  {formatGBP(listing.priceGBP)}
+                </Text>
+              ) : null}
+            </View>
+
+            {/* Condition */}
+            <View style={modalStyles.detailRow}>
+              <Text style={[modalStyles.detailLabel, { color: colors.textMuted }]}>Condition</Text>
+              <Text style={[modalStyles.detailValue, { color: colors.text }]}>{listing.condition}</Text>
+            </View>
+
+            {/* Seller */}
+            <View style={modalStyles.detailRow}>
+              <Text style={[modalStyles.detailLabel, { color: colors.textMuted }]}>Seller</Text>
+              <Text style={[modalStyles.detailValue, { color: colors.text }]}>{listing.userName}</Text>
+            </View>
+
+            {/* Description */}
+            {!!listing.description && (
+              <View style={[modalStyles.descriptionWrap, { borderTopColor: colors.borderLight }]}>
+                <Text style={[modalStyles.detailLabel, { color: colors.textMuted, marginBottom: 4 }]}>Description</Text>
+                <Text style={[modalStyles.descriptionText, { color: colors.textSecondary }]}>
+                  {listing.description}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Moderation status (real owner only, non-approved) */}
+          {isRealOwner && listing.status !== "approved" && (
+            <View
+              style={[
+                modalStyles.statusBanner,
+                {
+                  backgroundColor: listing.status === "rejected" ? colors.error + "18" : "#E67E2218",
+                  borderColor: listing.status === "rejected" ? colors.error + "40" : "#E67E2240",
+                },
+              ]}
+            >
+              <Ionicons
+                name={listing.status === "rejected" ? "close-circle-outline" : "time-outline"}
+                size={16}
+                color={listing.status === "rejected" ? colors.error : "#E67E22"}
+              />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    modalStyles.statusTitle,
+                    { color: listing.status === "rejected" ? colors.error : "#E67E22" },
+                  ]}
+                >
+                  {listing.status === "rejected" ? "Rejected by moderation" : "Awaiting approval"}
+                </Text>
+                {!!listing.reviewNote && (
+                  <Text style={[modalStyles.statusNote, { color: colors.textMuted }]}>{listing.reviewNote}</Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* External URL */}
+          {!!listing.externalUrl && (
+            <Pressable
+              style={[modalStyles.externalBtn, { backgroundColor: colors.card, borderColor: colors.pokemonBlue + "50" }]}
+              onPress={() => Linking.openURL(listing.externalUrl!)}
+            >
+              <Ionicons name="open-outline" size={18} color={colors.pokemonBlue} />
+              <Text style={[modalStyles.externalBtnText, { color: colors.pokemonBlue }]}>
+                View External Listing
+              </Text>
+            </Pressable>
+          )}
+
+          {/* Photos */}
+          {hasPhotos && (
+            <View style={[modalStyles.section, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
+              <Text style={[modalStyles.detailLabel, { color: colors.textMuted, marginBottom: 10 }]}>
+                Seller Photos
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
               </Text>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ gap: 10 }}
               >
+<<<<<<< HEAD
                 {editPhotos.map((uri, idx) => (
                   <View key={idx} style={modalStyles.editPhotoThumb}>
                     <Image source={{ uri }} style={modalStyles.editPhotoImage} contentFit="cover" />
@@ -741,6 +901,20 @@ function ListingDetailModal({
             onClose={() => setViewerIndex(null)}
           />
         )}
+=======
+                {listing.photos.map((uri, idx) => (
+                  <Image
+                    key={idx}
+                    source={{ uri }}
+                    style={modalStyles.photo}
+                    contentFit="cover"
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </ScrollView>
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
         {/* Bottom action bar */}
         <View
@@ -753,6 +927,7 @@ function ListingDetailModal({
             },
           ]}
         >
+<<<<<<< HEAD
           {isEditing ? (
             <>
               <Pressable
@@ -816,6 +991,34 @@ function ListingDetailModal({
                 </Pressable>
               )}
             </>
+=======
+          {canMessage && (
+            <Pressable
+              style={[modalStyles.actionBtn, { backgroundColor: colors.pokemonBlue, flex: 1 }]}
+              onPress={onMessage}
+            >
+              <Ionicons name="mail-outline" size={16} color="#FFF" />
+              <Text style={modalStyles.actionBtnText}>Message Seller</Text>
+            </Pressable>
+          )}
+          {canReport && (
+            <Pressable
+              style={[modalStyles.actionBtn, { backgroundColor: colors.error + "CC", flex: canMessage ? 0 : 1 }]}
+              onPress={handleReport}
+            >
+              <Ionicons name="flag-outline" size={16} color="#FFF" />
+              <Text style={modalStyles.actionBtnText}>Report</Text>
+            </Pressable>
+          )}
+          {isOwner && (
+            <Pressable
+              style={[modalStyles.actionBtn, { backgroundColor: colors.error, flex: 1 }]}
+              onPress={onDelete}
+            >
+              <Ionicons name="trash-outline" size={16} color="#FFF" />
+              <Text style={modalStyles.actionBtnText}>Delete Listing</Text>
+            </Pressable>
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           )}
         </View>
       </View>
@@ -869,9 +1072,14 @@ export default function MarketScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
+<<<<<<< HEAD
   const { user, listings, deleteListing, updateListingDetails, isStaff, refreshData } = useUser();
   const [filter, setFilter] = useState<"all" | "sale" | "trade">("all");
   const [searchQuery, setSearchQuery] = useState("");
+=======
+  const { user, listings, deleteListing, isStaff, refreshData } = useUser();
+  const [filter, setFilter] = useState<"all" | "sale" | "trade">("all");
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedListing, setSelectedListing] = useState<MarketListing | null>(null);
 
@@ -885,6 +1093,7 @@ export default function MarketScreen() {
   }, [refreshData]);
 
   const filtered = listings.filter((l) => {
+<<<<<<< HEAD
     if (filter !== "all" && l.type !== filter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
@@ -895,6 +1104,10 @@ export default function MarketScreen() {
       );
     }
     return true;
+=======
+    if (filter === "all") return true;
+    return l.type === filter;
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   });
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
@@ -1067,6 +1280,7 @@ export default function MarketScreen() {
             </Pressable>
           ))}
         </View>
+<<<<<<< HEAD
         <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
           <Ionicons name="search" size={16} color={colors.textMuted} />
           <TextInput
@@ -1085,6 +1299,8 @@ export default function MarketScreen() {
             </Pressable>
           )}
         </View>
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       </LinearGradient>
 
       <FlatList
@@ -1104,7 +1320,11 @@ export default function MarketScreen() {
             onPress={() => setSelectedListing(item)}
           />
         )}
+<<<<<<< HEAD
         keyExtractor={(item: any) => item.renderId || item.id}
+=======
+        keyExtractor={(item) => item.id}
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
         contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -1117,6 +1337,7 @@ export default function MarketScreen() {
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
+<<<<<<< HEAD
             {searchQuery.trim() ? (
               <>
                 <Ionicons name="search-outline" size={52} color={colors.textMuted} />
@@ -1134,6 +1355,13 @@ export default function MarketScreen() {
                 </Text>
               </>
             )}
+=======
+            <Ionicons name="pricetags-outline" size={56} color={colors.textMuted} />
+            <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>No Listings Yet</Text>
+            <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
+              Open a card from your collection and tap "List for Sale" or "List for Trade"
+            </Text>
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           </View>
         }
       />
@@ -1159,11 +1387,14 @@ export default function MarketScreen() {
             });
           }}
           onReport={(reason) => handleReport(selectedListing, reason)}
+<<<<<<< HEAD
           isStaff={isStaff}
           onSaveEdit={async (listingId, updates) => {
             await updateListingDetails(listingId, updates);
             setSelectedListing(null);
           }}
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
         />
       )}
     </View>
@@ -1188,6 +1419,7 @@ const styles = StyleSheet.create({
   filterRow: { flexDirection: "row", gap: 8 },
   filterBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
   filterBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
+<<<<<<< HEAD
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -1199,6 +1431,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   searchInput: { flex: 1, fontSize: 14, fontFamily: "Outfit_400Regular", padding: 0 },
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   listContent: { paddingHorizontal: 16, paddingTop: 8 },
   disclaimer: {
     flexDirection: "row",
@@ -1300,6 +1534,7 @@ const modalStyles = StyleSheet.create({
   },
   externalBtnText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
   photo: { width: 130, height: 130, borderRadius: 10 },
+<<<<<<< HEAD
   photoZoomHint: {
     position: "absolute",
     bottom: 6,
@@ -1311,6 +1546,8 @@ const modalStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   actionBar: {
     flexDirection: "row",
     gap: 10,
@@ -1328,6 +1565,7 @@ const modalStyles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   actionBtnText: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+<<<<<<< HEAD
   editLabel: { fontSize: 13, fontFamily: "Outfit_500Medium", marginBottom: 6 },
   editInput: {
     borderWidth: 1,
@@ -1383,4 +1621,6 @@ const modalStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 });

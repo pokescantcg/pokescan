@@ -20,8 +20,11 @@ Use this skill when:
 - The user wants to see what errors are occurring in production
 - The user needs to debug a runtime issue with their deployed app
 - The user asks to check deployment or server logs
+<<<<<<< HEAD
 - The user says their app failed to publish or a deployment build failed
 - After a deployment attempt that the agent initiated fails
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 ## When NOT to Use
 
@@ -33,8 +36,12 @@ Use this skill when:
 
 This skill has additional reference documents for specific deployment scenarios. Read them as needed:
 
+<<<<<<< HEAD
 - `.local/skills/deployment/references/deployment-logs.md` — How to fetch and analyze runtime deployment logs. Read this when the user's deployed app is misbehaving, the live site is down, or they want to check production logs.
 - `.local/skills/deployment/references/deployment-failure-debugging.md` — How to diagnose and fix deployment build failures. Read this when the user's deployment build fails to publish, the app crashes during the publishing step, or the user asks for help debugging a deployment error.
+=======
+- `references/deployment-logs.md` — How to fetch and analyze runtime deployment logs. Read this when the user's deployed app is misbehaving, the live site is down, or they want to check production logs.
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 ## Available Functions
 
@@ -78,6 +85,7 @@ const result3 = await deployConfig({
 
 Prompt the user to click the Publish button after the app is ready. **Only works in the main repl context** — in task-agent/subrepl sessions this callback returns `success: false`. If you are in a task agent, skip this call and instead remind the user to publish from the main version after merging.
 
+<<<<<<< HEAD
 ### getDeploymentInfo()
 
 Fetch the repl's current deployment metadata directly from the deployments service. Always call this — never guess from memory or environment variables — when you need to know whether the project is published, what its production URL is, or whether the live build is healthy. Do NOT run `echo $REPLIT_DOMAINS` to discover the production URL — inside the dev container that variable holds the `.replit.dev` development domain, not the production URL.
@@ -111,6 +119,11 @@ if (!info.success) {
 ### fetchDeploymentLogs({ afterTimestamp, beforeTimestamp, message, messageContext })
 
 Fetch and analyze deployment logs. See `.local/skills/deployment/references/deployment-logs.md` for full documentation.
+=======
+### fetchDeploymentLogs({ afterTimestamp, beforeTimestamp, message, messageContext })
+
+Fetch and analyze deployment logs. See `references/deployment-logs.md` for full documentation.
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 ## Deployment Targets
 

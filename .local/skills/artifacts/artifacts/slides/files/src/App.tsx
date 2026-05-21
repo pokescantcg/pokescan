@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 /**
  * Platform contract file — do not restructure.
  *
@@ -14,6 +15,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+=======
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 import { slides } from "@/slideLoader";
 
@@ -25,8 +30,14 @@ function getSlideIndex(pathname: string): number {
 }
 
 function SlideEditor() {
+<<<<<<< HEAD
   const [location, navigate] = useLocation();
   const currentIndex = getSlideIndex(location);
+=======
+  const location = useLocation();
+  const navigate = useNavigate();
+  const currentIndex = getSlideIndex(location.pathname);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
   // In the workspace, the slide iframe is nested inside another iframe,
   // so window.parent !== window.parent.parent. In the deployed SlideViewer,
@@ -138,10 +149,13 @@ function SlideEditor() {
   );
 }
 
+<<<<<<< HEAD
 // Do not rewrite this component. Each slide must remain wrapped in
 // `<div className="slide">` sized 1920×1080 — the class name and
 // dimensions are part of the platform contract. See the file-level
 // banner above for context.
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 function AllSlides() {
   return (
     <div className="bg-black">
@@ -211,21 +225,36 @@ function SlideViewer() {
 }
 
 export default function App() {
+<<<<<<< HEAD
   const [location, navigate] = useLocation();
+=======
+  const location = useLocation();
+  const navigate = useNavigate();
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
   // DO NOT edit this useEffect - redirects unknown routes to the first slide.
   // The "/" and "/allslides" routes are handled separately below.
   useEffect(() => {
     if (
+<<<<<<< HEAD
       location !== "/" &&
       location !== "/allslides" &&
       getSlideIndex(location) === -1
+=======
+      location.pathname !== "/" &&
+      location.pathname !== "/allslides" &&
+      getSlideIndex(location.pathname) === -1
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     ) {
       if (slides.length > 0) {
         navigate(`/slide${slides[0].position}`, { replace: true });
       }
     }
+<<<<<<< HEAD
   }, [location, navigate]);
+=======
+  }, [location.pathname, navigate]);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
   // DO NOT edit this useEffect - allows the parent frame to navigate
   // between slides via postMessage so it can avoid changing the iframe
@@ -245,7 +274,12 @@ export default function App() {
     return () => window.removeEventListener("message", onMessage);
   }, [navigate]);
 
+<<<<<<< HEAD
   if (location === "/") return <SlideViewer />;
   if (location === "/allslides") return <AllSlides />;
+=======
+  if (location.pathname === "/") return <SlideViewer />;
+  if (location.pathname === "/allslides") return <AllSlides />;
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   return <SlideEditor />;
 }

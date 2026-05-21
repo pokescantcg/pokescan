@@ -3,13 +3,17 @@ import path from 'path';
 import { parseArgs as parseNodeArgs } from 'node:util';
 
 const TEMPLATE_SUFFIX = '.template';
+<<<<<<< HEAD
 const HTML_FILE_EXTENSIONS = new Set(['.html', '.htm']);
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 const TOKEN_VALUES = {
   __REPLIT_ARTIFACT_SLUG__: (slug) => slug,
   __REPLIT_ARTIFACT_TITLE__: (_, title) => title,
   __REPLIT_ARTIFACT_PACKAGE_NAME__: (slug) => slug,
 };
 
+<<<<<<< HEAD
 function escapeHtml(value) {
   return value
     .replaceAll('&', '&amp;')
@@ -19,6 +23,8 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 function parseArgs(argv) {
   const { values, positionals } = parseNodeArgs({
     args: argv.slice(2),
@@ -42,12 +48,19 @@ function parseArgs(argv) {
   return { artifactType, slug, title };
 }
 
+<<<<<<< HEAD
 function interpolate(content, slug, title, { isHtml }) {
   let rendered = content;
   for (const [token, resolver] of Object.entries(TOKEN_VALUES)) {
     const value = resolver(slug, title);
     const replacement = isHtml ? escapeHtml(value) : value;
     rendered = rendered.replaceAll(token, replacement);
+=======
+function interpolate(content, slug, title) {
+  let rendered = content;
+  for (const [token, resolver] of Object.entries(TOKEN_VALUES)) {
+    rendered = rendered.replaceAll(token, resolver(slug, title));
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   }
   return rendered;
 }
@@ -73,8 +86,12 @@ function copyDir(src, dest, slug, title) {
 
     if (isTemplate) {
       const raw = fs.readFileSync(srcPath, 'utf8');
+<<<<<<< HEAD
       const isHtml = HTML_FILE_EXTENSIONS.has(path.extname(destName).toLowerCase());
       fs.writeFileSync(destPath, interpolate(raw, slug, title, { isHtml }));
+=======
+      fs.writeFileSync(destPath, interpolate(raw, slug, title));
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       continue;
     }
 

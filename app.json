@@ -2,7 +2,12 @@
   "expo": {
     "name": "PokeScan TCG",
     "slug": "pokescan-tcg",
+<<<<<<< HEAD
     "version": "1.2.1",
+=======
+    "version": "1.1.9",
+
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "pokescantcg",
@@ -22,15 +27,22 @@
 
     "android": {
       "package": "pokescan.tcg1",
+<<<<<<< HEAD
       "versionCode": 34,
 
+=======
+      "versionCode": 28,
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       "adaptiveIcon": {
         "backgroundColor": "#0B1426",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
+<<<<<<< HEAD
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
@@ -38,6 +50,7 @@
     },
 
     "web": {
+<<<<<<< HEAD
       "favicon": "./assets/images/favicon.png",
       "name": "PokeScan TCG",
       "shortName": "PokeScan",
@@ -45,6 +58,9 @@
       "lang": "en",
       "themeColor": "#CC0000",
       "backgroundColor": "#0B1426"
+=======
+      "favicon": "./assets/images/favicon.png"
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     },
 
     "plugins": [
@@ -54,10 +70,15 @@
           "origin": "https://replit.com/"
         }
       ],
+<<<<<<< HEAD
 
       "expo-font",
       "expo-web-browser",
 
+=======
+      "expo-font",
+      "expo-web-browser",
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       [
         "expo-camera",
         {
@@ -75,10 +96,17 @@
       "router": {
         "origin": "https://replit.com/"
       },
+<<<<<<< HEAD
 
       "eas": {
         "projectId": "cd413641-f209-410e-84dc-d3c166607cac"
       }
+=======
+      "eas": {
+        "projectId": "cd413641-f209-410e-84dc-d3c166607cac"
+      },
+      "apiUrl": "https://pokescantcg.onrender.com"
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     }
   }
 }

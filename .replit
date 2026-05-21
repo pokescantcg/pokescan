@@ -1,9 +1,16 @@
 entrypoint = "README.md"
+<<<<<<< HEAD
 modules = ["node", "nodejs-20", "nodejs-22", "postgresql-16", "python-3.11"]
 
 [nix]
 channel = "stable-24_05"
 packages = ["lsof", "try", "nano"]
+=======
+modules = ["nodejs-22", "postgresql-16"]
+
+[nix]
+channel = "stable-24_05"
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 [deployment]
 deploymentTarget = "autoscale"
@@ -84,4 +91,7 @@ timeoutMs = 120000
 [userenv.shared]
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = "587"
+<<<<<<< HEAD
 SUPERADMIN_EMAIL = "richiett17@hotmail.com"
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f

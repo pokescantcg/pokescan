@@ -1,8 +1,16 @@
+<<<<<<< HEAD
 import fs from "fs";
 import path from "path";
 import { spawn, execSync } from "child_process";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
+=======
+const fs = require("fs");
+const path = require("path");
+const { spawn } = require("child_process");
+const { Readable } = require("stream");
+const { pipeline } = require("stream/promises");
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 let metroProcess = null;
 
@@ -502,7 +510,15 @@ async function main() {
   setupSignalHandlers();
 
   console.log("Building server bundle...");
+<<<<<<< HEAD
   execSync("npm run server:build", { stdio: "inherit" });
+=======
+  const { execSync } = require("child_process");
+  execSync(
+    "node_modules/tsx/node_modules/.bin/esbuild backend/server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=backend/server_dist",
+    { stdio: "inherit" }
+  );
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   console.log("Server bundle built successfully.");
 
   const domain = getDeploymentDomain();

@@ -1,0 +1,258 @@
+import { sql } from "drizzle-orm";
+import { pgTable, text, varchar, serial, integer, real, timestamp, boolean, unique } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+export const pokescanUsers = pgTable("pokescan_users", {
+  id: varchar("id", { length: 36 })
+    .primaryKey()
+    .default(sql`gen_random_uuid()::varchar`),
+  username: text("username").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  email: text("email").notNull().unique(),
+  mobileNumber: text("mobile_number").notNull().default(""),
+  passwordHash: text("password_hash"),
+  authProvider: text("auth_provider").notNull().default("local"),
+  isPremium: boolean("is_premium").notNull().default(false),
+  role: text("role").notNull().default("user"),
+  avatarUrl: text("avatar_url"),
+  // Stripe subscription fields
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripePriceId: text("stripe_price_id"),
+  subscriptionStatus: text("subscription_status"),   // active | canceled | past_due | trialing
+  subscriptionPeriodEnd: timestamp("subscription_period_end", { withTimezone: true }),
+  // Trial fields
+  trialStartDate: timestamp("trial_start_date", { withTimezone: true }),
+  trialEndDate: timestamp("trial_end_date", { withTimezone: true }),
+  trialPromptedDay5: boolean("trial_prompted_day5").notNull().default(false),
+  trialPromptedDay6: boolean("trial_prompted_day6").notNull().default(false),
+  trialPromptedFinal: boolean("trial_prompted_final").notNull().default(false),
+  // Scan quota & daily login streak fields
+  scansUsedToday: integer("scans_used_today").notNull().default(0),
+  scanDate: text("scan_date"),                        // YYYY-MM-DD of last scan
+  consecutiveLoginDays: integer("consecutive_login_days").notNull().default(0),
+  lastLoginDate: text("last_login_date"),             // YYYY-MM-DD of last checkin
+  bonusScanPools: text("bonus_scan_pools"),           // JSON: [{amount, expiresAt}]
+  chatMutedUntil: timestamp("chat_muted_until", { withTimezone: true }),
+  chatBannedUntil: timestamp("chat_banned_until", { withTimezone: true }),
+  collectionVisible: boolean("collection_visible").notNull().default(false),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  isBanned: boolean("is_banned").notNull().default(false),
+  bannedReason: text("banned_reason"),
+  bannedAt: timestamp("banned_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export const pokescanSessions = pgTable("pokescan_sessions", {
+  token: varchar("token", { length: 64 }).primaryKey(),
+  userId: varchar("user_id", { length: 36 })
+    .notNull()
+    .references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull().default(sql`NOW() + INTERVAL '30 days'`),
+});
+
+export const insertUserSchema = createInsertSchema(pokescanUsers).pick({
+  username: true,
+  displayName: true,
+  email: true,
+  mobileNumber: true,
+});
+
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type PokescanUser = typeof pokescanUsers.$inferSelect;
+export type PokescanSession = typeof pokescanSessions.$inferSelect;
+
+export type UserRole = "user" | "moderator" | "admin";
+
+export const pokescanSets = pgTable("pokescan_sets", {
+  id: varchar("id").primaryKey(),
+  name: text("name").notNull(),
+  series: text("series").notNull(),
+  printedTotal: integer("printed_total"),
+  total: integer("total"),
+  releaseDate: text("release_date"),
+  logoUrl: text("logo_url"),
+  symbolUrl: text("symbol_url"),
+  imageUrl: text("image_url"),
+  hidden: boolean("hidden").default(false),
+  syncedAt: timestamp("synced_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const pokescanCards = pgTable("pokescan_cards", {
+  id: varchar("id").primaryKey(),
+  setId: varchar("set_id").notNull().references(() => pokescanSets.id),
+  name: text("name").notNull(),
+  number: text("number").notNull(),
+  rarity: text("rarity"),
+  supertype: text("supertype"),
+  subtypes: text("subtypes"),
+  imageSmall: text("image_small"),
+  imageLarge: text("image_large"),
+  artist: text("artist"),
+  hp: text("hp"),
+  nationalPokedexNumbers: text("national_pokedex_numbers"),
+  syncedAt: timestamp("synced_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const cardPricing = pgTable(
+  "card_pricing",
+  {
+    id: serial("id").primaryKey(),
+    cardId: varchar("card_id").notNull().references(() => pokescanCards.id),
+    tcgLow: real("tcg_low"),
+    tcgMid: real("tcg_mid"),
+    tcgHigh: real("tcg_high"),
+    tcgMarket: real("tcg_market"),
+    tcgDirectLow: real("tcg_direct_low"),
+    cardmarketAvg: real("cardmarket_avg"),
+    cardmarketLow: real("cardmarket_low"),
+    cardmarketTrend: real("cardmarket_trend"),
+    priceGBP: real("price_gbp"),
+    updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
+  },
+  (t) => [unique("card_pricing_card_id_unique").on(t.cardId)]
+);
+
+export const ebayPrices = pgTable("ebay_prices", {
+  id: serial("id").primaryKey(),
+  cardId: varchar("card_id").notNull().references(() => pokescanCards.id),
+  title: text("title"),
+  price: real("price"),
+  currency: text("currency").default("GBP"),
+  soldDate: text("sold_date"),
+  listingUrl: text("listing_url"),
+  isSold: boolean("is_sold").default(true),
+  fetchedAt: timestamp("fetched_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const pokescanFriendships = pgTable("pokescan_friendships", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  requesterId: varchar("requester_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  addresseeId: varchar("addressee_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export const pokescanMessages = pgTable("pokescan_messages", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  senderId: varchar("sender_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  recipientId: varchar("recipient_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  subject: text("subject").notNull().default(""),
+  body: text("body").notNull(),
+  isRead: boolean("is_read").notNull().default(false),
+  deletedBySender: boolean("deleted_by_sender").notNull().default(false),
+  deletedByRecipient: boolean("deleted_by_recipient").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type PokescanFriendship = typeof pokescanFriendships.$inferSelect;
+export type PokescanMessage = typeof pokescanMessages.$inferSelect;
+
+export const pokescanReports = pgTable("pokescan_reports", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  reporterId: varchar("reporter_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  reportedUserId: varchar("reported_user_id", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
+  contentType: text("content_type").notNull(),
+  contentId: text("content_id").notNull(),
+  reason: text("reason").notNull(),
+  contentSnapshot: text("content_snapshot"),
+  status: text("status").notNull().default("pending"),
+  reviewNote: text("review_note"),
+  reviewedBy: varchar("reviewed_by", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type PokescanReport = typeof pokescanReports.$inferSelect;
+
+export const pokescanMarketListings = pgTable("pokescan_market_listings", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  userName: text("user_name").notNull(),
+  cardId: text("card_id").notNull(),
+  cardName: text("card_name").notNull(),
+  cardImage: text("card_image").notNull(),
+  setName: text("set_name").notNull(),
+  rarity: text("rarity").notNull().default("Unknown"),
+  type: text("type").notNull(),                 // "sale" | "trade"
+  priceGBP: real("price_gbp"),
+  condition: text("condition").notNull(),
+  description: text("description").notNull().default(""),
+  photos: text("photos").notNull().default("[]"),  // JSON array of base64 strings (max 6)
+  status: text("status").notNull().default("pending"), // "pending" | "approved" | "rejected"
+  reviewedBy: varchar("reviewed_by", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  reviewNote: text("review_note"),
+  externalUrl: text("external_url"),   // Optional link to eBay / external listing
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type PokescanMarketListing = typeof pokescanMarketListings.$inferSelect;
+
+export const pokescanCollections = pgTable("pokescan_collections", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  cardId: text("card_id").notNull(),
+  cardName: text("card_name").notNull(),
+  cardImage: text("card_image").notNull(),
+  setName: text("set_name").notNull(),
+  setId: text("set_id").notNull(),
+  rarity: text("rarity").notNull().default("Unknown"),
+  quantity: integer("quantity").notNull().default(1),
+  condition: text("condition").notNull(),
+  variant: text("variant").default("Non-Holo"),
+  priceGBP: real("price_gbp"),
+  addedAt: timestamp("added_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type PokescanCollection = typeof pokescanCollections.$inferSelect;
+
+export const pokescanChatroomMessages = pgTable("pokescan_chatroom_messages", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  senderId: varchar("sender_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  senderUsername: text("sender_username").notNull(),
+  senderDisplayName: text("sender_display_name").notNull(),
+  senderAvatarUrl: text("sender_avatar_url"),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type PokescanChatroomMessage = typeof pokescanChatroomMessages.$inferSelect;
+
+export const adminLogs = pgTable("admin_logs", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  action: text("action").notNull(),
+  details: text("details"),
+  actorId: varchar("actor_id", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
+  targetId: varchar("target_id", { length: 36 }).references(() => pokescanUsers.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type AdminLog = typeof adminLogs.$inferSelect;
+
+export const notifications = pgTable("notifications", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()::varchar`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => pokescanUsers.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  link: text("link"),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`NOW()`),
+});
+
+export type Notification = typeof notifications.$inferSelect;
+
+export const syncStatus = pgTable("sync_status", {
+  id: serial("id").primaryKey(),
+  totalSets: integer("total_sets").default(0),
+  syncedSets: integer("synced_sets").default(0),
+  totalCards: integer("total_cards").default(0),
+  syncedCards: integer("synced_cards").default(0),
+  lastCardSyncAt: timestamp("last_card_sync_at"),
+  lastPriceSyncAt: timestamp("last_price_sync_at"),
+  isRunning: boolean("is_running").default(false),
+  lastError: text("last_error"),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
+});

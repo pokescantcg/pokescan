@@ -1,5 +1,11 @@
+<<<<<<< HEAD
 import { getApiUrl } from "@/lib/query-client";
 import { getSessionToken } from "@/lib/storage";
+=======
+import { getApiUrl } from "./query-client";
+import { getSessionToken } from "./storage";
+
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 async function authHeaders(): Promise<HeadersInit> {
   const token = await getSessionToken();
@@ -62,7 +68,10 @@ export interface SocialUser {
   avatarUrl?: string | null;
   isPremium?: boolean;
   collectionVisible?: boolean;
+<<<<<<< HEAD
   isVerifiedCollector?: boolean;
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 }
 
 export interface FriendsData {

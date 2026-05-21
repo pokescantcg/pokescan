@@ -10,26 +10,36 @@ import {
   Alert,
   RefreshControl,
   Animated,
+<<<<<<< HEAD
   Modal,
   TextInput,
   ScrollView,
   KeyboardAvoidingView,
   ActivityIndicator,
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 } from "react-native";
 import { Image } from "expo-image";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
+<<<<<<< HEAD
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system";
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { useUser } from "@/lib/user-context";
 import { formatGBP } from "@/lib/pokemon-api";
+<<<<<<< HEAD
 import { CollectionItem, getSessionToken } from "@/lib/storage";
 import { getApiUrl } from "@/lib/query-client";
 import { calculateConditionPrice, getConditionMultiplierDisplay } from "@/lib/condition-pricing";
+=======
+import { CollectionItem } from "@/lib/storage";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 import PokeBackground from "@/components/PokeBackground";
 
 function setLogoUrl(setId: string) {
@@ -44,23 +54,31 @@ function CollectionCard({
   colors,
   onRemove,
   onUpdateQty,
+<<<<<<< HEAD
   onEditGrading,
   onVerify,
   localVerified,
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 }: {
   item: CollectionItem;
   colors: ReturnType<typeof useThemeColors>;
   onRemove: () => void;
   onUpdateQty: (qty: number) => void;
+<<<<<<< HEAD
   onEditGrading: () => void;
   onVerify: () => void;
   localVerified: boolean;
 }) {
   const verified = item.isVerified || localVerified;
+=======
+}) {
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   return (
     <Pressable
       style={({ pressed }) => [
         styles.cardItem,
+<<<<<<< HEAD
         {
           backgroundColor: colors.card,
           borderColor: verified ? "#2ECC71" + "60" : colors.borderLight,
@@ -135,6 +153,23 @@ function CollectionCard({
             </Text>
           )}
         </View>
+=======
+        { backgroundColor: colors.card, borderColor: colors.borderLight, opacity: pressed ? 0.9 : 1 },
+      ]}
+      onPress={() => router.push({ pathname: "/card/[id]", params: { id: item.cardId } })}
+    >
+      <Image source={{ uri: item.cardImage }} style={styles.cardImage} contentFit="contain" />
+      <View style={styles.cardInfo}>
+        <Text style={[styles.cardName, { color: colors.text }]} numberOfLines={1}>
+          {item.cardName}
+        </Text>
+        <Text style={[styles.cardCondition, { color: colors.textMuted }]}>
+          {item.variant && item.variant !== "Non-Holo" ? `${item.variant} · ` : ""}{item.condition}
+        </Text>
+        <Text style={[styles.cardPrice, { color: item.priceGBP ? colors.success : colors.textMuted }]}>
+          {formatGBP(item.priceGBP)} each
+        </Text>
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       </View>
       <View style={styles.qtyControls}>
         <Pressable
@@ -165,6 +200,7 @@ function CollectionCard({
   );
 }
 
+<<<<<<< HEAD
 // ─── Verify Card Modal ────────────────────────────────────────────────────────
 
 interface VerifyCaptured { uri: string; base64: string }
@@ -412,6 +448,8 @@ function VerifyCardModal({
   );
 }
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 function SetHeader({
   section,
   isCollapsed,
@@ -509,12 +547,16 @@ interface SetSection {
   data: CollectionItem[];
 }
 
+<<<<<<< HEAD
 const GRADING_COMPANIES = ["None", "PSA", "Beckett", "CGC", "ACE"] as const;
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 export default function CollectionScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
+<<<<<<< HEAD
   const { user, collection, collectionValue, removeCard, updateQuantity, updateGrading } = useUser();
   const [sortBy, setSortBy] = useState<"name" | "value" | "recent">("recent");
   const [searchQuery, setSearchQuery] = useState("");
@@ -559,6 +601,13 @@ export default function CollectionScreen() {
     }
   }, [gradingItem, editCompany, editGrade, updateGrading, closeGradingModal]);
 
+=======
+  const { user, collection, collectionValue, removeCard, updateQuantity } = useUser();
+  const [sortBy, setSortBy] = useState<"name" | "value" | "recent">("recent");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [collapsedSets, setCollapsedSets] = useState<Set<string>>(new Set());
+
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
     setTimeout(() => setIsRefreshing(false), 600);
@@ -597,7 +646,11 @@ export default function CollectionScreen() {
       g.data.push(item);
       g.cardCount += 1;
       g.totalQuantity += item.quantity;
+<<<<<<< HEAD
       g.setValue += calculateConditionPrice(item.priceGBP, item.condition) * item.quantity;
+=======
+      g.setValue += (item.priceGBP ?? 0) * item.quantity;
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       if (new Date(item.addedAt) > new Date(g.latestAdded)) {
         g.latestAdded = item.addedAt;
       }
@@ -610,7 +663,11 @@ export default function CollectionScreen() {
       result.forEach(s => s.data.sort((a, b) => a.cardName.localeCompare(b.cardName)));
     } else if (sortBy === "value") {
       result.sort((a, b) => b.setValue - a.setValue);
+<<<<<<< HEAD
       result.forEach(s => s.data.sort((a, b) => (calculateConditionPrice(b.priceGBP, b.condition) - calculateConditionPrice(a.priceGBP, a.condition))));
+=======
+      result.forEach(s => s.data.sort((a, b) => (b.priceGBP ?? 0) - (a.priceGBP ?? 0)));
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     } else {
       result.sort((a, b) => new Date(b.latestAdded).getTime() - new Date(a.latestAdded).getTime());
       result.forEach(s => s.data.sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime()));
@@ -619,6 +676,7 @@ export default function CollectionScreen() {
     return result;
   }, [collection, sortBy]);
 
+<<<<<<< HEAD
   const filteredSections: SetSection[] = useMemo(() => {
     if (!searchQuery.trim()) return rawSections;
     const q = searchQuery.trim().toLowerCase();
@@ -643,6 +701,18 @@ export default function CollectionScreen() {
   );
 
   const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
+=======
+  const sections = useMemo(() =>
+    rawSections.map(s => ({
+      ...s,
+      data: collapsedSets.has(s.setId) ? ([] as CollectionItem[]) : s.data,
+    })),
+    [rawSections, collapsedSets]
+  );
+
+  const safeCollection = collection || [];
+  const totalCards = safeCollection.reduce((sum, item) => sum + item.quantity, 0);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   const webTopInset = Platform.OS === "web" ? 67 : 0;
 
   if (!user) {
@@ -750,7 +820,10 @@ export default function CollectionScreen() {
             <Ionicons name="cash" size={18} color={colors.success} />
             <Text style={[styles.statValue, { color: colors.success }]}>{formatGBP(collectionValue)}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Value</Text>
+<<<<<<< HEAD
             <Text style={[styles.priceSource, { color: colors.textMuted }]}>TCGPlayer</Text>
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           </View>
         </View>
         <View style={styles.sortRow}>
@@ -766,6 +839,7 @@ export default function CollectionScreen() {
             </Pressable>
           ))}
         </View>
+<<<<<<< HEAD
         <View style={[styles.searchBar, { backgroundColor: colors.card, borderColor: colors.borderLight }]}>
           <Ionicons name="search" size={16} color={colors.textMuted} />
           <TextInput
@@ -784,11 +858,17 @@ export default function CollectionScreen() {
             </Pressable>
           )}
         </View>
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       </LinearGradient>
 
       <SectionList
         sections={sections}
+<<<<<<< HEAD
         keyExtractor={(item) => item.id ?? `${item.cardId}-${item.condition}-${item.variant || "Non-Holo"}-${item.gradingCompany || ""}-${item.grade || ""}`}
+=======
+        keyExtractor={(item) => `${item.cardId}-${item.condition}-${item.variant || "Non-Holo"}`}
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
         contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled={false}
@@ -819,6 +899,7 @@ export default function CollectionScreen() {
                 {
                   text: "Remove",
                   style: "destructive",
+<<<<<<< HEAD
                   onPress: () => removeCard(item.cardId, item.condition, item.variant, item.id),
                 },
               ]);
@@ -827,10 +908,18 @@ export default function CollectionScreen() {
             onEditGrading={() => openGradingModal(item)}
             onVerify={() => setVerifyItem(item)}
             localVerified={item.id ? localVerifiedIds.has(item.id) : false}
+=======
+                  onPress: () => removeCard(item.cardId, item.condition, item.variant),
+                },
+              ]);
+            }}
+            onUpdateQty={(qty) => updateQuantity(item.cardId, item.condition, qty, item.variant)}
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           />
         )}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
+<<<<<<< HEAD
             {searchQuery.trim() ? (
               <>
                 <Ionicons name="search-outline" size={52} color={colors.textMuted} />
@@ -962,6 +1051,22 @@ export default function CollectionScreen() {
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
+=======
+            <Image
+              source={{ uri: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/official-artwork/143.png" }}
+              style={styles.emptyPokemon}
+              contentFit="contain"
+            />
+            <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
+              Your collection is sleeping...
+            </Text>
+            <Text style={[styles.emptySubtext, { color: colors.textMuted }]}>
+              Browse sets or scan cards to add them to your collection
+            </Text>
+          </View>
+        }
+      />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     </View>
   );
 }
@@ -982,6 +1087,7 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: 18, fontFamily: "Outfit_700Bold" },
   statLabel: { fontSize: 11, fontFamily: "Outfit_400Regular" },
+<<<<<<< HEAD
   priceSource: { fontSize: 9, fontFamily: "Outfit_500Medium", marginTop: 2 },
   conditionAdjustment: { fontSize: 9, fontFamily: "Outfit_400Regular", fontStyle: "italic" },
   sortRow: { flexDirection: "row", gap: 8 },
@@ -998,6 +1104,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   searchInput: { flex: 1, fontSize: 14, fontFamily: "Outfit_400Regular", padding: 0 },
+=======
+  sortRow: { flexDirection: "row", gap: 8 },
+  sortBtn: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 20 },
+  sortBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   listContent: { paddingHorizontal: 16, paddingTop: 8 },
   setHeader: {
     flexDirection: "row",
@@ -1054,6 +1165,7 @@ const styles = StyleSheet.create({
   signInBtn: { marginTop: 8 },
   signInGradient: { paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12, alignItems: "center" },
   signInBtnText: { fontSize: 15, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+<<<<<<< HEAD
   verifiedBadgeImg: {
     position: "absolute",
     bottom: 2,
@@ -1188,4 +1300,6 @@ const verifyStyles = StyleSheet.create({
     height: "100%",
     borderRadius: 3,
   },
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 });

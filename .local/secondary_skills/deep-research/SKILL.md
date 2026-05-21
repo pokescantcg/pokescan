@@ -216,9 +216,17 @@ await startAsyncSubagent({ task: `Research FOCUS AREA 3: [Area] ...` });
 
 // ... (3 for Quick, 5 for Standard/Deep)
 
+<<<<<<< HEAD
 ```
 
 Then call the `wait_for_background_tasks` tool to collect their results.
+=======
+// Wait for all subagents to complete
+
+const results = await waitForBackgroundTasks();
+
+```
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 Each subagent should:
 
@@ -474,6 +482,13 @@ await startAsyncSubagent({ task: `Research FOCUS AREA 4: EV Charging Infrastruct
 
 await startAsyncSubagent({ task: `Research FOCUS AREA 5: EV Consumer Economics ...` });
 
+<<<<<<< HEAD
+=======
+// Wait for all subagents
+
+const results = await waitForBackgroundTasks();
+
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 // Phase 4: Triangulate -- evaluate sources, resolve conflicts, score credibility
 
 // Phase 5: Gap analysis -- identify weak spots, launch follow-up if Deep tier
@@ -486,8 +501,11 @@ await startAsyncSubagent({ task: `Research FOCUS AREA 5: EV Consumer Economics .
 
 ```
 
+<<<<<<< HEAD
 After the launch block above, call the `wait_for_background_tasks` tool to wait for subagents, then proceed to Phase 4.
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 ## Best Practices
 
 1. **Cast a wide net first, then narrow** -- start with broad searches before diving into specifics

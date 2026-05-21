@@ -1,6 +1,10 @@
 import { getSessionToken } from "./storage";
+<<<<<<< HEAD
 
 const API_URL = "https://pokemon-card-scan.replit.app";
+=======
+import { BASE_URL } from "@/lib/api";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 export interface PokemonSet {
   id: string;
@@ -37,8 +41,13 @@ export interface PokemonCard {
   rarity?: string;
   set: PokemonSet;
   images: {
+<<<<<<< HEAD
     small: string | null;
     large: string | null;
+=======
+    small: string;
+    large: string;
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   };
   priceGBP?: number | null;
   ebayListings?: Array<{
@@ -49,6 +58,7 @@ export interface PokemonCard {
     listingUrl: string | null;
     isSold: boolean | null;
   }>;
+<<<<<<< HEAD
   // Variant fields from DB or API
   cardId?: string;
   variantId?: string;
@@ -62,6 +72,11 @@ export interface PokemonCard {
   tcgplayer?: {
     url?: string;
     updatedAt?: string;
+=======
+  tcgplayer?: {
+    url: string;
+    updatedAt: string;
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     prices: {
       normal?: PokemonCardPrice;
       holofoil?: PokemonCardPrice;
@@ -71,8 +86,13 @@ export interface PokemonCard {
     };
   };
   cardmarket?: {
+<<<<<<< HEAD
     url?: string;
     updatedAt?: string;
+=======
+    url: string;
+    updatedAt: string;
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     prices: {
       averageSellPrice: number | null;
       lowPrice: number | null;
@@ -137,13 +157,25 @@ export interface PCVTopCard {
 }
 
 export async function fetchSets(): Promise<PokemonSet[]> {
+<<<<<<< HEAD
   const res = await fetch(`${API_URL}/api/pokemon/sets`);
   if (!res.ok) throw new Error("Failed to fetch sets");
   const json: ApiResponse<PokemonSet[]> = await res.json();
+=======
+  const res = await fetch(`${BASE_URL}/api/pokemon/sets`);
+  if (!res.ok) throw new Error("Failed to fetch sets");
+  let json: any = { data: [] };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   return json.data;
 }
 
 export async function fetchSetCards(setId: string, page: number = 1): Promise<{ cards: PokemonCard[]; totalCount: number }> {
+<<<<<<< HEAD
   const res = await fetch(`${API_URL}/api/pokemon/sets/${setId}/cards?page=${page}`);
   if (!res.ok) throw new Error("Failed to fetch cards");
   const json: ApiResponse<PokemonCard[]> = await res.json();
@@ -154,6 +186,17 @@ export async function fetchSetCards(setId: string, page: number = 1): Promise<{ 
     ? json.totalCount
     : expandedCards.length;
   return { cards: expandedCards, totalCount };
+=======
+  const res = await fetch(`${BASE_URL}/api/pokemon/sets/${setId}/cards?page=${page}`);
+  if (!res.ok) throw new Error("Failed to fetch cards");
+  let json: any = { data: [], totalCount: 0 };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
+  return { cards: json.data, totalCount: json.totalCount };
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 }
 
 export async function searchCards(query: string, page: number = 1): Promise<{ cards: PokemonCard[]; totalCount: number }> {
@@ -193,6 +236,7 @@ export async function searchCards(query: string, page: number = 1): Promise<{ ca
       // fall through to API
     }
   }
+<<<<<<< HEAD
   const res = await fetch(`${API_URL}/api/pokemon/cards/search?q=${encodeURIComponent(query)}&page=${page}`);
   if (!res.ok) throw new Error("Failed to search cards");
   const json: ApiResponse<PokemonCard[]> = await res.json();
@@ -208,6 +252,28 @@ export async function fetchCard(cardId: string): Promise<PokemonCard> {
   const res = await fetch(`${API_URL}/api/pokemon/cards/${cardId}`);
   if (!res.ok) throw new Error("Failed to fetch card");
   const json = await res.json();
+=======
+  const res = await fetch(`${BASE_URL}/api/pokemon/cards/search?q=${encodeURIComponent(query)}&page=${page}`);
+  if (!res.ok) throw new Error("Failed to search cards");
+  let json: any = { data: [], totalCount: 0 };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
+  return { cards: json.data, totalCount: json.totalCount };
+}
+
+export async function fetchCard(cardId: string): Promise<PokemonCard> {
+  const res = await fetch(`${BASE_URL}/api/pokemon/cards/${cardId}`);
+  if (!res.ok) throw new Error("Failed to fetch card");
+  let json: any = { data: {} };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   return json.data;
 }
 
@@ -243,37 +309,92 @@ export async function findCard(name: string, number?: string, setId?: string): P
   const params = new URLSearchParams({ name });
   if (number) params.set("number", number);
   if (setId) params.set("setId", setId);
+<<<<<<< HEAD
   const res = await fetch(`${API_URL}/api/pokemon/cards/find?${params.toString()}`);
   if (!res.ok) return null;
   const json = await res.json();
+=======
+  const res = await fetch(`${BASE_URL}/api/pokemon/cards/find?${params.toString()}`);
+  if (!res.ok) return null;
+  let json: any = { data: null };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   return json.data || null;
 }
 
 export async function fetchPCVSets(): Promise<PCVSet[]> {
+<<<<<<< HEAD
   const res = await fetch(`${API_URL}/api/pcv/sets`);
   if (!res.ok) throw new Error("Failed to fetch UK sets");
   const json = await res.json();
+=======
+  const res = await fetch(`${BASE_URL}/api/pcv/sets`);
+  if (!res.ok) throw new Error("Failed to fetch UK sets");
+  let json: any = { data: [] };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   return json.data;
 }
 
 export async function fetchPCVSetCards(setId: string, slug: string): Promise<PCVCard[]> {
+<<<<<<< HEAD
   const res = await fetch(`${API_URL}/api/pcv/sets/${setId}/${slug}/cards`);
   if (!res.ok) throw new Error("Failed to fetch UK card data");
   const json = await res.json();
+=======
+  const res = await fetch(`${BASE_URL}/api/pcv/sets/${setId}/${slug}/cards`);
+  if (!res.ok) throw new Error("Failed to fetch UK card data");
+  let json: any = { data: [] };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   return json.data;
 }
 
 export async function fetchPCVTopCards(condition: string = "ungraded"): Promise<PCVTopCard[]> {
+<<<<<<< HEAD
   const res = await fetch(`${API_URL}/api/pcv/top/${condition}`);
   if (!res.ok) throw new Error("Failed to fetch top UK cards");
   const json = await res.json();
+=======
+  const res = await fetch(`${BASE_URL}/api/pcv/top/${condition}`);
+  if (!res.ok) throw new Error("Failed to fetch top UK cards");
+  let json: any = { data: [] };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   return json.data;
 }
 
 export async function fetchPCVSearch(query: string): Promise<PCVCard[]> {
+<<<<<<< HEAD
   const res = await fetch(`${API_URL}/api/pcv/search?q=${encodeURIComponent(query)}`);
   if (!res.ok) throw new Error("Failed to search UK cards");
   const json = await res.json();
+=======
+  const res = await fetch(`${BASE_URL}/api/pcv/search?q=${encodeURIComponent(query)}`);
+  if (!res.ok) throw new Error("Failed to search UK cards");
+  let json: any = { data: [] };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   return json.data;
 }
 
@@ -281,9 +402,21 @@ export async function fetchEbayUrls(cardName: string, setName?: string, number?:
   const params = new URLSearchParams({ cardName });
   if (setName) params.set("setName", setName);
   if (number) params.set("number", number);
+<<<<<<< HEAD
   const res = await fetch(`${API_URL}/api/ebay/search-url?${params.toString()}`);
   if (!res.ok) throw new Error("Failed to get eBay URLs");
   return res.json();
+=======
+  const res = await fetch(`${BASE_URL}/api/ebay/search-url?${params.toString()}`);
+  if (!res.ok) throw new Error("Failed to get eBay URLs");
+  let json: any = { searchUrl: "", soldUrl: "" };
+  try {
+    json = await res.json();
+  } catch {
+    console.warn("Invalid JSON response");
+  }
+  return json;
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 }
 
 export function generateEbaySearchUrl(cardName: string, setName?: string, number?: string): string {
@@ -301,6 +434,7 @@ export function generateEbaySoldUrl(cardName: string, setName?: string, number?:
 }
 
 export function getUKPrice(card: PokemonCard): { price: number | null; source: string } {
+<<<<<<< HEAD
   /**
    * eBay sold listings (BEST SOURCE)
    */
@@ -456,12 +590,42 @@ export function getUKPrice(card: PokemonCard): { price: number | null; source: s
     price: null,
     source: "",
   };
+=======
+  if (card.ebayListings && card.ebayListings.length > 0) {
+    const soldPrices = card.ebayListings
+      .filter((l) => l.isSold && l.price !== null && l.price !== undefined && l.price > 0 && (l.currency === "GBP" || !l.currency))
+      .map((l) => l.price as number);
+    if (soldPrices.length > 0) {
+      const sorted = [...soldPrices].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+      return { price: Math.round(median * 100) / 100, source: "eBay UK (Sold)" };
+    }
+  }
+  if (card.cardmarket?.prices) {
+    const p = card.cardmarket.prices;
+    const price = p.trendPrice ?? p.averageSellPrice ?? p.lowPrice;
+    if (price) return { price, source: "Cardmarket" };
+  }
+  if (card.tcgplayer?.prices) {
+    const prices = card.tcgplayer.prices;
+    const variant = prices.holofoil || prices.normal || prices.reverseHolofoil;
+    if (variant?.market) {
+      const gbpPrice = variant.market * 0.79;
+      return { price: Math.round(gbpPrice * 100) / 100, source: "TCGPlayer (est.)" };
+    }
+  }
+  return { price: null, source: "" };
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 }
 
 export interface CardIdentification {
   englishName: string;
   cardNumber: string;
+<<<<<<< HEAD
   setCode: string;
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   setName: string;
   language: string;
   holoType: string;
@@ -472,12 +636,16 @@ export interface CardIdentification {
 }
 
 export interface IdentifyCardResult {
+<<<<<<< HEAD
   isCardBack?: boolean;
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   identification: CardIdentification;
   pcvResults: PCVCard[];
   tcgApiResults: PokemonCard[];
 }
 
+<<<<<<< HEAD
 export async function identifyCard(
   imageBase64: string
 ): Promise<IdentifyCardResult> {
@@ -550,10 +718,47 @@ export async function identifyCard(
       );
     }
 
+=======
+export async function identifyCard(imageBase64: string): Promise<IdentifyCardResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  try {
+    const token = await getSessionToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BASE_URL}/api/identify-card`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ imageBase64 }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      let errMsg = "Failed to identify card";
+      let errBody: any = {};
+      try {
+        errBody = await res.json();
+        errMsg = errBody.error || errMsg;
+      } catch {
+        const errText = await res.text().catch(() => "");
+        errMsg = errText || errMsg;
+      }
+      const err: any = new Error(errMsg);
+      if (res.status === 429) err.isQuotaExceeded = true;
+      throw err;
+    }
+    return res.json();
+  } catch (e: any) {
+    clearTimeout(timeout);
+    if (e.name === "AbortError") {
+      throw new Error("Connection timed out. Please check your signal and try again.");
+    }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     throw e;
   }
 }
 
+<<<<<<< HEAD
 export interface NumberStripResult {
   cardNumber: string;
   setCode?: string;
@@ -703,3 +908,9 @@ export function expandCardVariants(
 
   return expanded;
 }
+=======
+export function formatGBP(price: number | null): string {
+  if (price === null || price === undefined) return "N/A";
+  return `\u00A3${price.toFixed(2)}`;
+}
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f

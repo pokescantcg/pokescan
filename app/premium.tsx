@@ -90,7 +90,16 @@ export default function PremiumScreen() {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ priceId, successUrl, cancelUrl }),
       });
+<<<<<<< HEAD
       const data = await res.json() as { url?: string; error?: string };
+=======
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
 
       if (!data.url) throw new Error(data.error ?? "Checkout URL not returned");
@@ -153,7 +162,16 @@ export default function PremiumScreen() {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ returnUrl: domain }),
       });
+<<<<<<< HEAD
       const data = await portalRes.json() as { url?: string; error?: string };
+=======
+      let data: any = {};
+      try {
+        data = await portalRes.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       if (!portalRes.ok) throw new Error(data.error ?? `Error ${portalRes.status}`);
       if (!data.url) throw new Error(data.error ?? "Portal URL not returned");
       await WebBrowser.openBrowserAsync(data.url);

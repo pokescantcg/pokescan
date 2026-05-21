@@ -38,4 +38,12 @@ yarn-error.*
 *.tsbuildinfo
 .vercel
 
+<<<<<<< HEAD
 .env
+=======
+node_modules
+.env
+.config
+.replit_integration_files
+backend/server_dist
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f

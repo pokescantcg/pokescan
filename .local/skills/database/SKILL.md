@@ -1,6 +1,10 @@
 ---
 name: database
+<<<<<<< HEAD
 description: Create and manage Replit's built-in PostgreSQL databases, check status, execute SQL queries with safety checks, and run read-only queries against the production database. Use when the user wants to check prod data, debug database issues in production, or asks to "check the prod db", "query production", "look at live data", or "see what's in the database on the deployed app". Also use when the user asks how to apply development schema changes to the production database, e.g. "push dev to prod", "migrate the production database", "sync the schema", "production is missing a column", or reports a deployed app failing with "column does not exist" / "relation does not exist".
+=======
+description: Create and manage Replit's built-in PostgreSQL databases, check status, execute SQL queries with safety checks, and run read-only queries against the production database. Use when the user wants to check prod data, debug database issues in production, or asks to "check the prod db", "query production", "look at live data", or "see what's in the database on the deployed app".
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 ---
 
 # Database Skill
@@ -18,6 +22,7 @@ Use this skill when:
 
 ## When NOT to Use
 
+<<<<<<< HEAD
 - Schema migrations in production environments — see "Production schema changes" below
 - Direct modifications to Stripe tables (use Stripe API instead)
 - Converting a pre-existing database over to Replit, unless a user explicitly asks you to.
@@ -32,6 +37,12 @@ For the full set of rules on what the agent must and must not do here — includ
 
 - `.local/skills/database/references/database-migrations-on-publish.md` — Full detail on the publish-time schema migration flow, including the two automatic application points (post-merge → dev, publish → prod), the SQL diff and rename-confirmation behavior, and the canonical failure mode this guidance prevents. Read this when the user reports production is missing a column or table, asks to "push dev to prod" / "migrate the production database" / "sync the schema", or reports the deployed app failing with "column does not exist" / "relation does not exist" errors.
 
+=======
+- Schema migrations in production environments
+- Direct modifications to Stripe tables (use Stripe API instead)
+- Converting a pre-existing database over to Replit, unless a user explicitly asks you to.
+
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 ## Available Functions
 
 ### checkDatabase()
@@ -83,10 +94,14 @@ Execute a SQL query with safety checks.
 
 **Parameters:**
 
+<<<<<<< HEAD
 - `sqlQuery` (str, required): The SQL query to execute. Use `$1`, `$2`, etc. placeholders when using parameterized queries.
 - `params` (array, optional): Parameter values for parameterized queries. When provided, values are bound separately from the SQL string, **preventing SQL injection**. Each `$N` placeholder in `sqlQuery` corresponds to the Nth element in this array (1-indexed). Supported types: string, number, boolean, null. **Two restrictions:**
   - **Single-statement only.** When `params` is provided (including `params: []`), `sqlQuery` MUST be a single SQL statement. Semicolon-delimited multi-statement scripts (`BEGIN; ...; COMMIT;`, migration batches, etc.) are rejected on the parameterized path. Send them as a single `executeSql` call WITHOUT `params` — separate calls do NOT share a transaction or session, so splitting would silently lose atomicity. Validate any interpolated values against a strict allowlist before embedding them.
   - **`replit_database` target only.** Data warehouse targets (bigquery, databricks, snowflake) do not support parameter binding — passing `params` with those targets raises an error.
+=======
+- `sqlQuery` (str, required): The SQL query to execute
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 - `target` (str, default "replit_database"): Target database: "replit_database", "bigquery", "databricks", or "snowflake"
 - `environment` (str, default "development"): "development" runs against the development database (all SQL operations supported). "production" runs READ-ONLY queries against a replica of the production database (only SELECT queries allowed). Production is only supported for the "replit_database" target. "production" database, depending on when the user last deployed, may have outdated schemas.
 - `sampleSize` (int, optional): Sample size for warehouse queries (only for bigquery/databricks/snowflake)
@@ -98,6 +113,7 @@ Execute a SQL query with safety checks.
 - `exitCode` (int): Exit code (0 = success)
 - `exitReason` (str | None): Reason for exit if failed
 
+<<<<<<< HEAD
 **CRITICAL: When `params` is supported, ALWAYS use it for any user input or variable.**
 This applies when **all** of these are true:
 
@@ -155,14 +171,25 @@ const result = await executeSql({
     sqlQuery: "SELECT * FROM users WHERE id = $1",
     params: [userId]
 });
+=======
+**Example:**
+
+```javascript
+// Simple SELECT query
+const result = await executeSql({ sqlQuery: "SELECT * FROM users LIMIT 5" });
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 if (result.success) {
     console.log(result.output);
 }
 
+<<<<<<< HEAD
 // Static query without user input (no params needed)
 const result1b = await executeSql({ sqlQuery: "SELECT * FROM users LIMIT 5" });
 
 // CREATE TABLE (static DDL, no params needed)
+=======
+// CREATE TABLE
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 const result2 = await executeSql({
     sqlQuery: `
         CREATE TABLE IF NOT EXISTS products (
@@ -173,6 +200,7 @@ const result2 = await executeSql({
     `
 });
 
+<<<<<<< HEAD
 // INSERT data with parameters
 const result3 = await executeSql({
     sqlQuery: "INSERT INTO products (name, price) VALUES ($1, $2)",
@@ -229,6 +257,28 @@ const result = await executeSql({
         COMMIT;
     `,
 });
+=======
+// INSERT data
+const result3 = await executeSql({
+    sqlQuery: `
+        INSERT INTO products (name, price)
+        VALUES ('Widget', 19.99)
+    `
+});
+
+// Read-only production query
+const result4 = await executeSql({
+    sqlQuery: "SELECT * FROM users WHERE active = true",
+    environment: "production"
+});
+
+// Data warehouse query with sampling
+const result5 = await executeSql({
+    sqlQuery: "SELECT * FROM sales_data WHERE year = 2024",
+    target: "bigquery",
+    sampleSize: 100
+});
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 ```
 
 ## Safety Features
@@ -238,6 +288,7 @@ const result = await executeSql({
 3. **Discussion Mode**: Mutating queries are blocked in Planning/Discussion mode
 4. **Destructive Query Protection**: DROP, TRUNCATE, etc. are blocked via the skill callback path (use the tool interface directly for destructive operations that require user confirmation)
 
+<<<<<<< HEAD
 ## CRITICAL: Data Warehouse Cost Control
 
 Warehouse targets (`bigquery`, `databricks`, `snowflake`) are billed per byte scanned.
@@ -283,11 +334,17 @@ schema discovery and a few sample queries. The runtime queries belong in the app
 API server with DB-backed caching — not in repeated `executeSql` calls from the agent
 loop.
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 ## Best Practices
 
 1. **Prefer the built-in database**: Replit's built-in PostgreSQL database is always preferred over external services like Supabase. It supports rollback and integrates directly with the Replit product. Only use external database services if the user has specific requirements. The `pg` package should be installed already.
 2. **Check before creating**: Call `checkDatabase()` before `createDatabase()` to avoid unnecessary operations
+<<<<<<< HEAD
 3. **ALWAYS use parameterized queries with user input on the `replit_database` single-statement path**: When `target` is `replit_database` (the default) and `sqlQuery` is a single statement, you MUST use the `params` argument with `$1`, `$2`, etc. placeholders for any user-provided literal value. NEVER use string interpolation, template literals, or concatenation for values in that case. For dynamic identifiers (table/column names) or SQL keywords (sort directions, operators), validate against a strict allowlist before interpolating since `params` cannot bind those. For warehouse targets and multi-statement transactional scripts where `params` is not supported, send the whole script as a single `executeSql` call and validate any interpolated values against a strict allowlist; only split into separate calls when the statements are truly independent and don't share transaction or session state.
+=======
+3. **Use parameterized queries**: Avoid string interpolation for user input
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 4. **Test queries first**: Run SELECT queries before INSERT/UPDATE/DELETE
 5. **Keep backups**: Important data should be backed up before destructive operations
 
@@ -327,10 +384,19 @@ await executeSql({
     `
 });
 
+<<<<<<< HEAD
 // 4. Insert data (using parameterized query)
 await executeSql({
     sqlQuery: "INSERT INTO users (email) VALUES ($1)",
     params: ['user@example.com']
+=======
+// 4. Insert data
+await executeSql({
+    sqlQuery: `
+        INSERT INTO users (email)
+        VALUES ('user@example.com')
+    `
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 });
 
 // 5. Query data

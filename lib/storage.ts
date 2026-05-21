@@ -2,7 +2,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
 import { Platform } from "react-native";
+<<<<<<< HEAD
 import { apiRequest, getApiUrl } from "@/lib/query-client";
+=======
+import { apiRequest, getApiUrl } from "./query-client";
+import { apiFetch } from "@/lib/api";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 export type UserRole = "user" | "moderator" | "admin";
 
@@ -22,6 +27,7 @@ export interface UserProfile {
   subscriptionStatus?: string | null;
   subscriptionPeriodEnd?: string | null;
   stripePriceId?: string | null;
+<<<<<<< HEAD
   chatMutedUntil?: string | null;
   chatBannedUntil?: string | null;
   bannedUntil?: string | null;
@@ -39,6 +45,20 @@ export type CardVariant =
   | "Reverse Holo"
   | "1st Ed"
   | "1st Ed Holo";
+=======
+  trialStartDate?: string | null;
+  trialEndDate?: string | null;
+  trialPromptedDay5?: boolean;
+  trialPromptedDay6?: boolean;
+  trialPromptedFinal?: boolean;
+  chatMutedUntil?: string | null;
+  chatBannedUntil?: string | null;
+  collectionVisible?: boolean;
+  emailVerified?: boolean;
+}
+
+export type CardVariant = "Non-Holo" | "Holo" | "Reverse Holo";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 export interface CollectionItem {
   id?: string;
@@ -53,10 +73,13 @@ export interface CollectionItem {
   variant?: CardVariant;
   addedAt: string;
   priceGBP: number | null;
+<<<<<<< HEAD
   gradingCompany?: string | null;
   grade?: string | null;
   isVerified?: boolean;
   verifiedAt?: string | null;
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 }
 
 export interface MarketListing {
@@ -77,8 +100,11 @@ export interface MarketListing {
   reviewedBy: string | null;
   reviewedAt: string | null;
   reviewNote: string | null;
+<<<<<<< HEAD
   reviewNoteUpdatedBy: string | null;
   reviewNoteUpdatedAt: string | null;
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   externalUrl: string | null;
   createdAt: string;
 }
@@ -93,6 +119,7 @@ const KEYS = {
   LOCAL_USER: "pokescan_local_user",
 };
 
+<<<<<<< HEAD
 const SCAN_HISTORY_MAX = 25;
 
 export interface ScanHistoryEntry {
@@ -317,6 +344,10 @@ export async function migrateLocalScanHistoryToServer(userId: string): Promise<v
 }
 
 const SESSION_KEY = "pokescan_session_token";
+=======
+const SESSION_KEY = "pokescan_session_token";
+const SUPERADMIN_EMAIL = "richiett17@hotmail.com";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 /**
  * Returns the auth token used for admin API requests. The superadmin now logs
@@ -406,7 +437,16 @@ export async function restoreSession(): Promise<UserProfile | null> {
       const localUser = await getUser();
       return localUser;
     }
+<<<<<<< HEAD
     const data = await res.json();
+=======
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+    }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     if (data.user) {
       const user = dbUserToProfile(data.user);
       await saveLocalUser(user);
@@ -427,6 +467,7 @@ export async function registerWithPassword(
   password: string,
   mobileNumber?: string
 ): Promise<{ user: UserProfile; userId: string }> {
+<<<<<<< HEAD
   const url = new URL("/api/auth/register", getApiUrl());
   const res = await fetch(url.toString(), {
     method: "POST",
@@ -437,6 +478,12 @@ export async function registerWithPassword(
   if (!res.ok) {
     throw new Error(data.error || "Registration failed");
   }
+=======
+  const data = await apiFetch<{ token: string; user: any }>("/api/auth/register", {
+    method: "POST",
+    body: { username, displayName, email, password, mobileNumber: mobileNumber || "" },
+  });
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
   await saveLocalUser(user);
@@ -444,6 +491,7 @@ export async function registerWithPassword(
 }
 
 export async function verifyEmailOtp(email: string, code: string): Promise<void> {
+<<<<<<< HEAD
   const url = new URL("/api/auth/verify-email", getApiUrl());
   const res = await fetch(url.toString(), {
     method: "POST",
@@ -452,12 +500,19 @@ export async function verifyEmailOtp(email: string, code: string): Promise<void>
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || "Verification failed");
+=======
+  await apiFetch("/api/auth/verify-email", {
+    method: "POST",
+    body: { email, code },
+  });
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 }
 
 export async function loginWithPassword(
   credential: string,
   password: string
 ): Promise<{ user: UserProfile }> {
+<<<<<<< HEAD
   const url = new URL("/api/auth/login", getApiUrl());
   const res = await fetch(url.toString(), {
     method: "POST",
@@ -473,6 +528,12 @@ export async function loginWithPassword(
     (err as any).permanent = !!data.permanent;
     throw err;
   }
+=======
+  const data = await apiFetch<{ token: string; user: any }>("/api/auth/login", {
+    method: "POST",
+    body: { credential, password },
+  });
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
   await saveLocalUser(user);
@@ -491,6 +552,7 @@ export async function verifyPasswordOnly(
   emailCredential: string | null;
   mobileCredential: string | null;
 }> {
+<<<<<<< HEAD
   const url = new URL("/api/auth/verify-password", getApiUrl());
   const res = await fetch(url.toString(), {
     method: "POST",
@@ -502,6 +564,12 @@ export async function verifyPasswordOnly(
     throw new Error(data.error || "Password verification failed");
   }
   return data;
+=======
+  return await apiFetch("/api/auth/verify-password", {
+    method: "POST",
+    body: { credential, password },
+  });
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 }
 
 export async function registerUserWithOtp(
@@ -517,6 +585,7 @@ export async function sendOtpForRegistration(
   userId: string,
   channel: "email" | "sms"
 ): Promise<void> {
+<<<<<<< HEAD
   const url = new URL("/api/auth/send-otp-register", getApiUrl());
   const res = await fetch(url.toString(), {
     method: "POST",
@@ -527,12 +596,19 @@ export async function sendOtpForRegistration(
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || "Failed to send verification code");
   }
+=======
+  await apiFetch("/api/auth/send-otp-register", {
+    method: "POST",
+    body: { userId, channel },
+  });
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 }
 
 export async function sendOtpForLogin(
   credential: string,
   channel: "email" | "sms"
 ): Promise<{ userId: string }> {
+<<<<<<< HEAD
   const url = new URL("/api/auth/send-otp", getApiUrl());
   const res = await fetch(url.toString(), {
     method: "POST",
@@ -544,12 +620,19 @@ export async function sendOtpForLogin(
     throw new Error(data.error || "Failed to send verification code");
   }
   return data;
+=======
+  return await apiFetch("/api/auth/send-otp", {
+    method: "POST",
+    body: { credential, channel },
+  });
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 }
 
 export async function verifyOtpAndLogin(
   credential: string,
   code: string
 ): Promise<{ token: string; user: UserProfile }> {
+<<<<<<< HEAD
   const url = new URL("/api/auth/verify-otp", getApiUrl());
   const res = await fetch(url.toString(), {
     method: "POST",
@@ -565,6 +648,12 @@ export async function verifyOtpAndLogin(
     (err as any).permanent = !!data.permanent;
     throw err;
   }
+=======
+  const data = await apiFetch<{ token: string; user: any }>("/api/auth/verify-otp", {
+    method: "POST",
+    body: { credential, code },
+  });
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   const user = dbUserToProfile(data.user);
   await saveSessionToken(data.token);
   await saveLocalUser(user);
@@ -603,12 +692,16 @@ function dbUserToProfile(dbUser: any): UserProfile {
     stripePriceId: dbUser.stripePriceId ?? dbUser.stripe_price_id ?? null,
     chatMutedUntil: dbUser.chatMutedUntil ?? dbUser.chat_muted_until ?? null,
     chatBannedUntil: dbUser.chatBannedUntil ?? dbUser.chat_banned_until ?? null,
+<<<<<<< HEAD
     bannedUntil: dbUser.bannedUntil ?? dbUser.banned_until ?? null,
     banReason: dbUser.banReason ?? dbUser.ban_reason ?? null,
     bannedAt: dbUser.bannedAt ?? dbUser.banned_at ?? null,
     bannedBy: dbUser.bannedBy ?? dbUser.banned_by ?? null,
     collectionVisible: dbUser.collectionVisible ?? dbUser.collection_visible ?? false,
     isVerifiedCollector: dbUser.isVerifiedCollector ?? dbUser.is_verified_collector ?? false,
+=======
+    collectionVisible: dbUser.collectionVisible ?? dbUser.collection_visible ?? false,
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     emailVerified: dbUser.emailVerified ?? dbUser.email_verified ?? false,
   };
 }
@@ -622,7 +715,17 @@ export async function fetchAllUsersFromServer(): Promise<UserProfile[]> {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return [];
+<<<<<<< HEAD
     const data = await res.json();
+=======
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+      return [];
+    }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     const serverUsers: UserProfile[] = (data.users || []).map(dbUserToProfile);
     // Merge into local registry so future reads include them
     for (const u of serverUsers) {
@@ -687,7 +790,10 @@ export async function verifySuperadminOtp(email: string, code: string): Promise<
     return { ok: false, error: "Network error. Please check your connection." };
   }
 
+<<<<<<< HEAD
   // Store the returned token as the active session token so API calls work.
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   await saveSessionToken(token);
 
   // Keep the currently logged-in user (so their server session stays valid for
@@ -781,10 +887,18 @@ export async function registerSocialUser(
 export async function isSuperadmin(): Promise<boolean> {
   const user = await getUser();
   if (!user) return false;
+<<<<<<< HEAD
   // Primary path — superadmin flag was granted via /admin-login OTP flow.
   const flag = await AsyncStorage.getItem(KEYS.SUPERADMIN_FLAG);
   if (flag === "true") return true;
   // Server login path — recognise by admin role assigned on the server.
+=======
+  // Primary path — superadmin flag was granted via /admin-login.
+  const flag = await AsyncStorage.getItem(KEYS.SUPERADMIN_FLAG);
+  if (flag === "true") return true;
+  // Server login path — recognise by email or admin role.
+  if (user.email?.toLowerCase().trim() === SUPERADMIN_EMAIL) return true;
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   if (user.role === "admin") return true;
   return false;
 }
@@ -830,7 +944,17 @@ export async function getCollection(): Promise<CollectionItem[]> {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return await loadCollectionCache();
+<<<<<<< HEAD
     const data = await res.json();
+=======
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+      return await loadCollectionCache();
+    }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     const items = (data.collection ?? []) as CollectionItem[];
     saveCollectionCache(items);
     return items;
@@ -850,10 +974,27 @@ export async function addToCollection(item: Omit<CollectionItem, "id" | "addedAt
       body: JSON.stringify(item),
     });
     if (!res.ok) {
+<<<<<<< HEAD
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || "Failed to add card");
     }
     const data = await res.json();
+=======
+      let err: any = {};
+      try {
+        err = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
+      throw new Error(err.error || "Failed to add card");
+    }
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+    }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     const items = (data.collection ?? []) as CollectionItem[];
     saveCollectionCache(items);
     return items;
@@ -874,16 +1015,26 @@ export async function addToCollection(item: Omit<CollectionItem, "id" | "addedAt
   }
 }
 
+<<<<<<< HEAD
 export async function removeFromCollection(cardId: string, condition: string, variant?: CardVariant, itemId?: string): Promise<CollectionItem[]> {
+=======
+export async function removeFromCollection(cardId: string, condition: string, variant?: CardVariant): Promise<CollectionItem[]> {
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   try {
     const token = await getSessionToken();
     if (!token) throw new Error("Not authenticated");
     const collection = await loadCollectionCache().then(c => c.length ? c : getCollection());
     const v = variant || "Non-Holo";
+<<<<<<< HEAD
     // Prefer matching by server-assigned id (handles graded/raw coexistence)
     const target = itemId
       ? collection.find((c) => c.id === itemId)
       : collection.find((c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v);
+=======
+    const target = collection.find(
+      (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
+    );
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     if (!target || !target.id) throw new Error("Item not found");
     const url = new URL(`/api/collection/${target.id}`, getApiUrl()).href;
     const res = await fetch(url, {
@@ -898,25 +1049,42 @@ export async function removeFromCollection(cardId: string, condition: string, va
   } catch {
     let collection = await getCollectionLocal();
     const v = variant || "Non-Holo";
+<<<<<<< HEAD
     collection = itemId
       ? collection.filter((c) => c.id !== itemId)
       : collection.filter((c) => !(c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v));
+=======
+    collection = collection.filter(
+      (c) => !(c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v)
+    );
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
     return collection;
   }
 }
 
+<<<<<<< HEAD
 export async function updateCollectionQuantity(cardId: string, condition: string, quantity: number, variant?: CardVariant, itemId?: string): Promise<CollectionItem[]> {
   if (quantity <= 0) return removeFromCollection(cardId, condition, variant, itemId);
+=======
+export async function updateCollectionQuantity(cardId: string, condition: string, quantity: number, variant?: CardVariant): Promise<CollectionItem[]> {
+  if (quantity <= 0) return removeFromCollection(cardId, condition, variant);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   try {
     const token = await getSessionToken();
     if (!token) throw new Error("Not authenticated");
     const collection = await loadCollectionCache().then(c => c.length ? c : getCollection());
     const v = variant || "Non-Holo";
+<<<<<<< HEAD
     // Prefer matching by server-assigned id (handles graded/raw coexistence)
     const target = itemId
       ? collection.find((c) => c.id === itemId)
       : collection.find((c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v);
+=======
+    const target = collection.find(
+      (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
+    );
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     if (!target || !target.id) throw new Error("Item not found");
     const url = new URL(`/api/collection/${target.id}`, getApiUrl()).href;
     const res = await fetch(url, {
@@ -932,15 +1100,22 @@ export async function updateCollectionQuantity(cardId: string, condition: string
   } catch {
     const collection = await getCollectionLocal();
     const v = variant || "Non-Holo";
+<<<<<<< HEAD
     const item = itemId
       ? collection.find((c) => c.id === itemId)
       : collection.find((c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v);
+=======
+    const item = collection.find(
+      (c) => c.cardId === cardId && c.condition === condition && (c.variant || "Non-Holo") === v
+    );
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     if (item) item.quantity = quantity;
     await safeSetItem(KEYS.COLLECTION, JSON.stringify(collection));
     return collection;
   }
 }
 
+<<<<<<< HEAD
 export async function updateCollectionGrading(itemId: string, gradingCompany: string | null, grade: string | null): Promise<CollectionItem[]> {
   const token = await getSessionToken();
   if (!token) throw new Error("Not authenticated");
@@ -975,6 +1150,8 @@ export async function updateCollectionItemPrice(itemId: string, priceGBP: number
   }
 }
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 async function getCollectionLocal(): Promise<CollectionItem[]> {
   const data = await AsyncStorage.getItem(KEYS.COLLECTION);
   return data ? JSON.parse(data) : [];
@@ -1029,7 +1206,17 @@ export async function getListings(): Promise<MarketListing[]> {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return [];
+<<<<<<< HEAD
     const data = await res.json();
+=======
+    let data: any = {};
+    try {
+      data = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+      return [];
+    }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     return (data.listings ?? []) as MarketListing[];
   } catch {
     return [];
@@ -1046,12 +1233,22 @@ export async function addListing(listing: Omit<MarketListing, "id" | "createdAt"
     body: JSON.stringify(listing),
   });
   if (!res.ok) {
+<<<<<<< HEAD
     const err = await res.json().catch(() => ({}));
+=======
+    let err: any = {};
+    try {
+      err = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+    }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     throw new Error((err as any).error ?? "Failed to create listing");
   }
   return getListings();
 }
 
+<<<<<<< HEAD
 export async function updateListing(
   listingId: string,
   updates: { priceGBP?: number | null; condition: string; description?: string; externalUrl?: string | null; photos?: string[] }
@@ -1071,6 +1268,8 @@ export async function updateListing(
   return getListings();
 }
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 export async function removeListing(listingId: string): Promise<MarketListing[]> {
   const token = await getSessionToken();
   if (!token) throw new Error("Not authenticated");
@@ -1080,7 +1279,16 @@ export async function removeListing(listingId: string): Promise<MarketListing[]>
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
+<<<<<<< HEAD
     const err = await res.json().catch(() => ({}));
+=======
+    let err: any = {};
+    try {
+      err = await res.json();
+    } catch {
+      console.warn("Invalid JSON response");
+    }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     throw new Error((err as any).error ?? "Failed to delete listing");
   }
   return getListings();

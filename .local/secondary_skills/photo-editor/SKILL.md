@@ -44,7 +44,11 @@ When a user asks to "edit a photo" or "change an image," the request could mean 
 
 | **rembg** | AI background removal | `pip install rembg` |
 
+<<<<<<< HEAD
 | **ImageMagick** | CLI batch ops, 200+ formats. Use the `magick` command, e.g. `magick -size 100x100 xc:blue test2.jpg`. | `apt install imagemagick` |
+=======
+| **ImageMagick** | CLI batch ops, 200+ formats | `apt install imagemagick` |
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 ## Open — ALWAYS Fix Orientation First
 

@@ -1,16 +1,27 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
+<<<<<<< HEAD
     "outDir": "./dist",
     "rootDir": "./server",
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     "baseUrl": ".",
     "strict": true,
     "paths": {
       "@/*": [
+<<<<<<< HEAD
         "./*"
       ],
       "@shared/*": [
         "./shared/*"
+=======
+        "./*",
+        "./app/*"
+      ],
+      "@shared/*": [
+        "./backend/shared/*"
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       ]
     }
   },

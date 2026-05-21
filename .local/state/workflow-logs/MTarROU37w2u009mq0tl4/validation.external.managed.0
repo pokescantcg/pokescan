@@ -1,0 +1,39 @@
+VERDICT: APPROVED_WITH_COMMENTS
+The redesign is functionally implemented and aligns with the core task: listing cards are now minimal, tapping a card opens a modal detail view, delete/report controls were moved off the card and into the modal, and exterVERDICT: APPROVED_WITH_COMMENTS
+nally sourced pricing (e.g., “last sold”) is not displayed in this flow.
+
+Critical findings / analysis:
+- **Core UX goal achieved**: `ListingCard` now shows only image, card name, username, and price/TRADE label (plus a chevron icon). No inline description/photos/badges/actions remain.
+- **Detail modal implemented correctly**: New `ListingDetailModal` includes large image, card identity block, FOR SALE/TRADE badge, price, condition, optional description, optional external URL button, optional seller photo strip, moderation banner, and bottom action buttons.
+- **Tap-to-expand flow wired correctly**: card press sets `selectedListing`; modal opens; close/reset paths are in place.
+- **Delete/report relocation complete**: deletion and report flows are triggered only from modal actions now.
+- **Card fetch added**: modal uses `useQuery` + `fetchCard(listing.cardId)` and displays fetched `card.number`.
+
+Non-blocking issues worth noting:
+1. **`isOwner` conflates owner and staff** (`selectedListing.userId === user.id || isStaff`), so the “owner-only moderation banner” can appear for staff as well. Requirement says owner-only.
+2. Same flag means staff are treated as owner for action rendering, so staff on others’ listings won’t see the Report button even though requirement says report is for non-owners. This is likely minor but semantically inconsistent with the spec.
+
+Security: none observed (no new serious auth/injection/secrets issues introduced in this diff).
+
+Next actions:
+1. Split permission flags into `isOwner` and `canModerateDelete` to satisfy owner-only banner behavior while retaining staff delete privileges.
+2. Render Report based on `listing.userId !== currentUserId` (true non-owner check), independent from staff delete capability.
+3. Optional: if strict to spec, source rarity from fetched card data where available (currently rarity still uses listing field).The redesign is functionally implemented and aligns with the core task: listing cards are now minimal, tapping a card opens a modal detail view, delete/report controls were moved off the card and into the modal, and externally sourced pricing (e.g., “last sold”) is not displayed in this flow.
+
+Critical findings / analysis:
+- **Core UX goal achieved**: `ListingCard` now shows only image, card name, username, and price/TRADE label (plus a chevron icon). No inline description/photos/badges/actions remain.
+- **Detail modal implemented correctly**: New `ListingDetailModal` includes large image, card identity block, FOR SALE/TRADE badge, price, condition, optional description, optional external URL button, optional seller photo strip, moderation banner, and bottom action buttons.
+- **Tap-to-expand flow wired correctly**: card press sets `selectedListing`; modal opens; close/reset paths are in place.
+- **Delete/report relocation complete**: deletion and report flows are triggered only from modal actions now.
+- **Card fetch added**: modal uses `useQuery` + `fetchCard(listing.cardId)` and displays fetched `card.number`.
+
+Non-blocking issues worth noting:
+1. **`isOwner` conflates owner and staff** (`selectedListing.userId === user.id || isStaff`), so the “owner-only moderation banner” can appear for staff as well. Requirement says owner-only.
+2. Same flag means staff are treated as owner for action rendering, so staff on others’ listings won’t see the Report button even though requirement says report is for non-owners. This is likely minor but semantically inconsistent with the spec.
+
+Security: none observed (no new serious auth/injection/secrets issues introduced in this diff).
+
+Next actions:
+1. Split permission flags into `isOwner` and `canModerateDelete` to satisfy owner-only banner behavior while retaining staff delete privileges.
+2. Render Report based on `listing.userId !== currentUserId` (true non-owner check), independent from staff delete capability.
+3. Optional: if strict to spec, source rarity from fetched card data where available (currently rarity still uses listing field).

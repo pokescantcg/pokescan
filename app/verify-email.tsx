@@ -19,19 +19,40 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
 import { verifyEmailOtp } from "@/lib/storage";
 import { getApiUrl } from "@/lib/query-client";
+<<<<<<< HEAD
+=======
+import { useUser } from "@/lib/user-context";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 const CODE_LENGTH = 6;
 
 export default function VerifyEmailScreen() {
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
+<<<<<<< HEAD
   const { email } = useLocalSearchParams<{ email: string }>();
 
   const [digits, setDigits] = useState<string[]>(Array(CODE_LENGTH).fill(""));
+=======
+  const { user } = useUser();
+  const { email } = useLocalSearchParams<{ email: string }>();
+
+  const [digits, setDigits] = useState(Array(CODE_LENGTH).fill(""));
+  const [justVerified, setJustVerified] = useState(false);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
+<<<<<<< HEAD
+=======
+  useEffect(() => {
+    if (justVerified && user && user.id) {
+      router.replace("/(tabs)");
+    }
+  }, [justVerified, user]);
+
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   const inputRefs = useRef<Array<TextInput | null>>(Array(CODE_LENGTH).fill(null));
 
   useEffect(() => {
@@ -74,7 +95,11 @@ export default function VerifyEmailScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await verifyEmailOtp(email, code);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+<<<<<<< HEAD
       router.replace("/(tabs)");
+=======
+      setJustVerified(true);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     } catch (err: any) {
       const msg = err?.message || "Verification failed";
       Alert.alert("Verification Failed", msg);
@@ -95,7 +120,16 @@ export default function VerifyEmailScreen() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
+<<<<<<< HEAD
       const data = await res.json();
+=======
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       if (!res.ok) throw new Error(data.error || "Failed to resend");
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Code Sent", "A new verification code has been sent to your email.");

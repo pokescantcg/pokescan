@@ -8,7 +8,11 @@ Use `externalApi__brave` in `code_execution`.
 
 ## Allowed operations
 
+<<<<<<< HEAD
 - `GET` `/res/v1/images/search/*?` - Brave Image Search
+=======
+- `GET` `/res/v1/images/search` - Brave Image Search
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 Authorization is handled automatically by Replit. Do not pass an `Authorization` header.
 
@@ -89,10 +93,14 @@ for (const [index, item] of items.entries()) {
     'result_' + String(index + 1) + '.jpg',
   )
 
+<<<<<<< HEAD
   await fs.writeFile(
     filePath,
     Buffer.from(await response.arrayBuffer()),
   )
+=======
+  await fs.writeFile(filePath, Buffer.from(await response.arrayBuffer()))
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
   await presentAsset({
     filePath,
@@ -106,7 +114,11 @@ for (const [index, item] of items.entries()) {
 
 ```javascript
 const result = await externalApi__brave({
+<<<<<<< HEAD
   path: '/res/v1/images/search/*?',
+=======
+  path: '/res/v1/images/search',
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   method: 'GET',
   query: {},
 })

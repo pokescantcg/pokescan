@@ -91,8 +91,11 @@ The catalog below is a snapshot. New skills may be added to the platform at any 
 
 | **integrations** | Connect to third-party services (Stripe, GitHub, Google, Linear, Notion, etc.) |
 
+<<<<<<< HEAD
 | **rayfin** | Scaffold, run, and deploy Rayfin apps — Microsoft's Backend-as-a-Service (auth, database, storage) deployed to Microsoft Fabric. Gated behind the Replit <> Microsoft partnership flag |
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 | **query-integration-data** | Query and modify data in connected integrations or data warehouses |
 
 | **replit-auth** | Add user authentication (login, sign-up, accounts) using Replit Auth |
@@ -131,7 +134,11 @@ The catalog below is a snapshot. New skills may be added to the platform at any 
 
 |-------|-------------|
 
+<<<<<<< HEAD
 | **media-generation** | Generate AI images. For AI video clips, read `media-generation/video_generation.md`; for music, sound effects, and text-to-speech audio, read `media-generation/audio_generation.md` |
+=======
+| **media-generation** | Generate AI images, AI videos, or find stock images |
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 | **photo-editor** | Edit, resize, crop, filter, and optimize images |
 

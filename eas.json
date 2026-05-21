@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "cli": {
     "version": ">= 19.0.5",
     "appVersionSource": "remote"
@@ -19,3 +20,13 @@
     "production": {}
   }
 }
+=======
+  "build": {
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://pokescantcg.onrender.com"
+      }
+    }
+  }
+}
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f

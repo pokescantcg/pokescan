@@ -24,7 +24,10 @@ service_configs:
           to: /index.html
 
 initial_open_files:
+<<<<<<< HEAD
   - src/main.tsx
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   - src/App.tsx
   - src/index.css
   - package.json
@@ -37,5 +40,9 @@ initial_open_files:
   - /artifacts/api-server/package.json
 
 additional_skills:
+<<<<<<< HEAD
   - database
   - /pnpm-workspace/references/openapi.md
+=======
+  - database
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f

@@ -10,12 +10,19 @@ import {
   KeyboardAvoidingView,
   ScrollView,
   ActivityIndicator,
+<<<<<<< HEAD
   Modal,
   Animated,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
+=======
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useThemeColors } from "@/constants/colors";
@@ -37,6 +44,7 @@ interface ChannelInfo {
 export default function LoginScreen() {
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
+<<<<<<< HEAD
   const { sendLoginOtp, verifyOtp } = useUser();
   const { newUser, username } = useLocalSearchParams<{ newUser?: string; username?: string }>();
 
@@ -53,6 +61,12 @@ export default function LoginScreen() {
       ]).start();
     }
   }, [showWelcome]);
+=======
+  const { sendLoginOtp, verifyOtp, user } = useUser();
+
+  const [step, setStep] = useState<Step>("password");
+  const [justLoggedIn, setJustLoggedIn] = useState(false);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
   // Step 1 — password
   const [credential, setCredential] = useState("");
@@ -76,6 +90,15 @@ export default function LoginScreen() {
   const topPad = Platform.OS === "web" ? 67 : insets.top;
   const botPad = Platform.OS === "web" ? 34 : insets.bottom;
 
+<<<<<<< HEAD
+=======
+  useEffect(() => {
+    if (justLoggedIn && user && user.id) {
+      router.replace("/(tabs)");
+    }
+  }, [justLoggedIn, user]);
+
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   // ── Step 1: verify password ────────────────────────────────────────────────
   const handleVerifyPassword = async () => {
     const cred = credential.trim();
@@ -157,7 +180,11 @@ export default function LoginScreen() {
       setLoading(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await verifyOtp(otpCredential.trim(), finalCode);
+<<<<<<< HEAD
       router.back();
+=======
+      setJustLoggedIn(true);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     } catch (err: any) {
       const msg = err?.message || "Invalid or expired code";
       Alert.alert("Verification Failed", msg.replace(/^Error:\s*/i, "").replace(/\{.*\}/s, "").trim() || msg);
@@ -183,6 +210,7 @@ export default function LoginScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <LinearGradient colors={["#1A0A0A", "#0D0D1A"]} style={StyleSheet.absoluteFill} />
 
+<<<<<<< HEAD
       {/* ── Welcome Modal (shown after sign-up) ─────────────────────────── */}
       <Modal visible={showWelcome} transparent animationType="none" onRequestClose={() => setShowWelcome(false)}>
         <Pressable style={styles.welcomeOverlay} onPress={() => setShowWelcome(false)}>
@@ -234,6 +262,12 @@ export default function LoginScreen() {
           contentContainerStyle={[styles.scroll, { paddingTop: topPad + 24, paddingBottom: botPad + 24 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+=======
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView
+          contentContainerStyle={[styles.scroll, { paddingTop: topPad + 24, paddingBottom: botPad + 24 }]}
+          keyboardShouldPersistTaps="handled"
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
         >
           <Pressable
             onPress={step === "password" ? () => router.back() : resetToPassword}
@@ -529,6 +563,7 @@ const styles = StyleSheet.create({
   registerRow: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
   registerText: { fontSize: 14, fontFamily: "Outfit_400Regular" },
   registerLink: { fontSize: 14, fontFamily: "Outfit_600SemiBold", color: "#FFDE00" },
+<<<<<<< HEAD
   // Welcome modal
   welcomeOverlay: {
     flex: 1, backgroundColor: "rgba(0,0,0,0.7)",
@@ -557,4 +592,6 @@ const styles = StyleSheet.create({
     gap: 8, height: 52,
   },
   welcomeBtnText: { fontSize: 17, fontFamily: "Outfit_700Bold", color: "#FFF" },
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 });

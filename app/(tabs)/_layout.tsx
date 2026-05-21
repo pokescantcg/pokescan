@@ -2,6 +2,7 @@ import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
 import { NativeTabs, Icon, Label } from "expo-router/unstable-native-tabs";
 import { BlurView } from "expo-blur";
+<<<<<<< HEAD
 import {
   Platform,
   StyleSheet,
@@ -10,13 +11,19 @@ import {
   Text,
   Animated,
 } from "react-native";
+=======
+import { Platform, StyleSheet, useColorScheme, View, Text, Animated } from "react-native";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import React, { useEffect, useRef } from "react";
 import { useThemeColors } from "@/constants/colors";
 import { useCardCache } from "@/lib/card-cache-context";
 import WelcomeModal from "@/components/WelcomeModal";
+<<<<<<< HEAD
 import { PremiumTrialBanner } from "@/components/PremiumTrialBanner";
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 function DownloadBanner() {
   const { isDownloading, downloadPercent, progress } = useCardCache();
@@ -32,15 +39,22 @@ function DownloadBanner() {
 
   if (!isDownloading && downloadPercent === 0) return null;
 
+<<<<<<< HEAD
   const label =
     progress?.stage === "cards" && progress.setName
       ? `Saving cards: ${progress.setName} (${progress.current}/${progress.total})`
       : "Downloading card database...";
+=======
+  const label = progress?.stage === "cards" && progress.setName
+    ? `Saving cards: ${progress.setName} (${progress.current}/${progress.total})`
+    : "Downloading card database...";
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
   return (
     <Animated.View
       style={[
         bannerStyles.wrap,
+<<<<<<< HEAD
         {
           opacity: anim,
           transform: [
@@ -52,10 +66,14 @@ function DownloadBanner() {
             },
           ],
         },
+=======
+        { opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-24, 0] }) }] },
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       ]}
       pointerEvents="none"
     >
       <View style={bannerStyles.row}>
+<<<<<<< HEAD
         <MaterialCommunityIcons
           name="database-arrow-down"
           size={13}
@@ -70,6 +88,14 @@ function DownloadBanner() {
         <View
           style={[bannerStyles.bar, { width: `${downloadPercent}%` as any }]}
         />
+=======
+        <MaterialCommunityIcons name="database-arrow-down" size={13} color="#FFF" />
+        <Text style={bannerStyles.label} numberOfLines={1}>{label}</Text>
+        <Text style={bannerStyles.pct}>{downloadPercent}%</Text>
+      </View>
+      <View style={bannerStyles.track}>
+        <View style={[bannerStyles.bar, { width: `${downloadPercent}%` as any }]} />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       </View>
     </Animated.View>
   );
@@ -88,6 +114,7 @@ const bannerStyles = StyleSheet.create({
     zIndex: 999,
   },
   row: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
+<<<<<<< HEAD
   label: {
     flex: 1,
     fontSize: 10,
@@ -101,6 +128,11 @@ const bannerStyles = StyleSheet.create({
     borderRadius: 1,
     overflow: "hidden",
   },
+=======
+  label: { flex: 1, fontSize: 10, fontFamily: "Outfit_500Medium", color: "#CCC" },
+  pct: { fontSize: 10, fontFamily: "Outfit_700Bold", color: "#FFDE00" },
+  track: { height: 2, backgroundColor: "#333", borderRadius: 1, overflow: "hidden" },
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   bar: { height: 2, backgroundColor: "#FFDE00", borderRadius: 1 },
 });
 
@@ -108,6 +140,7 @@ function NativeTabLayout() {
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
+<<<<<<< HEAD
         <Icon
           sf={{ default: "rectangle.stack", selected: "rectangle.stack.fill" }}
         />
@@ -117,6 +150,13 @@ function NativeTabLayout() {
         <Icon
           sf={{ default: "camera.viewfinder", selected: "camera.viewfinder" }}
         />
+=======
+        <Icon sf={{ default: "rectangle.stack", selected: "rectangle.stack.fill" }} />
+        <Label>Browse</Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="scanner">
+        <Icon sf={{ default: "camera.viewfinder", selected: "camera.viewfinder" }} />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
         <Label>Scan</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="collection">
@@ -151,11 +191,15 @@ function ClassicTabLayout() {
         tabBarInactiveTintColor: colors.tabIconDefault,
         tabBarStyle: {
           position: "absolute" as const,
+<<<<<<< HEAD
           backgroundColor: isIOS
             ? "transparent"
             : isDark
               ? "#0F1629"
               : colors.surface,
+=======
+          backgroundColor: isIOS ? "transparent" : isDark ? "#0F1629" : colors.surface,
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           borderTopWidth: isDark ? 0 : 1,
           borderTopColor: isDark ? "transparent" : colors.border,
           elevation: 0,
@@ -169,12 +213,16 @@ function ClassicTabLayout() {
               style={StyleSheet.absoluteFill}
             />
           ) : isWeb ? (
+<<<<<<< HEAD
             <View
               style={[
                 StyleSheet.absoluteFill,
                 { backgroundColor: isDark ? "#0F1629" : colors.surface },
               ]}
             />
+=======
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? "#0F1629" : colors.surface }]} />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           ) : null,
         tabBarLabelStyle: {
           fontFamily: "Outfit_600SemiBold",
@@ -187,11 +235,15 @@ function ClassicTabLayout() {
         options={{
           title: "Browse",
           tabBarIcon: ({ color, focused }) => (
+<<<<<<< HEAD
             <MaterialCommunityIcons
               name={focused ? "cards" : "cards-outline"}
               size={24}
               color={color}
             />
+=======
+            <MaterialCommunityIcons name={focused ? "cards" : "cards-outline"} size={24} color={color} />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           ),
         }}
       />
@@ -201,11 +253,15 @@ function ClassicTabLayout() {
           title: "Scan",
           tabBarIcon: ({ color, focused }) => (
             <View style={focused ? tabStyles.scanActive : undefined}>
+<<<<<<< HEAD
               <Ionicons
                 name={focused ? "scan" : "scan-outline"}
                 size={24}
                 color={focused ? "#FFF" : color}
               />
+=======
+              <Ionicons name={focused ? "scan" : "scan-outline"} size={24} color={focused ? "#FFF" : color} />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
             </View>
           ),
         }}
@@ -215,11 +271,15 @@ function ClassicTabLayout() {
         options={{
           title: "Collection",
           tabBarIcon: ({ color, focused }) => (
+<<<<<<< HEAD
             <MaterialCommunityIcons
               name={focused ? "pokeball" : "circle-outline"}
               size={24}
               color={color}
             />
+=======
+            <MaterialCommunityIcons name={focused ? "pokeball" : "circle-outline"} size={24} color={color} />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           ),
         }}
       />
@@ -228,11 +288,15 @@ function ClassicTabLayout() {
         options={{
           title: "Market",
           tabBarIcon: ({ color, focused }) => (
+<<<<<<< HEAD
             <Ionicons
               name={focused ? "storefront" : "storefront-outline"}
               size={22}
               color={color}
             />
+=======
+            <Ionicons name={focused ? "storefront" : "storefront-outline"} size={22} color={color} />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           ),
         }}
       />
@@ -241,11 +305,15 @@ function ClassicTabLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color, focused }) => (
+<<<<<<< HEAD
             <Ionicons
               name={focused ? "person-circle" : "person-circle-outline"}
               size={24}
               color={color}
             />
+=======
+            <Ionicons name={focused ? "person-circle" : "person-circle-outline"} size={24} color={color} />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           ),
         }}
       />
@@ -263,14 +331,21 @@ const tabStyles = StyleSheet.create({
 });
 
 export default function TabLayout() {
+<<<<<<< HEAD
   const [wipVisible, setWipVisible] = React.useState(true);
 
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   return (
     <View style={{ flex: 1 }}>
       {isLiquidGlassAvailable() ? <NativeTabLayout /> : <ClassicTabLayout />}
       <DownloadBanner />
+<<<<<<< HEAD
       <WelcomeModal onClose={() => setWipVisible(false)} />
       <PremiumTrialBanner wipPopupOpen={wipVisible} token={null} />
+=======
+      <WelcomeModal />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     </View>
   );
 }

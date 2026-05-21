@@ -50,8 +50,12 @@ export default function FriendCollectionScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
+<<<<<<< HEAD
   const { userId, displayName, isPublic } = useLocalSearchParams<{ userId: string; displayName: string; isPublic?: string }>();
   const isPublicView = isPublic === "true";
+=======
+  const { userId, displayName } = useLocalSearchParams<{ userId: string; displayName: string }>();
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
   const [collection, setCollection] = useState<CollectionItem[]>([]);
   const [owner, setOwner] = useState<SocialUser | null>(null);
@@ -63,6 +67,7 @@ export default function FriendCollectionScreen() {
   const fetchCollection = async () => {
     try {
       setError(null);
+<<<<<<< HEAD
       if (isPublicView) {
         const token = await import("@/lib/storage").then(m => m.getSessionToken());
         const { getApiUrl } = await import("@/lib/query-client");
@@ -77,6 +82,11 @@ export default function FriendCollectionScreen() {
         setCollection(data.collection);
         setOwner(data.owner);
       }
+=======
+      const data = await socialApi.getFriendCollection(userId);
+      setCollection(data.collection);
+      setOwner(data.owner);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     } catch (e: any) {
       setError(e.message || "Failed to load collection");
     }
@@ -121,6 +131,7 @@ export default function FriendCollectionScreen() {
             <Ionicons name="chevron-back" size={24} color={colors.text} />
           </Pressable>
           <View style={{ flex: 1 }}>
+<<<<<<< HEAD
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
               <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
                 {ownerName}'s Collection
@@ -129,6 +140,11 @@ export default function FriendCollectionScreen() {
                 <Ionicons name="checkmark-circle" size={18} color="#3498DB" />
               )}
             </View>
+=======
+            <Text style={[styles.title, { color: colors.text }]} numberOfLines={1}>
+              {ownerName}'s Collection
+            </Text>
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
             {owner && (
               <Text style={[styles.subtitle, { color: colors.textMuted }]}>@{owner.username}</Text>
             )}
@@ -176,7 +192,11 @@ export default function FriendCollectionScreen() {
       ) : (
         <SectionList
           sections={sections}
+<<<<<<< HEAD
           keyExtractor={(item) => item.id ?? `${item.cardId}-${item.condition}-${item.variant || "Non-Holo"}-${item.gradingCompany || ""}-${item.grade || ""}`}
+=======
+          keyExtractor={(item) => `${item.cardId}-${item.condition}-${item.variant}`}
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 20 }]}
           showsVerticalScrollIndicator={false}
           stickySectionHeadersEnabled={false}
@@ -225,6 +245,7 @@ export default function FriendCollectionScreen() {
                 <Text style={[styles.cardMeta, { color: colors.textMuted }]}>
                   {item.variant && item.variant !== "Non-Holo" ? `${item.variant} · ` : ""}{item.condition}
                 </Text>
+<<<<<<< HEAD
                 {item.gradingCompany && item.grade && (
                   <View style={{ flexDirection: "row", marginTop: 2 }}>
                     <View style={{ backgroundColor: "#3498DB20", paddingHorizontal: 6, paddingVertical: 1, borderRadius: 6 }}>
@@ -232,6 +253,8 @@ export default function FriendCollectionScreen() {
                     </View>
                   </View>
                 )}
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
                 {item.priceGBP ? (
                   <Text style={[styles.cardPrice, { color: colors.success }]}>{formatGBP(item.priceGBP)}</Text>
                 ) : null}

@@ -27,14 +27,37 @@ import { useUser } from "@/lib/user-context";
 import { getSessionToken } from "@/lib/storage";
 import { getApiUrl } from "@/lib/query-client";
 import { formatGBP } from "@/lib/pokemon-api";
+<<<<<<< HEAD
 import PokeBackground from "@/components/PokeBackground";
 import { socialApi } from "@/lib/social-api";
 
+=======
+import { useCardCache } from "@/lib/card-cache-context";
+import { CacheMeta, LangFilter, LANG_INFO, SyncProgress } from "@/lib/card-cache";
+import PokeBackground from "@/components/PokeBackground";
+import { socialApi } from "@/lib/social-api";
+
+function formatNumber(n: number): string {
+  return n.toLocaleString();
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 export default function ProfileScreen() {
   const colorScheme = useColorScheme();
   const colors = useThemeColors(colorScheme);
   const insets = useSafeAreaInsets();
+<<<<<<< HEAD
   const { user, collection, collectionValue, listings, logout, isStaff, isSuperadminUser, updateAvatar, revokePremium, pendingListingCount, refreshPendingListingCount } = useUser();
+=======
+  const { user, collection, collectionValue, listings, logout, isStaff, isSuperadminUser, updateAvatar, revokePremium } = useUser();
+  const { cacheStatus, isDownloading, downloadPercent, progress, startDownload, clearCardCache, refreshStatus, selectedLanguages, setSelectedLanguages } = useCardCache();
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [collectionVisible, setCollectionVisible] = useState(user?.collectionVisible ?? false);
@@ -61,15 +84,28 @@ export default function ProfileScreen() {
     useCallback(() => {
       if (!user) return;
       socialApi.getUnreadCount().then(d => setUnreadCount(d.count)).catch(() => {});
+<<<<<<< HEAD
       if (isStaff) refreshPendingListingCount().catch(() => {});
     }, [user, isStaff, refreshPendingListingCount])
+=======
+    }, [user])
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   );
 
   const handleMessageSupport = useCallback(async () => {
     try {
       const url = new URL("/api/support/admin", getApiUrl()).href;
       const res = await fetch(url);
+<<<<<<< HEAD
       const data = await res.json();
+=======
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        console.warn("Invalid JSON response");
+      }
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
       if (data.admin) {
         router.push({
           pathname: "/messages",
@@ -88,6 +124,10 @@ export default function ProfileScreen() {
   }, []);
 
   const handleToggleCollectionVisible = useCallback(async () => {
+<<<<<<< HEAD
+=======
+    if (!user?.isPremium) return;
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
     setTogglingVisibility(true);
     const next = !collectionVisible;
     setCollectionVisible(next);
@@ -103,8 +143,15 @@ export default function ProfileScreen() {
   }, [user, collectionVisible]);
 
   const webTopInset = Platform.OS === "web" ? 67 : 0;
+<<<<<<< HEAD
   const totalCards = collection.reduce((sum, item) => sum + item.quantity, 0);
   const myListings = listings.filter((l) => l.userId === user?.id);
+=======
+  const safeCollection = collection || [];
+  const totalCards = safeCollection.reduce((sum, item) => sum + item.quantity, 0);
+  const safeListings = listings || [];
+  const myListings = safeListings.filter((l) => l.userId === user?.id);
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
   const handlePickAvatar = useCallback(async () => {
     if (!user?.isPremium) {
@@ -165,6 +212,55 @@ export default function ProfileScreen() {
     }
   }, [user?.isPremium, updateAvatar]);
 
+<<<<<<< HEAD
+=======
+  const handleSync = useCallback(async () => {
+    if (isDownloading) return;
+    if (selectedLanguages.length === 0) {
+      Alert.alert("Select a Language", "Please choose at least one language to download.");
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      await startDownload(selectedLanguages);
+      await refreshStatus();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        "Database Ready!",
+        `Cards are now saved on your device for instant searching.`
+      );
+    } catch (e: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert("Download Failed", e.message || "Could not download card database. Check your connection and try again.");
+    }
+  }, [isDownloading, startDownload, refreshStatus, selectedLanguages]);
+
+  const handleClearCache = useCallback(() => {
+    Alert.alert(
+      "Clear Card Database",
+      "This will delete all locally saved card data. The app will need to re-download it.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: async () => {
+            await clearCardCache();
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          },
+        },
+      ]
+    );
+  }, [clearCardCache]);
+
+  const handleToggleLanguage = useCallback((lang: LangFilter) => {
+    const next = selectedLanguages.includes(lang)
+      ? selectedLanguages.filter((l) => l !== lang)
+      : [...selectedLanguages, lang];
+    setSelectedLanguages(next);
+  }, [selectedLanguages, setSelectedLanguages]);
+
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   // ── Cancel premium handlers ─────────────────────────────────────────────────
   const handleOpenCancelModal = useCallback(() => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -313,6 +409,22 @@ export default function ProfileScreen() {
             </Pressable>
           </View>
 
+<<<<<<< HEAD
+=======
+          <View style={[styles.dbSection, { marginTop: 0 }]}>
+            <DatabaseSyncCard
+              cacheStatus={cacheStatus}
+              isSyncing={isDownloading}
+              syncPercent={downloadPercent}
+              progress={progress}
+              selectedLanguages={selectedLanguages}
+              onToggleLanguage={handleToggleLanguage}
+              onSync={handleSync}
+              onClear={handleClearCache}
+              colors={colors}
+            />
+          </View>
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
         </ScrollView>
       </View>
     );
@@ -398,12 +510,15 @@ export default function ProfileScreen() {
                 <Text style={styles.premiumTagText}>PREMIUM</Text>
               </View>
             )}
+<<<<<<< HEAD
             {user.isVerifiedCollector && (
               <View style={[styles.premiumTag, { backgroundColor: "#3498DB", marginTop: 4 }]}>
                 <Ionicons name="checkmark-circle" size={12} color="#FFF" />
                 <Text style={[styles.premiumTagText, { color: "#FFF" }]}>VERIFIED COLLECTOR</Text>
               </View>
             )}
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
           </View>
         </LinearGradient>
 
@@ -458,6 +573,7 @@ export default function ProfileScreen() {
           </Pressable>
         ) : null}
 
+<<<<<<< HEAD
         <Pressable
           style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 0 }]}
           onPress={handleToggleCollectionVisible}
@@ -541,6 +657,45 @@ export default function ProfileScreen() {
               <Ionicons name="open-outline" size={14} color={colors.textMuted} />
             </Pressable>
           </View>
+=======
+        {user.isPremium && (
+          <Pressable
+            style={[styles.premiumBanner, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 0 }]}
+            onPress={handleToggleCollectionVisible}
+            disabled={togglingVisibility}
+          >
+            <Ionicons name="albums-outline" size={22} color={collectionVisible ? colors.success : colors.textMuted} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.premiumBannerTitle, { color: colors.text, fontSize: 14 }]}>
+                Collection Visibility
+              </Text>
+              <Text style={[styles.premiumBannerDesc, { color: colors.textMuted }]}>
+                {collectionVisible ? "Friends can view your collection" : "Your collection is private"}
+              </Text>
+            </View>
+            {togglingVisibility ? (
+              <ActivityIndicator size="small" color={colors.pokemonRed} />
+            ) : (
+              <View style={[styles.visToggle, { backgroundColor: collectionVisible ? colors.success : colors.border }]}>
+                <View style={[styles.visToggleKnob, { alignSelf: collectionVisible ? "flex-end" : "flex-start" }]} />
+              </View>
+            )}
+          </Pressable>
+        )}
+
+        <View style={styles.dbSection}>
+          <DatabaseSyncCard
+            cacheStatus={cacheStatus}
+            isSyncing={isDownloading}
+            syncPercent={downloadPercent}
+            progress={progress}
+            selectedLanguages={selectedLanguages}
+            onToggleLanguage={handleToggleLanguage}
+            onSync={handleSync}
+            onClear={handleClearCache}
+            colors={colors}
+          />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
         </View>
 
         <View style={styles.helpSection}>
@@ -577,6 +732,7 @@ export default function ProfileScreen() {
               style={[styles.menuItem, { backgroundColor: colors.card, borderColor: colors.pokemonRed + "30" }]}
               onPress={() => router.push("/admin-panel")}
             >
+<<<<<<< HEAD
               <View style={{ position: "relative" }}>
                 <Ionicons name="shield-checkmark" size={22} color={colors.pokemonRed} />
                 {pendingListingCount > 0 && (
@@ -587,6 +743,9 @@ export default function ProfileScreen() {
                   </View>
                 )}
               </View>
+=======
+              <Ionicons name="shield-checkmark" size={22} color={colors.pokemonRed} />
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
               <Text style={[styles.menuText, { color: colors.text }]}>
                 {isSuperadminUser ? "Superadmin Panel" : user.role === "admin" ? "Admin Panel" : "Moderator Panel"}
               </Text>
@@ -793,6 +952,311 @@ export default function ProfileScreen() {
   );
 }
 
+<<<<<<< HEAD
+=======
+// Language rows shown in the database card
+const DOWNLOADABLE_LANGS: LangFilter[] = ["english"];
+const SCANNER_ONLY_LANGS = [
+  { id: "japanese", label: "Japanese", flag: "🇯🇵" },
+  { id: "korean",   label: "Korean",   flag: "🇰🇷" },
+  { id: "chinese",  label: "Chinese",  flag: "🇨🇳" },
+];
+
+function DatabaseSyncCard({
+  cacheStatus,
+  isSyncing,
+  syncPercent,
+  progress,
+  selectedLanguages,
+  onToggleLanguage,
+  onSync,
+  onClear,
+  colors,
+}: {
+  cacheStatus: CacheMeta | null;
+  isSyncing: boolean;
+  syncPercent: number;
+  progress: SyncProgress | null;
+  selectedLanguages: LangFilter[];
+  onToggleLanguage: (lang: LangFilter) => void;
+  onSync: () => void;
+  onClear: () => void;
+  colors: ReturnType<typeof useThemeColors>;
+}) {
+  const hasData = cacheStatus && cacheStatus.totalCards > 0;
+  const isComplete = hasData && cacheStatus.cachedSets >= cacheStatus.totalSets;
+
+  // Which languages are already fully or partially downloaded
+  const downloadedLangs = new Set<LangFilter>(cacheStatus?.selectedLanguages ?? []);
+
+  // Button label
+  const syncLabel = (() => {
+    if (!isSyncing) {
+      if (!hasData) return "Download";
+      if (!isComplete) return "Resume Download";
+      return "Sync Updates";
+    }
+    if (progress?.stage === "sets") return "Fetching sets…";
+    if (progress?.stage === "cards" && progress.setName)
+      return `${progress.setName} (${progress.current}/${progress.total})`;
+    return "Downloading…";
+  })();
+
+  return (
+    <View style={[dbStyles.card, { backgroundColor: colors.card, borderColor: colors.pokemonBlue + "40" }]}>
+      {/* Header */}
+      <View style={dbStyles.header}>
+        <View style={[dbStyles.iconBg, { backgroundColor: colors.pokemonBlue + "20" }]}>
+          <MaterialCommunityIcons name="database" size={20} color={colors.pokemonBlue} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[dbStyles.title, { color: colors.text }]}>Card Database</Text>
+          <Text style={[dbStyles.subtitle, { color: colors.textMuted }]}>
+            {hasData
+              ? `${formatNumber(cacheStatus.totalCards)} cards · ${cacheStatus.cachedSets} sets`
+              : "Select languages to download"}
+          </Text>
+        </View>
+        {isComplete && !isSyncing && (
+          <View style={[dbStyles.badge, { backgroundColor: colors.success + "20" }]}>
+            <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+            <Text style={[dbStyles.badgeText, { color: colors.success }]}>Ready</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Stats row (when data exists) */}
+      {hasData && !isSyncing && (
+        <View style={dbStyles.statsRow}>
+          <View style={dbStyles.stat}>
+            <Text style={[dbStyles.statNum, { color: colors.pokemonBlue }]}>
+              {formatNumber(cacheStatus.totalCards)}
+            </Text>
+            <Text style={[dbStyles.statLabel, { color: colors.textMuted }]}>Cards</Text>
+          </View>
+          <View style={[dbStyles.statDivider, { backgroundColor: colors.borderLight }]} />
+          <View style={dbStyles.stat}>
+            <Text style={[dbStyles.statNum, { color: colors.pokemonBlue }]}>
+              {cacheStatus.cachedSets}
+            </Text>
+            <Text style={[dbStyles.statLabel, { color: colors.textMuted }]}>Sets</Text>
+          </View>
+          <View style={[dbStyles.statDivider, { backgroundColor: colors.borderLight }]} />
+          <View style={dbStyles.stat}>
+            <Text style={[dbStyles.statNum, { color: colors.textSecondary }]} numberOfLines={1}>
+              {formatDate(cacheStatus.lastSync)}
+            </Text>
+            <Text style={[dbStyles.statLabel, { color: colors.textMuted }]}>Last Sync</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Progress bar */}
+      {isSyncing && (
+        <View style={dbStyles.progressWrap}>
+          <View style={[dbStyles.progressTrack, { backgroundColor: colors.border }]}>
+            <View
+              style={[dbStyles.progressBar, { backgroundColor: colors.pokemonBlue, width: `${syncPercent}%` as any }]}
+            />
+          </View>
+          <Text style={[dbStyles.progressLabel, { color: colors.textMuted }]}>
+            {syncPercent}%
+          </Text>
+        </View>
+      )}
+
+      {/* Language selector section */}
+      <View style={[dbStyles.langSection, { borderColor: colors.borderLight }]}>
+        <Text style={[dbStyles.langSectionLabel, { color: colors.textMuted }]}>
+          {isSyncing ? "DOWNLOADING" : "SELECT LANGUAGES"}
+        </Text>
+
+        {/* Downloadable languages (English, Chinese) */}
+        {DOWNLOADABLE_LANGS.map((lang) => {
+          const info = LANG_INFO[lang];
+          const isSelected = selectedLanguages.includes(lang);
+          const isDownloaded = downloadedLangs.has(lang);
+          return (
+            <Pressable
+              key={lang}
+              style={[
+                dbStyles.langRow,
+                { borderColor: isSelected ? colors.pokemonBlue + "60" : colors.borderLight },
+                isSelected && { backgroundColor: colors.pokemonBlue + "10" },
+              ]}
+              onPress={() => !isSyncing && onToggleLanguage(lang)}
+              disabled={isSyncing}
+            >
+              <Text style={dbStyles.langFlag}>{info.flag}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[dbStyles.langLabel, { color: colors.text }]}>
+                  {info.label}
+                </Text>
+                <Text style={[dbStyles.langDesc, { color: colors.textMuted }]}>
+                  {lang === "english" ? "~165 sets · Full TCG database" : "5 sets · Mandarin & regional editions"}
+                </Text>
+              </View>
+              {isDownloaded && !isSyncing && (
+                <Ionicons name="checkmark-circle" size={16} color={colors.success} style={{ marginRight: 8 }} />
+              )}
+              <View style={[
+                dbStyles.checkbox,
+                { borderColor: isSelected ? colors.pokemonBlue : colors.borderLight },
+                isSelected && { backgroundColor: colors.pokemonBlue },
+              ]}>
+                {isSelected && <Ionicons name="checkmark" size={12} color="#FFF" />}
+              </View>
+            </Pressable>
+          );
+        })}
+
+        {/* Scanner-only languages (Japanese, Korean) */}
+        {SCANNER_ONLY_LANGS.map((lang) => (
+          <View
+            key={lang.id}
+            style={[dbStyles.langRow, dbStyles.langRowDisabled, { borderColor: colors.borderLight }]}
+          >
+            <Text style={dbStyles.langFlag}>{lang.flag}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[dbStyles.langLabel, { color: colors.textSecondary }]}>
+                {lang.label}
+              </Text>
+              <Text style={[dbStyles.langDesc, { color: colors.textMuted }]}>
+                Not in database · Use the Scanner tab
+              </Text>
+            </View>
+            <View style={[dbStyles.scannerBadge, { backgroundColor: colors.surface, borderColor: colors.borderLight }]}>
+              <Ionicons name="scan-outline" size={11} color={colors.textMuted} />
+              <Text style={[dbStyles.scannerBadgeText, { color: colors.textMuted }]}>Scanner</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Action buttons */}
+      <View style={dbStyles.buttons}>
+        <Pressable
+          style={({ pressed }) => [
+            dbStyles.syncBtn,
+            {
+              backgroundColor: selectedLanguages.length === 0 ? colors.border : colors.pokemonBlue,
+              opacity: pressed || isSyncing ? 0.8 : 1,
+            },
+          ]}
+          onPress={onSync}
+          disabled={isSyncing || selectedLanguages.length === 0}
+        >
+          {isSyncing ? (
+            <MaterialCommunityIcons name="pokeball" size={16} color="#FFF" />
+          ) : (
+            <Ionicons name="cloud-download" size={16} color="#FFF" />
+          )}
+          <Text style={dbStyles.syncBtnText} numberOfLines={1}>{syncLabel}</Text>
+        </Pressable>
+        {hasData && !isSyncing && (
+          <Pressable
+            style={({ pressed }) => [
+              dbStyles.clearBtn,
+              { borderColor: colors.borderLight, opacity: pressed ? 0.7 : 1 },
+            ]}
+            onPress={onClear}
+          >
+            <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
+          </Pressable>
+        )}
+      </View>
+    </View>
+  );
+}
+
+const dbStyles = StyleSheet.create({
+  card: {
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1.5,
+    gap: 12,
+  },
+  header: { flexDirection: "row", alignItems: "center", gap: 12 },
+  iconBg: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  title: { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  subtitle: { fontSize: 12, fontFamily: "Outfit_400Regular" },
+  badge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  badgeText: { fontSize: 11, fontFamily: "Outfit_600SemiBold" },
+  statsRow: { flexDirection: "row", alignItems: "center", gap: 0 },
+  stat: { flex: 1, alignItems: "center", gap: 2 },
+  statNum: { fontSize: 16, fontFamily: "Outfit_700Bold" },
+  statLabel: { fontSize: 10, fontFamily: "Outfit_400Regular" },
+  statDivider: { width: 1, height: 30, marginHorizontal: 8 },
+  progressWrap: { flexDirection: "row", alignItems: "center", gap: 8 },
+  progressTrack: { flex: 1, height: 6, borderRadius: 3, overflow: "hidden" },
+  progressBar: { height: 6, borderRadius: 3 },
+  progressLabel: { fontSize: 11, fontFamily: "Outfit_600SemiBold", width: 32, textAlign: "right" },
+  buttons: { flexDirection: "row", gap: 8 },
+  syncBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 11,
+    borderRadius: 12,
+    gap: 7,
+  },
+  syncBtnText: { fontSize: 13, fontFamily: "Outfit_600SemiBold", color: "#FFF" },
+  clearBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // Language selector
+  langSection: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+    gap: 0,
+  },
+  langSectionLabel: {
+    fontSize: 10,
+    fontFamily: "Outfit_600SemiBold",
+    letterSpacing: 1,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 6,
+  },
+  langRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+    borderTopWidth: 1,
+  },
+  langRowDisabled: { opacity: 0.6 },
+  langFlag: { fontSize: 20, lineHeight: 24 },
+  langLabel: { fontSize: 13, fontFamily: "Outfit_600SemiBold" },
+  langDesc: { fontSize: 11, fontFamily: "Outfit_400Regular", marginTop: 1 },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scannerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  scannerBadgeText: { fontSize: 10, fontFamily: "Outfit_600SemiBold" },
+});
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -801,8 +1265,11 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 16 },
   mailBadge: { position: "absolute", top: -5, right: -7, minWidth: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center", paddingHorizontal: 3 },
   mailBadgeText: { fontSize: 9, fontFamily: "Outfit_700Bold", color: "#FFF" },
+<<<<<<< HEAD
   adminBadge: { position: "absolute", top: -6, right: -8, minWidth: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center", paddingHorizontal: 3 },
   adminBadgeText: { fontSize: 9, fontFamily: "Outfit_700Bold", color: "#FFF" },
+=======
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   title: { fontSize: 28, fontFamily: "Outfit_700Bold" },
   eeveeDecor: { width: 64, height: 64 },
   profileSection: { alignItems: "center", marginBottom: 4 },
@@ -950,6 +1417,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   cancelModalConfirmText: { fontSize: 14, fontFamily: "Outfit_600SemiBold" },
+<<<<<<< HEAD
   socialRow: {
     flexDirection: "row",
     borderRadius: 16,
@@ -972,6 +1440,9 @@ const styles = StyleSheet.create({
   },
   socialBtnText: { flex: 1, fontSize: 14, fontFamily: "Outfit_600SemiBold" },
   socialDivider: { width: 1 },
+=======
+  dbSection: { paddingHorizontal: 20, marginBottom: 20 },
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
   helpSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
   legalSection: { paddingHorizontal: 20, gap: 8, marginBottom: 20 },
   sectionLabel: { fontSize: 11, fontFamily: "Outfit_600SemiBold", letterSpacing: 0.8, marginBottom: 4 },

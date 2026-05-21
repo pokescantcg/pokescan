@@ -18,8 +18,14 @@ End-to-end testing with `runTest()` can uncover bugs not discoverable through co
 A good test plan derives from a good contextual understanding of the application. Before writing your test plan:
 
 1. **Understand application context**: Know both the frontend and backend code relevant to your changes
+<<<<<<< HEAD
 2. **Know the navigation**: Understand how to reach the feature you're testing
 3. **Identify specifics**: Note relevant UI elements (selectors, labels) and API endpoints involved
+=======
+2. **Update documentation**: If you made significant changes, update replit.md to reflect them (the testing subagent has access to it for general context)
+3. **Know the navigation**: Understand how to reach the feature you're testing
+4. **Identify specifics**: Note relevant UI elements (selectors, labels) and API endpoints involved
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 If you just implemented a feature, you already have most of this context — use it immediately. If a test fails due to insufficient context, iterate and add more details. If stuck after multiple attempts, stop and ask the user for help.
 

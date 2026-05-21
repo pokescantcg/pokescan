@@ -158,7 +158,11 @@ A short list of reusable pointers for future security analysis:
 
 Keep this section brief. It should store just enough concrete context to speed up future security scans without turning the threat model into a full repo inventory.
 
+<<<<<<< HEAD
 If project context already exists in `replit.md` (project README) or `.agents/memory/` (agent memory), don't repeat the same information.
+=======
+If memory files exist like replit.md or .agent/memory, don't repeat the same information.
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 ## Threat Categories
 

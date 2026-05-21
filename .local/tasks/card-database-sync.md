@@ -20,7 +20,11 @@ Build a persistent PostgreSQL database that stores every Pokémon set, every car
 - Real-time eBay websocket updates
 
 ## Tasks
+<<<<<<< HEAD
 1. **Database schema** — Add `pokemon_sets`, `pokemon_cards`, `card_pricing`, and `ebay_prices` tables to `shared/schema.ts` using Drizzle ORM, then push the schema to the database.
+=======
+1. **Database schema** — Add `pokescab_sets`, `pokescan_cards`, `card_pricing`, and `ebay_prices` tables to `shared/schema.ts` using Drizzle ORM, then push the schema to the database.
+>>>>>>> 702a2984a1522fbb24b0279bbb3a88bed8270a9f
 
 2. **Data sync service** — Create `server/card-sync.ts` that pulls all sets from the Pokemon TCG API, then iterates every set to fetch all cards (all pages), storing set and card records in the DB. Skip already-synced cards unless a force flag is passed.
 
